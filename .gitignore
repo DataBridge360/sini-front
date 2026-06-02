@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Next.js output
+.next/
+out/
+
+# Build and test artifacts
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Deploy tooling
+.vercel/
+.netlify/
+
+# Logs and caches
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.turbo/
+
+# Local tooling
+.DS_Store
+.idea/
+.vscode/
