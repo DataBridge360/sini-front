@@ -75,6 +75,16 @@ export type DeactivateOrganizationTeamMemberPayload = {
   producerPassword: string;
 };
 
+export type UserRef = { id: string; full_name: string };
+
+export type NoticeNote = {
+  id: string;
+  note: string;
+  created_at: string;
+  user_id: string;
+  user: UserRef | null;
+};
+
 export type Client = {
   id: string;
   full_name: string;
@@ -82,6 +92,9 @@ export type Client = {
   email: string | null;
   locality: string | null;
   dni: string | null;
+  notes: string | null;
+  address: string | null;
+  birth_date: string | null;
 };
 
 export type InsuranceCompany = {
@@ -106,12 +119,17 @@ export type Notice = {
   due_date: string;
   status: "avisar" | "avisado" | "pagado";
   paid_interval_months: number | null;
+  notified_at: string | null;
+  payment_processed_at: string | null;
+  notified_by: UserRef | null;
+  payment_processed_by: UserRef | null;
+  notes: NoticeNote[];
   policies?: {
     id: string;
     policy_number: string;
     branch: string;
     vehicle_plate: string | null;
-    clients?: { id: string; full_name: string; phone: string | null; email: string | null } | null;
+    clients?: { id: string; full_name: string; phone: string | null; email: string | null; notes: string | null } | null;
     insurance_companies?: { id: string; name: string } | null;
   } | null;
 };

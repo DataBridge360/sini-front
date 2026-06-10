@@ -9,8 +9,13 @@ export function QueryProvider({ children }: Readonly<{ children: React.ReactNode
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 20_000,
-            refetchOnWindowFocus: false
+            // Los datos operativos (clientes, compañías, pólizas) cambian poco;
+            // 60s evita refetches al remontar vistas. Cada query puede subir su
+            // propio staleTime si lo necesita.
+            staleTime: 60_000,
+            gcTime: 10 * 60_000,
+            refetchOnWindowFocus: false,
+            retry: 1
           }
         }
       }),

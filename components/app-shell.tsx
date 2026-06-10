@@ -4,15 +4,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowUpRight,
   Bell,
   Building2,
   CalendarDays,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CheckCircle,
-  CircleHelp,
   Clock,
   Eye,
   EyeOff,
@@ -22,12 +23,15 @@ import {
   LayoutDashboard,
   LayoutGrid,
   List,
+  Loader2,
   LogOut,
   Mail,
   MapPin,
+  MessageSquare,
   Palette,
   Phone,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Settings,
@@ -40,6 +44,7 @@ import {
   X
 } from "lucide-react";
 import { CSSProperties, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   apiRequest,
   apiUpload,
@@ -53,6 +58,7 @@ import {
   type DeactivateOrganizationTeamMemberPayload,
   type InsuranceCompany,
   type Notice,
+  type NoticeNote,
   type OrganizationSettings,
   type OrganizationTeamMember,
   type Policy,
@@ -65,6 +71,33 @@ import { Card, Table } from "@/components/ui-system";
 type Tab = "dashboard" | "notices" | "clients" | "policies" | "companies" | "team" | "settings" | "profile";
 type NoticeStatus = Notice["status"];
 type NoticeView = "kanban" | "list";
+
+type NoticeNoteApi = {
+  currentUserId: string;
+  busyNoticeId: string | null;
+  deletingNoteId: string | null;
+  onAdd: (noticeId: string, note: string) => Promise<void>;
+  onDelete: (noticeId: string, noteId: string) => Promise<void>;
+};
+
+type PolicyFormValues = {
+  clientId: string;
+  insuranceCompanyId: string;
+  branch: string;
+  policyNumber: string;
+  vehiclePlate: string;
+  paymentIntervalMonths: number;
+  firstPaymentDate: string;
+};
+
+type PolicyActions = {
+  clients: Client[];
+  companies: InsuranceCompany[];
+  isSaving: boolean;
+  isDeleting: boolean;
+  onUpdate: (policyId: string, values: PolicyFormValues) => Promise<unknown>;
+  onDelete: (policyId: string) => Promise<unknown>;
+};
 type EntityView = "grid" | "list";
 
 type NoticeFilters = {
@@ -88,6 +121,11 @@ type UpdateOrganizationPayload = {
 type UploadLogoPayload = {
   file: File;
   kind: "main" | "login";
+};
+
+type UploadLogoResponse = {
+  url: string;
+  organization?: OrganizationSettings;
 };
 
 type ToastMessage = {
@@ -115,6 +153,22 @@ const BRANCHES = [
   "Accidentes Personales",
   "Otro"
 ];
+
+// Mientras no usemos subdominios, la organización queda fijada a este slug.
+// Para activar la resolución por subdominio más adelante, poné FORCED_ORG_SLUG = null.
+const FORCED_ORG_SLUG: string | null = "lucassegura";
+
+const NOTICE_WINDOW_DAYS = 15;
+
+// El tablero muestra un aviso recién 15 días antes de su vencimiento (o si ya venció).
+// Un aviso pagado se "borra" del tablero una vez que pasaron 15 días de su vencimiento;
+// para entonces ya apareció el siguiente aviso generado al pagar.
+function isNoticeInWindow(notice: Notice) {
+  const days = getDaysUntilDue(notice.due_date);
+  if (days > NOTICE_WINDOW_DAYS) return false;
+  if (notice.status === "pagado" && days < -NOTICE_WINDOW_DAYS) return false;
+  return true;
+}
 
 const AVATAR_COLORS = [
   "#1d4ed8",
@@ -151,6 +205,7 @@ const SPANISH_MONTHS = [
 ];
 
 const SPANISH_WEEK_DAYS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
+const LOGO_MAX_SIZE_BYTES = 5_000_000;
 
 export function AppShell() {
   const queryClient = useQueryClient();
@@ -158,6 +213,8 @@ export function AppShell() {
   const [slug, setSlug] = useState("");
   const [hostSlug, setHostSlug] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [clientDetailId, setClientDetailId] = useState<string | null>(null);
+  const [openPolicyId, setOpenPolicyId] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -174,7 +231,7 @@ export function AppShell() {
 
   useEffect(() => {
     queueMicrotask(() => {
-      const nextHostSlug = resolveSubdomainSlug(window.location.hostname);
+      const nextHostSlug = resolveLoginSlug(window.location.hostname, window.location.search);
       setHostSlug(nextHostSlug);
       const stored = authStorage.read();
       if (stored) {
@@ -182,9 +239,9 @@ export function AppShell() {
         const organizationFromHost = stored.organizations.find(
           (organization) => organization.slug === nextHostSlug
         );
-        setSlug(organizationFromHost?.slug ?? stored.organizations[0]?.slug ?? nextHostSlug ?? "");
+        setSlug(FORCED_ORG_SLUG ?? organizationFromHost?.slug ?? stored.organizations[0]?.slug ?? nextHostSlug ?? "");
       } else {
-        setSlug(nextHostSlug ?? "");
+        setSlug(FORCED_ORG_SLUG ?? nextHostSlug ?? "");
       }
     });
 
@@ -258,12 +315,13 @@ export function AppShell() {
     mutationFn: (payload: { email: string; password: string }) =>
       apiRequest<AuthState>("/auth/login", { method: "POST", body: payload }),
     onSuccess: (data) => {
+      // authStorage.write despacha AUTH_CHANGED_EVENT, que es la única vía que
+      // actualiza `auth` (ver listener en el useEffect inicial). Evita doble setAuth.
       authStorage.write(data);
-      setAuth(data);
       const organizationFromHost = data.organizations.find(
         (organization) => organization.slug === hostSlug
       );
-      setSlug(organizationFromHost?.slug ?? data.organizations[0]?.slug ?? hostSlug ?? "");
+      setSlug(FORCED_ORG_SLUG ?? organizationFromHost?.slug ?? data.organizations[0]?.slug ?? hostSlug ?? "");
       setLoginError(null);
     },
     onError: (error) => setLoginError(error.message)
@@ -298,6 +356,28 @@ export function AppShell() {
     }
   });
 
+  const updatePolicy = useMutation({
+    mutationFn: ({ policyId, values }: { policyId: string; values: PolicyFormValues }) =>
+      apiRequest<Policy>(`/policies/${policyId}`, { ...common, method: "PATCH", body: values }),
+    onSuccess: async () => {
+      notify("Póliza actualizada.");
+      await queryClient.invalidateQueries({ queryKey: ["policies", slug] });
+      await queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
+    }
+  });
+
+  const deletePolicy = useMutation({
+    mutationFn: (policyId: string) =>
+      apiRequest<{ ok: boolean }>(`/policies/${policyId}`, { ...common, method: "DELETE" }),
+    onSuccess: async () => {
+      notify("Póliza eliminada.");
+      await queryClient.invalidateQueries({ queryKey: ["policies", slug] });
+      await queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
+    }
+  });
+
   const markNotified = useMutation({
     mutationFn: (noticeId: string) =>
       apiRequest<Notice>(`/notices/${noticeId}/notified`, {
@@ -305,9 +385,13 @@ export function AppShell() {
         method: "PATCH",
         body: {}
       }),
-    onSuccess: () => {
+    onSuccess: (_data, noticeId) => {
       notify("Aviso marcado como avisado.");
-      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+      // El RPC devuelve la fila sin los joins (cliente/compañía); parcheamos solo
+      // el estado en caché para no perder los datos anidados ni refetchear todo.
+      queryClient.setQueryData<Notice[]>(["notices", slug], (prev) =>
+        prev ? prev.map((notice) => (notice.id === noticeId ? { ...notice, status: "avisado" } : notice)) : prev
+      );
     }
   });
 
@@ -320,20 +404,76 @@ export function AppShell() {
       }),
     onSuccess: () => {
       notify("Pago registrado.");
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
       return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
     }
   });
+
+  const revertNotice = useMutation({
+    mutationFn: (noticeId: string) =>
+      apiRequest<Notice>(`/notices/${noticeId}/revert`, { ...common, method: "PATCH", body: {} }),
+    onSuccess: () => {
+      notify("Estado del aviso revertido.");
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
+      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+    }
+  });
+
+  const addNoticeNote = useMutation({
+    mutationFn: ({ noticeId, note }: { noticeId: string; note: string }) =>
+      apiRequest<NoticeNote>(`/notices/${noticeId}/notes`, { ...common, method: "POST", body: { note } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
+      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+    }
+  });
+
+  const deleteNoticeNote = useMutation({
+    mutationFn: ({ noticeId, noteId }: { noticeId: string; noteId: string }) =>
+      apiRequest<{ ok: boolean }>(`/notices/${noticeId}/notes/${noteId}`, { ...common, method: "DELETE" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
+      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+    }
+  });
+
+  const updateClient = useMutation({
+    mutationFn: ({ clientId, patch }: { clientId: string; patch: Record<string, unknown> }) =>
+      apiRequest<Client>(`/clients/${clientId}`, { ...common, method: "PATCH", body: patch }),
+    onSuccess: () => {
+      notify("Asegurado actualizado.");
+      return queryClient.invalidateQueries({ queryKey: ["clients", slug] });
+    }
+  });
+
+  const deleteClient = useMutation({
+    mutationFn: (clientId: string) =>
+      apiRequest<{ ok: boolean }>(`/clients/${clientId}`, { ...common, method: "DELETE" }),
+    onSuccess: async () => {
+      notify("Asegurado eliminado.");
+      await queryClient.invalidateQueries({ queryKey: ["clients", slug] });
+      await queryClient.invalidateQueries({ queryKey: ["policies", slug] });
+      await queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
+    }
+  });
+
+  const noticeNoteApi: NoticeNoteApi = {
+    currentUserId: auth?.user.id ?? "",
+    busyNoticeId: addNoticeNote.isPending ? addNoticeNote.variables?.noticeId ?? null : null,
+    deletingNoteId: deleteNoticeNote.isPending ? deleteNoticeNote.variables?.noteId ?? null : null,
+    onAdd: (noticeId, note) => addNoticeNote.mutateAsync({ noticeId, note }).then(() => undefined),
+    onDelete: (noticeId, noteId) => deleteNoticeNote.mutateAsync({ noticeId, noteId }).then(() => undefined)
+  };
 
   const updateProfile = useMutation({
     mutationFn: (body: { fullName: string; avatarUrl: string | null }) =>
       apiRequest<UserProfile>("/profile", { ...common, method: "PATCH", body }),
     onSuccess: (profile) => {
-      setAuth((current) => {
-        if (!current) return current;
-        const next = { ...current, user: { ...current.user, ...profile } };
-        authStorage.write(next);
-        return next;
-      });
+      const current = authStorage.read();
+      if (current) {
+        authStorage.write({ ...current, user: { ...current.user, ...profile } });
+      }
       notify("Perfil actualizado.");
     }
   });
@@ -348,9 +488,9 @@ export function AppShell() {
     mutationFn: (body: UpdateOrganizationPayload) =>
       apiRequest<OrganizationSettings>("/organizations/current", { ...common, method: "PATCH", body }),
     onSuccess: (organization) => {
-      setAuth((current) => {
-        if (!current) return current;
-        const next = {
+      const current = authStorage.read();
+      if (current) {
+        authStorage.write({
           ...current,
           organizations: current.organizations.map((item) =>
             item.id === organization.id
@@ -363,10 +503,8 @@ export function AppShell() {
                 }
               : item
           )
-        };
-        authStorage.write(next);
-        return next;
-      });
+        });
+      }
       queryClient.setQueryData(["organization-settings", slug], organization);
       notify("Configuración actualizada.");
     }
@@ -374,11 +512,33 @@ export function AppShell() {
 
   const uploadOrganizationLogo = useMutation({
     mutationFn: ({ file, kind }: UploadLogoPayload) =>
-      apiUpload<{ url: string }>("/organizations/current/logo", file, {
+      apiUpload<UploadLogoResponse>("/organizations/current/logo", file, {
         token: auth?.accessToken,
         organizationSlug: slug,
         fields: { kind }
-      })
+      }),
+    onSuccess: (result, variables) => {
+      if (result.organization) {
+        queryClient.setQueryData(["organization-settings", slug], result.organization);
+      }
+      const current = authStorage.read();
+      if (current) {
+        authStorage.write({
+          ...current,
+          organizations: current.organizations.map((item) =>
+            item.slug === slug
+              ? {
+                  ...item,
+                  logoUrl: variables.kind === "main" ? result.url : item.logoUrl,
+                  loginLogoUrl: variables.kind === "login" ? result.url : item.loginLogoUrl
+                }
+              : item
+          )
+        });
+      }
+      void queryClient.invalidateQueries({ queryKey: ["organization-settings", slug] });
+      notify("Logo actualizado.");
+    }
   });
 
   const createOrganizationTeamMember = useMutation({
@@ -422,7 +582,7 @@ export function AppShell() {
 
   if (!auth) {
     const publicBrand = publicOrganization.data;
-    const publicLogoUrl = publicBrand?.logo_url ?? null;
+    const publicLogoUrl = publicBrand?.login_logo_url ?? publicBrand?.logo_url ?? null;
     return (
       <main
         className="login-shell"
@@ -432,19 +592,59 @@ export function AppShell() {
         })}
       >
         <section className="login-visual-panel">
+          <div className="login-diagonal-base" aria-hidden="true" />
+          <div className="login-diagonal-front" aria-hidden="true" />
           <div className="login-visual-content">
-            <p>{hostSlug ? "Portal de organización" : "Portal operativo"}</p>
-            <h1>{publicBrand?.display_name ?? "SiniPro"}</h1>
-            <div className="login-intro">
-              <h2>Gestión comercial de seguros</h2>
-              <span>
-                Avisos de vencimiento, pólizas, asegurados y compañías en un solo espacio de trabajo.
-              </span>
+            <div className="login-visual-brand">
+              {publicLogoUrl ? (
+                <Image src={publicLogoUrl} alt={`Logo de ${publicBrand?.display_name ?? "la organización"}`} width={440} height={180} unoptimized priority />
+              ) : (
+                <ShieldCheck size={48} aria-hidden="true" />
+              )}
+              <h1>Avisos al día</h1>
+            </div>
+
+            <div className="login-notices-illustration" aria-hidden="true">
+              <svg viewBox="0 0 470 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M314 18H460V282H219L314 18Z" fill="#F7FAFE" fillOpacity="0.72" />
+                <path d="M324 44H428V236H256L324 44Z" fill="#FFFFFF" fillOpacity="0.82" stroke="#CBD9EA" />
+                <path d="M315 77H415" stroke="#D7E1EE" strokeWidth="1.5" />
+                <path d="M300 112H398" stroke="#D7E1EE" strokeWidth="1.5" />
+                <path d="M288 151H382" stroke="#D7E1EE" strokeWidth="1.5" />
+                <rect x="36" y="58" width="220" height="186" rx="10" fill="#FFFFFF" stroke="#C8D6E8" />
+                <path d="M36 99H256" stroke="#D7E1EE" strokeWidth="1.5" />
+                <circle cx="62" cy="79" r="5" fill="#AABDD5" />
+                <circle cx="81" cy="79" r="5" fill="#C1CEDF" />
+                <circle cx="100" cy="79" r="5" fill="#D8E1ED" />
+                <rect x="66" y="128" width="92" height="10" rx="5" fill="#C5D5E8" />
+                <rect x="66" y="160" width="132" height="10" rx="5" fill="#E2E8F1" />
+                <rect x="66" y="192" width="108" height="10" rx="5" fill="#E2E8F1" />
+                <circle cx="207" cy="133" r="16" fill="#EFF6FF" stroke="#BFD1E8" />
+                <circle cx="207" cy="165" r="16" fill="#F8FBFF" stroke="#D0DCEB" />
+                <circle cx="207" cy="197" r="16" fill="#F8FBFF" stroke="#D0DCEB" />
+                <path d="M88 256C126 276 172 282 225 270C278 258 317 227 348 177" stroke="#B9CBE0" strokeWidth="1.7" strokeLinecap="round" />
+                <circle cx="88" cy="256" r="24" fill="#FFFFFF" stroke="#BED0E5" />
+                <path d="M79 258L86 265L99 249" stroke="#1456A0" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="348" cy="177" r="24" fill="#FFFFFF" stroke="#BED0E5" />
+                <path d="M340 184V169C340 164 344 160 349 160C354 160 358 164 358 169V184" stroke="#1456A0" strokeWidth="2.3" strokeLinecap="round" />
+                <path d="M335 184H363" stroke="#1456A0" strokeWidth="2.3" strokeLinecap="round" />
+                <circle cx="258" cy="42" r="28" fill="#FFFFFF" stroke="#BED0E5" />
+                <path d="M258 27L272 33V45C272 55 266 62 258 65C250 62 244 55 244 45V33L258 27Z" fill="#F0F6FF" stroke="#1456A0" strokeWidth="2" strokeLinejoin="round" />
+                <path d="M252 45L256 49L265 39" stroke="#1456A0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
           </div>
+          <p className="login-restricted-label">Acceso restringido</p>
         </section>
 
         <section className="login-form-side">
+          <div className="login-mobile-brand">
+            {publicLogoUrl ? (
+              <Image src={publicLogoUrl} alt={`Logo de ${publicBrand?.display_name ?? "la organización"}`} width={320} height={120} unoptimized priority />
+            ) : (
+              <ShieldCheck size={42} aria-hidden="true" />
+            )}
+          </div>
           <form
             className="login-card"
             onSubmit={(event) => {
@@ -466,10 +666,7 @@ export function AppShell() {
               </div>
               <div>
                 <h2>Iniciar sesión</h2>
-                <p>
-                  Accedé con tus credenciales
-                  {publicBrand?.display_name ? ` de ${publicBrand.display_name}` : " de SiniPro"}.
-                </p>
+                <p>Accedé con tus credenciales.</p>
               </div>
             </div>
             <label className="sp-field">
@@ -510,6 +707,14 @@ export function AppShell() {
   const allClients = clients.data ?? [];
   const allCompanies = companies.data ?? [];
   const allPolicies = policies.data ?? [];
+  const policyActions: PolicyActions = {
+    clients: allClients,
+    companies: allCompanies,
+    isSaving: updatePolicy.isPending,
+    isDeleting: deletePolicy.isPending,
+    onUpdate: (policyId, values) => updatePolicy.mutateAsync({ policyId, values }),
+    onDelete: (policyId) => deletePolicy.mutateAsync(policyId)
+  };
   const shellTheme = organizationThemeStyle({
     primaryColor:
       organizationSettings.data?.primary_color ??
@@ -525,7 +730,11 @@ export function AppShell() {
     <main className={`sp-shell app-redesign ${tab === "settings" ? "settings-page-mode" : ""}`} style={shellTheme}>
       <Sidebar
         tab={tab}
-        setTab={setTab}
+        setTab={(next) => {
+          setClientDetailId(null);
+          setOpenPolicyId(null);
+          setTab(next);
+        }}
         urgentCount={countUrgentNotices(allNotices)}
         canManageOrganization={canManageOrganization}
         organizationName={
@@ -547,13 +756,7 @@ export function AppShell() {
             <p>Panel operativo</p>
           </div>
           <div className="sp-header-actions">
-            <button className="sp-header-icon-action has-alert" type="button" aria-label="Notificaciones">
-              <Bell size={21} />
-              <span />
-            </button>
-            <button className="sp-header-icon-action help" type="button" aria-label="Ayuda">
-              <CircleHelp size={21} />
-            </button>
+            {/* Notificaciones y ayuda ocultas por ahora */}
             <UserMenu
               userName={auth.user.fullName}
               userEmail={auth.user.email}
@@ -562,7 +765,6 @@ export function AppShell() {
               onOpenProfile={() => setTab("profile")}
               onLogout={() => {
                 authStorage.clear();
-                setAuth(null);
                 queryClient.clear();
               }}
             />
@@ -572,6 +774,7 @@ export function AppShell() {
         <div className="sp-workspace">
           {tab === "dashboard" ? (
             <DashboardView
+              userName={auth.user.fullName}
               notices={allNotices}
               clients={allClients}
               policies={allPolicies}
@@ -587,24 +790,55 @@ export function AppShell() {
               isLoading={notices.isLoading}
               markingNoticeId={markNotified.isPending ? markNotified.variables ?? null : null}
               payingNoticeId={payNotice.isPending ? payNotice.variables?.noticeId ?? null : null}
+              revertingNoticeId={revertNotice.isPending ? revertNotice.variables ?? null : null}
               error={notices.error?.message ?? null}
+              noteApi={noticeNoteApi}
               onNotified={(id) => markNotified.mutate(id)}
-              onPay={(noticeId, months) => payNotice.mutate({ noticeId, months })}
+              onRevert={(id) => revertNotice.mutate(id)}
+              onPay={(noticeId, months) => payNotice.mutateAsync({ noticeId, months })}
+              onViewPolicy={(notice) => {
+                const policyId = notice.policies?.id;
+                const clientId = notice.policies?.clients?.id;
+                if (!policyId || !clientId) return;
+                setOpenPolicyId(policyId);
+                setClientDetailId(clientId);
+                setTab("clients");
+              }}
             />
           ) : null}
-          {tab === "clients" ? (
+          {tab === "clients" && !clientDetailId ? (
             <ClientsView
               clients={allClients}
               policies={allPolicies}
               isLoading={clients.isLoading}
               isCreating={createClient.isPending}
               error={clients.error?.message ?? null}
+              onOpenClient={(client) => {
+                setOpenPolicyId(null);
+                setClientDetailId(client.id);
+              }}
               onSubmit={async (event) => {
                 event.preventDefault();
                 const formElement = event.currentTarget;
                 await createClient.mutateAsync(Object.fromEntries(new FormData(formElement)));
                 formElement.reset();
               }}
+            />
+          ) : null}
+          {tab === "clients" && clientDetailId ? (
+            <ClientDetailScreen
+              client={allClients.find((item) => item.id === clientDetailId) ?? null}
+              policies={allPolicies}
+              common={common}
+              currentUserId={auth.user.id}
+              isSavingClient={updateClient.isPending}
+              isDeletingClient={deleteClient.isPending}
+              noteApi={noticeNoteApi}
+              policyActions={policyActions}
+              initialOpenPolicyId={openPolicyId}
+              onBack={() => setClientDetailId(null)}
+              onSaveClient={(patch) => updateClient.mutateAsync({ clientId: clientDetailId, patch })}
+              onDeleteClient={() => deleteClient.mutateAsync(clientDetailId)}
             />
           ) : null}
           {tab === "policies" ? (
@@ -615,20 +849,12 @@ export function AppShell() {
               isLoading={policies.isLoading}
               isCreating={createPolicy.isPending}
               error={policies.error?.message ?? null}
-              onSubmit={async (event) => {
-                event.preventDefault();
-                const formElement = event.currentTarget;
-                const form = new FormData(formElement);
-                await createPolicy.mutateAsync({
-                  clientId: String(form.get("clientId")),
-                  insuranceCompanyId: String(form.get("insuranceCompanyId")),
-                  branch: String(form.get("branch")),
-                  policyNumber: String(form.get("policyNumber")),
-                  vehiclePlate: String(form.get("vehiclePlate") ?? ""),
-                  paymentIntervalMonths: Number(form.get("paymentIntervalMonths")),
-                  firstPaymentDate: String(form.get("firstPaymentDate"))
-                });
-                formElement.reset();
+              onCreate={(values) => createPolicy.mutateAsync(values)}
+              onOpenPolicy={(policy) => {
+                if (!policy.clients?.id) return;
+                setOpenPolicyId(policy.id);
+                setClientDetailId(policy.clients.id);
+                setTab("clients");
               }}
             />
           ) : null}
@@ -762,14 +988,54 @@ function DatePicker({
   ariaLabel?: string;
   required?: boolean;
 }) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const selectedDate = parseIsoDate(value);
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState<Date>(() => selectedDate ?? new Date());
+  const [coords, setCoords] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    primary: string;
+    onPrimary: string;
+  } | null>(null);
+
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = Math.min(360, window.innerWidth - 24);
+    const margin = 12;
+    const popoverHeight = popoverRef.current?.offsetHeight ?? 360;
+    const left = Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < popoverHeight + 12 && rect.top > spaceBelow;
+    const top = openUp ? Math.max(margin, rect.top - popoverHeight - 8) : rect.bottom + 8;
+    const styles = window.getComputedStyle(trigger);
+    const primary = styles.getPropertyValue("--org-primary").trim() || "#176e64";
+    const onPrimary = styles.getPropertyValue("--org-on-primary").trim() || "#ffffff";
+    setCoords({ top, left, width, primary, onPrimary });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const handle = () => updatePosition();
+    window.addEventListener("scroll", handle, true);
+    window.addEventListener("resize", handle);
+    return () => {
+      window.removeEventListener("scroll", handle, true);
+      window.removeEventListener("resize", handle);
+    };
+  }, [open, updatePosition]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -787,9 +1053,10 @@ function DatePicker({
   };
 
   return (
-    <div className="sp-date-picker" ref={rootRef}>
+    <div className="sp-date-picker">
       {name ? <input type="hidden" name={name} value={value} aria-hidden="true" /> : null}
       <button
+        ref={triggerRef}
         type="button"
         className={`sp-date-picker-trigger ${value ? "has-value" : ""}`}
         aria-label={ariaLabel}
@@ -804,66 +1071,83 @@ function DatePicker({
         <span>{value ? formatDateInput(value) : placeholder}</span>
         <ChevronDown size={15} />
       </button>
-      {open ? (
-        <div className="sp-date-picker-popover">
-          <div className="sp-date-picker-header">
-            <button type="button" aria-label="Mes anterior" onClick={() => setViewDate(new Date(year, month - 1, 1))}>
-              <ChevronLeft size={16} />
-            </button>
-            <div className="sp-date-picker-selects">
-              <select
-                aria-label="Mes"
-                value={month}
-                onChange={(event) => setViewDate(new Date(year, Number(event.target.value), 1))}
-              >
-                {SPANISH_MONTHS.map((monthName, index) => (
-                  <option key={monthName} value={index}>
-                    {monthName}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Año"
-                value={year}
-                onChange={(event) => setViewDate(new Date(Number(event.target.value), month, 1))}
-              >
-                {years.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button type="button" aria-label="Mes siguiente" onClick={() => setViewDate(new Date(year, month + 1, 1))}>
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <div className="sp-date-picker-weekdays">
-            {SPANISH_WEEK_DAYS.map((day) => (
-              <span key={day}>{day}</span>
-            ))}
-          </div>
-          <div className="sp-date-picker-grid">
-            {calendarDays.map((date) => {
-              const isoDate = toIsoDate(date);
-              const isSelected = isoDate === value;
-              const isToday = isoDate === toIsoDate(new Date());
-              const isOutsideMonth = date.getMonth() !== month;
-
-              return (
-                <button
-                  key={isoDate}
-                  type="button"
-                  className={`${isSelected ? "is-selected" : ""} ${isToday ? "is-today" : ""} ${isOutsideMonth ? "is-muted" : ""}`}
-                  onClick={() => selectDate(date)}
-                >
-                  {date.getDate()}
+      {open && coords
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="sp-date-picker-popover is-floating"
+              style={
+                {
+                  position: "fixed",
+                  top: coords.top,
+                  left: coords.left,
+                  bottom: "auto",
+                  width: coords.width,
+                  "--org-primary": coords.primary,
+                  "--org-on-primary": coords.onPrimary
+                } as CSSProperties
+              }
+            >
+              <div className="sp-date-picker-header">
+                <button type="button" aria-label="Mes anterior" onClick={() => setViewDate(new Date(year, month - 1, 1))}>
+                  <ChevronLeft size={16} />
                 </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
+                <div className="sp-date-picker-selects">
+                  <select
+                    aria-label="Mes"
+                    value={month}
+                    onChange={(event) => setViewDate(new Date(year, Number(event.target.value), 1))}
+                  >
+                    {SPANISH_MONTHS.map((monthName, index) => (
+                      <option key={monthName} value={index}>
+                        {monthName}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Año"
+                    value={year}
+                    onChange={(event) => setViewDate(new Date(Number(event.target.value), month, 1))}
+                  >
+                    {years.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="button" aria-label="Mes siguiente" onClick={() => setViewDate(new Date(year, month + 1, 1))}>
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+              <div className="sp-date-picker-weekdays">
+                {SPANISH_WEEK_DAYS.map((day) => (
+                  <span key={day}>{day}</span>
+                ))}
+              </div>
+              <div className="sp-date-picker-grid">
+                {calendarDays.map((date) => {
+                  const isoDate = toIsoDate(date);
+                  const isSelected = isoDate === value;
+                  const isToday = isoDate === toIsoDate(new Date());
+                  const isOutsideMonth = date.getMonth() !== month;
+
+                  return (
+                    <button
+                      key={isoDate}
+                      type="button"
+                      className={`${isSelected ? "is-selected" : ""} ${isToday ? "is-today" : ""} ${isOutsideMonth ? "is-muted" : ""}`}
+                      onClick={() => selectDate(date)}
+                    >
+                      {date.getDate()}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
@@ -897,14 +1181,21 @@ function Sidebar({
 
   return (
     <aside className="sp-sidebar">
-      <div className="sp-logo">
-        <div className="sp-logo-mark">
-          {logoUrl ? <Image src={logoUrl} alt="" width={36} height={36} unoptimized /> : <Shield size={17} />}
-        </div>
-        <div className="sp-logo-copy">
-          <strong>{organizationName}</strong>
-          <span>Management Suite</span>
-        </div>
+      <div className={logoUrl ? "sp-logo only-logo" : "sp-logo"}>
+        {logoUrl ? (
+          <div className="sp-logo-mark has-image">
+            <Image src={logoUrl} alt={organizationName} width={240} height={108} unoptimized />
+          </div>
+        ) : (
+          <>
+            <div className="sp-logo-mark">
+              <Shield size={17} />
+            </div>
+            <div className="sp-logo-copy">
+              <strong>{organizationName}</strong>
+            </div>
+          </>
+        )}
       </div>
       <nav className="sp-nav" aria-label="Navegación principal">
         <p>Principal</p>
@@ -917,7 +1208,7 @@ function Sidebar({
               type="button"
               onClick={() => setTab(item.key)}
             >
-              <Icon size={18} />
+              <Icon size={22} />
               <span>{item.name}</span>
               {item.count ? <b>{item.count}</b> : null}
             </button>
@@ -1140,14 +1431,15 @@ function ProfileView({
           className="sp-form sp-password-form"
           onSubmit={async (event) => {
             event.preventDefault();
-            const form = new FormData(event.currentTarget);
+            const formElement = event.currentTarget;
+            const form = new FormData(formElement);
             try {
               await onChangePassword({
                 currentPassword: String(form.get("currentPassword") ?? ""),
                 newPassword: String(form.get("newPassword") ?? ""),
                 confirmPassword: String(form.get("confirmPassword") ?? "")
               });
-              event.currentTarget.reset();
+              formElement.reset();
             } catch {
               // parent mutation state renders the error
             }
@@ -1182,6 +1474,7 @@ function ProfileView({
 }
 
 function DashboardView({
+  userName,
   notices,
   clients,
   policies,
@@ -1189,6 +1482,7 @@ function DashboardView({
   error,
   setTab
 }: {
+  userName: string;
   notices: Notice[];
   clients: Client[];
   policies: Policy[];
@@ -1196,6 +1490,10 @@ function DashboardView({
   error: string | null;
   setTab: (tab: Tab) => void;
 }) {
+  const firstName = (userName || "").trim().split(/\s+/)[0] || "equipo";
+  const todayLabel = capitalizeFirst(
+    new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date())
+  );
   const urgentNotices = notices.filter((notice) => notice.status !== "pagado" && getDaysUntilDue(notice.due_date) <= 7);
   const openNotices = notices.filter((notice) => notice.status !== "pagado");
   const notified = notices.filter((notice) => notice.status === "avisado");
@@ -1207,6 +1505,10 @@ function DashboardView({
   const contactRatio = openNotices.length ? Math.round((notified.length / openNotices.length) * 100) : 0;
   const recentNotices = [...notices]
     .sort((a, b) => getDaysUntilDue(a.due_date) - getDaysUntilDue(b.due_date))
+    .slice(0, 5);
+  const recentPayments = paid
+    .slice()
+    .sort((a, b) => b.due_date.localeCompare(a.due_date))
     .slice(0, 5);
 
   const stats = [
@@ -1290,10 +1592,10 @@ function DashboardView({
 
       <section className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-5 max-[900px]:flex-col">
         <div>
-          <span className="text-xs font-semibold uppercase text-slate-500">Panel ejecutivo</span>
-          <h2 className="m-0 mt-1 text-2xl font-semibold text-slate-950">Operación de cartera</h2>
+          <span className="text-xs font-semibold uppercase text-slate-500">{todayLabel}</span>
+          <h2 className="m-0 mt-1 text-2xl font-semibold text-slate-950">Hola, {firstName} 👋</h2>
           <p className="m-0 mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Resumen de vencimientos, seguimiento comercial y estado general de pólizas.
+            Este es el estado de tu cartera y los últimos movimientos registrados.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2 max-[900px]:w-full max-[900px]:flex-wrap max-[520px]:flex-col">
@@ -1329,6 +1631,53 @@ function DashboardView({
             </button>
           );
         })}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="sp-section-title">
+          <div>
+            <h2>Últimos pagos</h2>
+            <span>{paid.length} pagos registrados en total</span>
+          </div>
+          <button type="button" onClick={() => setTab("notices")}>
+            Ver avisos
+            <ArrowUpRight size={14} />
+          </button>
+        </div>
+        {recentPayments.length === 0 ? (
+          <EmptyState title="Sin pagos registrados" text="Cuando marques un aviso como pagado, vas a verlo acá." compact />
+        ) : (
+          <div className="grid gap-1">
+            {recentPayments.map((notice) => {
+              const client = notice.policies?.clients;
+              return (
+                <button
+                  key={notice.id}
+                  className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left transition-colors hover:bg-slate-50"
+                  type="button"
+                  onClick={() => setTab("notices")}
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--org-primary-soft)] text-[var(--org-primary)]">
+                    <CheckCircle size={17} />
+                  </span>
+                  <span className="grid min-w-0 gap-0.5">
+                    <strong className="truncate text-sm font-semibold text-slate-950">{client?.full_name ?? "Sin cliente"}</strong>
+                    <em className="truncate text-xs not-italic text-slate-500">
+                      {notice.policies?.insurance_companies?.name ?? "Sin compañía"}
+                      {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
+                    </em>
+                  </span>
+                  <span className="grid justify-items-end gap-0.5 text-right">
+                    <b className="text-xs font-semibold text-slate-700">{formatDate(notice.due_date)}</b>
+                    {notice.paid_interval_months ? (
+                      <em className="text-[11px] not-italic text-slate-400">{intervalLabel(notice.paid_interval_months)}</em>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -1481,21 +1830,31 @@ function NoticesView({
   isLoading,
   markingNoticeId,
   payingNoticeId,
+  revertingNoticeId,
   error,
+  noteApi,
   onNotified,
-  onPay
+  onRevert,
+  onPay,
+  onViewPolicy
 }: {
   notices: Notice[];
   companies: InsuranceCompany[];
   isLoading: boolean;
   markingNoticeId: string | null;
   payingNoticeId: string | null;
+  revertingNoticeId: string | null;
   error: string | null;
+  noteApi: NoticeNoteApi;
   onNotified: (id: string) => void;
-  onPay: (id: string, months: number) => void;
+  onRevert: (id: string) => void;
+  onPay: (id: string, months: number) => Promise<unknown>;
+  onViewPolicy: (notice: Notice) => void;
 }) {
   const [filters, setFilters] = useState<NoticeFilters>(EMPTY_NOTICE_FILTERS);
   const [view, setView] = useState<NoticeView>(() => readView("sp-notices-view", "kanban"));
+  const [payNoticeTarget, setPayNoticeTarget] = useState<Notice | null>(null);
+  const [detailNotice, setDetailNotice] = useState<Notice | null>(null);
 
   const branches = useMemo(() => {
     const fromData = notices.map((notice) => notice.policies?.branch).filter(Boolean) as string[];
@@ -1503,7 +1862,7 @@ function NoticesView({
   }, [notices]);
 
   const filtered = useMemo(
-    () => notices.filter((notice) => matchesNoticeFilters(notice, filters)),
+    () => notices.filter((notice) => isNoticeInWindow(notice) && matchesNoticeFilters(notice, filters)),
     [notices, filters]
   );
 
@@ -1564,8 +1923,12 @@ function NoticesView({
                         notice={notice}
                         isMarkingNotified={markingNoticeId === notice.id}
                         isPaying={payingNoticeId === notice.id}
+                        isReverting={revertingNoticeId === notice.id}
+                        noteApi={noteApi}
                         onNotified={onNotified}
-                        onPay={onPay}
+                        onRevert={onRevert}
+                        onRequestPay={setPayNoticeTarget}
+                        onOpenDetail={setDetailNotice}
                       />
                     ))
                   )}
@@ -1592,8 +1955,11 @@ function NoticesView({
                     notice={notice}
                     isMarkingNotified={markingNoticeId === notice.id}
                     isPaying={payingNoticeId === notice.id}
+                    isReverting={revertingNoticeId === notice.id}
                     onNotified={onNotified}
-                    onPay={onPay}
+                    onRevert={onRevert}
+                    onRequestPay={setPayNoticeTarget}
+                    onOpenDetail={setDetailNotice}
                   />
                 ))}
               </>
@@ -1601,7 +1967,139 @@ function NoticesView({
           </div>
         ) : null}
       </div>
+
+      <PaymentDialog
+        key={payNoticeTarget?.id ?? "pay-dialog"}
+        notice={payNoticeTarget}
+        isPaying={Boolean(payNoticeTarget && payingNoticeId === payNoticeTarget.id)}
+        onClose={() => setPayNoticeTarget(null)}
+        onConfirm={async (months) => {
+          if (!payNoticeTarget) return;
+          await onPay(payNoticeTarget.id, months);
+          setPayNoticeTarget(null);
+        }}
+      />
+
+      <NoticeDetailModal
+        notice={detailNotice}
+        onClose={() => setDetailNotice(null)}
+        onViewPolicy={(notice) => {
+          setDetailNotice(null);
+          onViewPolicy(notice);
+        }}
+      />
     </div>
+  );
+}
+
+function NoticeDetailModal({
+  notice,
+  onClose,
+  onViewPolicy
+}: {
+  notice: Notice | null;
+  onClose: () => void;
+  onViewPolicy: (notice: Notice) => void;
+}) {
+  if (!notice) {
+    return <Modal title="Detalle del aviso" isOpen={false} onClose={onClose}><div /></Modal>;
+  }
+
+  const client = notice.policies?.clients;
+  const company = notice.policies?.insurance_companies;
+  const days = getDaysUntilDue(notice.due_date);
+  const dueColor =
+    notice.status === "pagado" ? "text-emerald-600" : days < 0 ? "text-red-600" : days <= 7 ? "text-amber-600" : "text-slate-600";
+
+  const rows: Array<{ label: string; value: string | null; href?: string | undefined }> = [
+    { label: "Compañía", value: company?.name ?? null },
+    { label: "N° de póliza", value: notice.policies?.policy_number || null },
+    { label: "Rama", value: notice.policies?.branch || null },
+    { label: "Patente", value: notice.policies?.vehicle_plate || null },
+    { label: "Teléfono", value: client?.phone ?? null, href: client?.phone ? `tel:${client.phone}` : undefined },
+    { label: "Email", value: client?.email ?? null, href: client?.email ? `mailto:${client.email}` : undefined }
+  ];
+  const visibleRows = rows.filter((row) => row.value);
+
+  return (
+    <Modal title="Detalle del aviso" isOpen={Boolean(notice)} onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="m-0 truncate text-lg font-bold text-slate-900">{client?.full_name ?? "Sin cliente"}</h3>
+            <p className="mt-0.5 text-sm font-semibold">
+              <span className={dueColor}>{dueLabel(days)}</span>
+              <span className="text-slate-400"> · {formatDate(notice.due_date)}</span>
+            </p>
+          </div>
+          <span className={noticeStatusPill(notice.status)}>{noticeStatusLabel(notice.status)}</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+          {visibleRows.map((row) => (
+            <div key={row.label} className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{row.label}</span>
+              {row.href ? (
+                <a className="truncate text-sm font-medium text-slate-800 hover:text-[color:var(--org-primary)]" href={row.href}>{row.value}</a>
+              ) : (
+                <span className="truncate text-sm font-medium text-slate-800">{row.value}</span>
+              )}
+            </div>
+          ))}
+          {notice.status === "pagado" && notice.paid_interval_months ? (
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Periodicidad pagada</span>
+              <span className="truncate text-sm font-medium text-slate-800">{intervalLabel(notice.paid_interval_months)}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {notice.notified_by || notice.payment_processed_by ? (
+          <div className="flex flex-col gap-1.5">
+            {notice.notified_by ? (
+              <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
+                <Bell size={13} className="text-blue-500" />
+                Avisado por <strong className="font-semibold text-slate-700">{notice.notified_by.full_name}</strong>
+                {notice.notified_at ? <span className="text-slate-400">· {formatDate(notice.notified_at.slice(0, 10))}</span> : null}
+              </p>
+            ) : null}
+            {notice.payment_processed_by ? (
+              <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
+                <CheckCircle size={13} className="text-emerald-500" />
+                Cobrado por <strong className="font-semibold text-slate-700">{notice.payment_processed_by.full_name}</strong>
+                {notice.payment_processed_at ? <span className="text-slate-400">· {formatDate(notice.payment_processed_at.slice(0, 10))}</span> : null}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {client?.notes ? (
+          <div className="rounded-lg border-l-2 border-amber-300 bg-amber-50 px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Nota del asegurado</span>
+            <p className="m-0 mt-1 whitespace-pre-line text-[13px] leading-snug text-amber-900">{client.notes}</p>
+          </div>
+        ) : null}
+
+        {notice.notes && notice.notes.length > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notas internas</span>
+            {notice.notes.map((note) => (
+              <p key={note.id} className="m-0 rounded-md bg-slate-50 px-2.5 py-1.5 text-[13px] leading-snug text-slate-600">
+                <strong className="font-semibold text-slate-700">{note.user?.full_name ?? "Usuario"}:</strong> {note.note}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+          <button type="button" className="sp-secondary-action" onClick={onClose}>Cerrar</button>
+          <button type="button" className="sp-primary-action" onClick={() => onViewPolicy(notice)}>
+            <FileText size={14} />
+            Ver póliza
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1683,47 +2181,117 @@ function NoticeCard({
   notice,
   isMarkingNotified,
   isPaying,
+  isReverting,
+  noteApi,
   onNotified,
-  onPay
+  onRevert,
+  onRequestPay,
+  onOpenDetail
 }: {
   notice: Notice;
   isMarkingNotified: boolean;
   isPaying: boolean;
+  isReverting: boolean;
+  noteApi: NoticeNoteApi;
   onNotified: (id: string) => void;
-  onPay: (id: string, months: number) => void;
+  onRevert: (id: string) => void;
+  onRequestPay: (notice: Notice) => void;
+  onOpenDetail: (notice: Notice) => void;
 }) {
   const client = notice.policies?.clients;
   const company = notice.policies?.insurance_companies;
   const days = getDaysUntilDue(notice.due_date);
+  // Si está pagado, el vencimiento se muestra en verde (ya cobrado), aunque haya vencido.
+  const dueColor =
+    notice.status === "pagado"
+      ? "text-emerald-600"
+      : days < 0
+        ? "text-red-600"
+        : days <= 7
+          ? "text-amber-600"
+          : "text-slate-500";
 
   return (
-    <article className="sp-notice-card">
-      <div className="sp-card-topline">
-        <h4>{client?.full_name ?? "Sin cliente"}</h4>
-        <div className="sp-mini-avatar">{initials(client?.full_name ?? "SC")}</div>
+    <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
+      {/* Cuerpo clickeable: abre el detalle del aviso */}
+      <div
+        role="button"
+        tabIndex={0}
+        className="cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary-soft)]"
+        onClick={() => onOpenDetail(notice)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpenDetail(notice);
+          }
+        }}
+      >
+        {/* Nivel 1: nombre del asegurado + vencimiento */}
+        <div className="flex items-baseline justify-between gap-2">
+          <h4 className="truncate text-sm font-semibold leading-tight text-slate-900">{client?.full_name ?? "Sin cliente"}</h4>
+          <b className={`shrink-0 text-xs font-semibold ${dueColor}`}>{dueLabel(days)}</b>
+        </div>
+
+        {/* Nivel 2: compañía / póliza / patente */}
+        <p className="mt-0.5 truncate text-xs text-slate-500">
+          {company?.name ?? "Sin compañía"}
+          {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
+          {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
+        </p>
+
+        {/* Nivel 3: rama + teléfono */}
+        <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            {notice.policies?.branch ?? "Rama"}
+          </span>
+          {client?.phone ? (
+            <span className="flex min-w-0 items-center gap-1 truncate text-[11px] text-slate-400">
+              <Phone size={11} />
+              {client.phone}
+            </span>
+          ) : null}
+        </div>
+
+        {/* Estado (avisó / cobró) de forma sutil */}
+        <NoticeAudit notice={notice} />
+
+        {/* Nota del asegurado (solo lectura desde el aviso) */}
+        {client?.notes ? (
+          <p className="mt-2 line-clamp-2 border-l-2 border-slate-200 pl-2 text-[11px] leading-snug text-slate-400">
+            {client.notes}
+          </p>
+        ) : null}
       </div>
-      <p className="sp-card-summary">
-        {company?.name ?? "Sin compañía"}
-        {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
-        {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
-      </p>
-      <div className="sp-card-meta">
-        <span>{notice.policies?.branch ?? "Rama"}</span>
-        {client?.phone ? <em><Phone size={11} />{client.phone}</em> : null}
-        <b className={dueClass(days)}>{dueLabel(days)}</b>
-      </div>
-      <div className="sp-note-preview">
-        <span>Notas</span>
-        <p>+ Agregar nota</p>
-      </div>
+
+      {/* Notas del aviso (editables, colapsadas y sutiles) */}
+      <NoticeNotes notice={notice} noteApi={noteApi} />
+
       <NoticeActions
         notice={notice}
         isMarkingNotified={isMarkingNotified}
         isPaying={isPaying}
+        isReverting={isReverting}
         onNotified={onNotified}
-        onPay={onPay}
+        onRevert={onRevert}
+        onRequestPay={onRequestPay}
       />
     </article>
+  );
+}
+
+function NoticeAudit({ notice }: { notice: Notice }) {
+  if (notice.status === "avisar") return null;
+  const showNotified = notice.notified_by && (notice.status === "avisado" || notice.status === "pagado");
+  const showPaid = notice.payment_processed_by && notice.status === "pagado";
+  if (!showNotified && !showPaid) return null;
+  const parts: string[] = [];
+  if (showNotified) parts.push(`avisó ${notice.notified_by?.full_name}`);
+  if (showPaid) parts.push(`cobró ${notice.payment_processed_by?.full_name}`);
+  return (
+    <p className="mt-1.5 flex items-center gap-1 truncate text-[11px] text-slate-400">
+      {showPaid ? <CheckCircle size={11} className="shrink-0 text-emerald-500" /> : <Bell size={11} className="shrink-0 text-blue-500" />}
+      <span className="truncate">{parts.join(" · ")}</span>
+    </p>
   );
 }
 
@@ -1731,15 +2299,21 @@ function NoticeListRow({
   notice,
   isMarkingNotified,
   isPaying,
+  isReverting,
   onNotified,
-  onPay,
+  onRevert,
+  onRequestPay,
+  onOpenDetail,
   compact
 }: {
   notice: Notice;
   isMarkingNotified: boolean;
   isPaying: boolean;
+  isReverting: boolean;
   onNotified: (id: string) => void;
-  onPay: (id: string, months: number) => void;
+  onRevert: (id: string) => void;
+  onRequestPay: (notice: Notice) => void;
+  onOpenDetail: (notice: Notice) => void;
   compact?: boolean;
 }) {
   const client = notice.policies?.clients;
@@ -1749,7 +2323,18 @@ function NoticeListRow({
   return (
     <div className={`sp-list-row notice ${compact ? "compact" : ""}`}>
       <i style={{ backgroundColor: NOTICE_COLUMNS.find((column) => column.key === notice.status)?.dot }} />
-      <div className="sp-list-main">
+      <div
+        className="sp-list-main cursor-pointer"
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpenDetail(notice)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpenDetail(notice);
+          }
+        }}
+      >
         <strong>{client?.full_name ?? "Sin cliente"}</strong>
         <span>
           {company?.name ?? "Sin compañía"}
@@ -1758,14 +2343,22 @@ function NoticeListRow({
         </span>
       </div>
       <span className="sp-branch-tag">{notice.policies?.branch ?? "Rama"}</span>
-      <b className={dueClass(days)}>{dueLabel(days)}</b>
+      <b
+        className={`shrink-0 text-xs font-semibold ${
+          notice.status === "pagado" ? "text-emerald-600" : days < 0 ? "text-red-600" : days <= 7 ? "text-amber-600" : "text-slate-500"
+        }`}
+      >
+        {dueLabel(days)}
+      </b>
       {!compact ? (
         <NoticeActions
           notice={notice}
           isMarkingNotified={isMarkingNotified}
           isPaying={isPaying}
+          isReverting={isReverting}
           onNotified={onNotified}
-          onPay={onPay}
+          onRevert={onRevert}
+          onRequestPay={onRequestPay}
           inline
         />
       ) : null}
@@ -1777,50 +2370,220 @@ function NoticeActions({
   notice,
   isMarkingNotified,
   isPaying,
+  isReverting,
   onNotified,
-  onPay,
+  onRevert,
+  onRequestPay,
   inline
 }: {
   notice: Notice;
   isMarkingNotified: boolean;
   isPaying: boolean;
+  isReverting: boolean;
   onNotified: (id: string) => void;
-  onPay: (id: string, months: number) => void;
+  onRevert: (id: string) => void;
+  onRequestPay: (notice: Notice) => void;
   inline?: boolean;
 }) {
+  const busy = isMarkingNotified || isPaying || isReverting;
+  const wrap = `mt-2 flex gap-1.5 border-t border-slate-100 pt-2 ${inline ? "mt-0 border-0 pt-0" : ""}`;
+  const base =
+    "inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
+  const blue = `${base} bg-blue-600 text-white hover:bg-blue-700`;
+  const green = `${base} bg-emerald-600 text-white hover:bg-emerald-700`;
+  const neutral = `${base} bg-slate-100 text-slate-600 hover:bg-slate-200`;
+  const spin = <Loader2 size={13} className="animate-spin" />;
+
+  // Flujo estricto: avisar -> avisado (azul) -> pagado (verde).
   if (notice.status === "pagado") {
-    return <div className={`sp-card-actions ${inline ? "inline" : ""}`}><span>Pagado</span></div>;
+    return (
+      <div className={wrap}>
+        <button type="button" className={neutral} onClick={() => onRevert(notice.id)} disabled={busy}>
+          {isReverting ? spin : <RotateCcw size={13} />}
+          Revertir pago
+        </button>
+      </div>
+    );
+  }
+
+  if (notice.status === "avisar") {
+    return (
+      <div className={wrap}>
+        <button type="button" className={blue} onClick={() => onNotified(notice.id)} disabled={busy}>
+          {isMarkingNotified ? spin : <Bell size={13} />}
+          Marcar avisado
+        </button>
+      </div>
+    );
   }
 
   return (
-    <div className={`sp-card-actions ${inline ? "inline" : ""}`}>
-      {notice.status === "avisar" ? (
-        <button type="button" className="sp-action-blue" onClick={() => onNotified(notice.id)} disabled={isMarkingNotified || isPaying}>
-          {isMarkingNotified ? <span className="sp-button-spinner" aria-hidden="true" /> : <CheckCircle size={13} />}
-          {isMarkingNotified ? "Cargando..." : "Avisado"}
-        </button>
-      ) : null}
-      {isPaying ? (
-        <span className="sp-action-loading">
-          <span className="sp-button-spinner" aria-hidden="true" />
-          Cargando...
-        </span>
-      ) : (
-        <select
-          aria-label="Registrar pago"
-          defaultValue={notice.paid_interval_months ?? 1}
-          disabled={isMarkingNotified}
-          onChange={(event) => onPay(notice.id, Number(event.target.value))}
-        >
-          <option value="">Pagar...</option>
-          {Array.from({ length: 12 }, (_, index) => index + 1).map((months) => (
-            <option key={months} value={months}>
-              {intervalLabel(months)}
-            </option>
-          ))}
-        </select>
-      )}
+    <div className={wrap}>
+      <button type="button" className={neutral} onClick={() => onRevert(notice.id)} disabled={busy}>
+        {isReverting ? spin : <RotateCcw size={13} />}
+        Avisar
+      </button>
+      <button type="button" className={green} onClick={() => onRequestPay(notice)} disabled={busy}>
+        {isPaying ? spin : <CheckCircle size={13} />}
+        Pagar
+      </button>
     </div>
+  );
+}
+
+function NoticeNotes({ notice, noteApi }: { notice: Notice; noteApi: NoticeNoteApi }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const notes = notice.notes ?? [];
+  const isAdding = noteApi.busyNoticeId === notice.id;
+
+  const submit = async () => {
+    const value = draft.trim();
+    if (!value) return;
+    await noteApi.onAdd(notice.id, value);
+    setDraft("");
+  };
+
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        className="flex w-full items-center gap-1 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <MessageSquare size={12} />
+        {notes.length > 0 ? `${notes.length} ${notes.length === 1 ? "nota interna" : "notas internas"}` : "Agregar nota interna"}
+        <ChevronDown size={12} className={`ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open ? (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {notes.map((note) => {
+            const own = note.user_id === noteApi.currentUserId;
+            return (
+              <div
+                key={note.id}
+                className={`flex items-start justify-between gap-1.5 rounded-md px-2 py-1.5 text-[11px] leading-snug ${
+                  own ? "border-l-2 border-amber-400 bg-amber-50 text-amber-900" : "border border-slate-200 bg-slate-50 text-slate-600"
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <strong className="font-semibold">{note.user?.full_name ?? "Usuario"}:</strong> {note.note}
+                </span>
+                {own ? (
+                  <button
+                    type="button"
+                    aria-label="Eliminar nota"
+                    className="shrink-0 text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50"
+                    onClick={() => noteApi.onDelete(notice.id, note.id)}
+                    disabled={noteApi.deletingNoteId === note.id}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+          <div className="flex items-center gap-1.5">
+            <input
+              value={draft}
+              placeholder="Agregar una nota..."
+              className="h-7 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[color:var(--org-primary)]"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+              disabled={isAdding}
+            />
+            <button
+              type="button"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[color:var(--org-primary-soft)] text-[color:var(--org-primary)] transition-colors hover:brightness-95 disabled:opacity-50"
+              onClick={() => void submit()}
+              disabled={isAdding || !draft.trim()}
+            >
+              {isAdding ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PaymentDialog({
+  notice,
+  isPaying,
+  onClose,
+  onConfirm
+}: {
+  notice: Notice | null;
+  isPaying: boolean;
+  onClose: () => void;
+  onConfirm: (months: number) => Promise<void>;
+}) {
+  const [months, setMonths] = useState<number>(notice?.paid_interval_months ?? 1);
+  const [error, setError] = useState<string | null>(null);
+
+  const client = notice?.policies?.clients;
+  const options = [1, 2, 3, 6, 12];
+
+  return (
+    <Modal title="Registrar pago" isOpen={Boolean(notice)} onClose={() => (isPaying ? undefined : onClose())}>
+      <form
+        className="sp-pay-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          try {
+            await onConfirm(months);
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : "No se pudo registrar el pago.");
+          }
+        }}
+      >
+        <p className="sp-pay-client">
+          {client?.full_name ?? "Sin cliente"}
+          {notice?.policies?.branch ? ` · ${notice.policies.branch}` : ""}
+        </p>
+        <p className="sp-pay-question">¿Cuántos meses pagó el cliente?</p>
+        <div className="sp-pay-options">
+          {options.map((value) => {
+            const selected = months === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                className={`sp-pay-option ${selected ? "is-selected" : ""}`}
+                onClick={() => setMonths(value)}
+                disabled={isPaying}
+              >
+                <span className="sp-pay-option-copy">
+                  <strong>{capitalizeFirst(intervalLabel(value))}</strong>
+                  <em>Próximo aviso en {value} {value === 1 ? "mes" : "meses"}</em>
+                </span>
+                {selected ? (
+                  <span className="sp-pay-check">
+                    <Check size={13} />
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+        {error ? <div className="sp-pay-error">{error}</div> : null}
+        <div className="sp-modal-actions">
+          <button type="button" className="sp-secondary-action" onClick={onClose} disabled={isPaying}>
+            Cancelar
+          </button>
+          <button type="submit" className="sp-primary-action" disabled={isPaying}>
+            {isPaying ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+            {isPaying ? "Registrando..." : "Confirmar pago"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -1830,6 +2593,7 @@ function ClientsView({
   isLoading,
   isCreating,
   error,
+  onOpenClient,
   onSubmit
 }: {
   clients: Client[];
@@ -1837,6 +2601,7 @@ function ClientsView({
   isLoading: boolean;
   isCreating: boolean;
   error: string | null;
+  onOpenClient: (client: Client) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
@@ -1891,7 +2656,7 @@ function ClientsView({
         {!isLoading && view === "grid" ? (
           <div className="sp-card-grid">
             {filtered.map((client, index) => (
-              <ClientCard key={client.id} client={client} policies={policies} color={AVATAR_COLORS[index % AVATAR_COLORS.length] ?? "#1d4ed8"} />
+              <ClientCard key={client.id} client={client} policies={policies} color={AVATAR_COLORS[index % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
             ))}
           </div>
         ) : null}
@@ -1905,7 +2670,7 @@ function ClientsView({
               </div>
             ) : null}
             {filtered.map((client, index) => (
-              <ClientRow key={client.id} client={client} policies={policies} color={AVATAR_COLORS[index % AVATAR_COLORS.length] ?? "#1d4ed8"} />
+              <ClientRow key={client.id} client={client} policies={policies} color={AVATAR_COLORS[index % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
             ))}
           </div>
         ) : null}
@@ -1948,10 +2713,20 @@ function ClientsView({
   );
 }
 
-function ClientCard({ client, policies, color }: { client: Client; policies: Policy[]; color: string }) {
+function ClientCard({
+  client,
+  policies,
+  color,
+  onSelect
+}: {
+  client: Client;
+  policies: Policy[];
+  color: string;
+  onSelect: (client: Client) => void;
+}) {
   const count = policies.filter((policy) => policy.clients?.id === client.id).length;
   return (
-    <article className="sp-entity-card">
+    <article className="sp-entity-card is-clickable" role="button" tabIndex={0} onClick={() => onSelect(client)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(client); } }}>
       <div className="sp-entity-head">
         <div className="sp-avatar" style={{ backgroundColor: color }}>{initials(client.full_name)}</div>
         <div>
@@ -1971,10 +2746,20 @@ function ClientCard({ client, policies, color }: { client: Client; policies: Pol
   );
 }
 
-function ClientRow({ client, policies, color }: { client: Client; policies: Policy[]; color: string }) {
+function ClientRow({
+  client,
+  policies,
+  color,
+  onSelect
+}: {
+  client: Client;
+  policies: Policy[];
+  color: string;
+  onSelect: (client: Client) => void;
+}) {
   const count = policies.filter((policy) => policy.clients?.id === client.id).length;
   return (
-    <div className="sp-list-row entity client">
+    <div className="sp-list-row entity client is-clickable" role="button" tabIndex={0} onClick={() => onSelect(client)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(client); } }}>
       <div className="sp-avatar small" style={{ backgroundColor: color }}>{initials(client.full_name)}</div>
       <div className="sp-list-main">
         <strong>{client.full_name}</strong>
@@ -1986,6 +2771,606 @@ function ClientRow({ client, policies, color }: { client: Client; policies: Poli
   );
 }
 
+function ClientDetailScreen({
+  client,
+  policies,
+  common,
+  currentUserId,
+  isSavingClient,
+  isDeletingClient,
+  noteApi,
+  policyActions,
+  initialOpenPolicyId,
+  onBack,
+  onSaveClient,
+  onDeleteClient
+}: {
+  client: Client | null;
+  policies: Policy[];
+  common: { token: string | undefined; organizationSlug: string };
+  currentUserId: string;
+  isSavingClient: boolean;
+  isDeletingClient: boolean;
+  noteApi: NoticeNoteApi;
+  policyActions: PolicyActions;
+  initialOpenPolicyId: string | null;
+  onBack: () => void;
+  onSaveClient: (patch: Record<string, unknown>) => Promise<unknown>;
+  onDeleteClient: () => Promise<unknown>;
+}) {
+  const [editPolicy, setEditPolicy] = useState<Policy | null>(null);
+  const [openPolicyId, setOpenPolicyId] = useState<string | null>(initialOpenPolicyId);
+  const [editClientOpen, setEditClientOpen] = useState(false);
+  const [deleteClientOpen, setDeleteClientOpen] = useState(false);
+  const [deletePolicyTarget, setDeletePolicyTarget] = useState<Policy | null>(null);
+
+  const backButton = (
+    <button
+      type="button"
+      onClick={onBack}
+      className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-[color:var(--org-primary)] transition-colors hover:opacity-80"
+    >
+      <ArrowLeft size={16} />
+      Volver a asegurados
+    </button>
+  );
+
+  if (!client) {
+    return (
+      <div className="sp-page padded flex flex-col gap-5 p-6">
+        {backButton}
+        <EmptyState title="Asegurado no encontrado" text="Puede que la lista se haya actualizado." />
+      </div>
+    );
+  }
+
+  const clientPolicies = policies.filter((policy) => policy.clients?.id === client.id);
+  const color = AVATAR_COLORS[(client.full_name.charCodeAt(0) || 0) % AVATAR_COLORS.length] ?? "#1d4ed8";
+
+  return (
+    <div className="sp-page padded flex flex-col gap-6 p-6">
+      {backButton}
+
+      <ClientDetailHeader
+        client={client}
+        color={color}
+        isSaving={isSavingClient}
+        onSaveClient={onSaveClient}
+        onEditClient={() => setEditClientOpen(true)}
+        onDeleteClient={() => setDeleteClientOpen(true)}
+      />
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-end justify-between">
+          <h2 className="m-0 text-lg font-semibold text-slate-900">Pólizas</h2>
+          <span className="text-xs font-medium text-slate-500">
+            {clientPolicies.length} {clientPolicies.length === 1 ? "póliza" : "pólizas"}
+          </span>
+        </div>
+        {clientPolicies.length === 0 ? (
+          <EmptyState title="Sin pólizas" text="Este asegurado todavía no tiene pólizas cargadas." compact />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {clientPolicies.map((policy) => (
+              <PolicyHistoryPanel
+                key={policy.id}
+                policy={policy}
+                common={common}
+                currentUserId={currentUserId}
+                noteApi={noteApi}
+                isDeleting={policyActions.isDeleting}
+                open={openPolicyId === policy.id}
+                onToggle={() => setOpenPolicyId((current) => (current === policy.id ? null : policy.id))}
+                onEdit={setEditPolicy}
+                onDelete={setDeletePolicyTarget}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <PolicyFormModal
+        key={editPolicy?.id ?? "client-policy-edit"}
+        title="Editar póliza"
+        submitLabel="Guardar cambios"
+        isOpen={Boolean(editPolicy)}
+        policy={editPolicy}
+        clients={policyActions.clients}
+        companies={policyActions.companies}
+        isSaving={policyActions.isSaving}
+        onClose={() => setEditPolicy(null)}
+        onSubmit={async (values) => {
+          if (!editPolicy) return;
+          await policyActions.onUpdate(editPolicy.id, values);
+          setEditPolicy(null);
+        }}
+      />
+
+      <ClientFormModal
+        key={editClientOpen ? `client-edit-${client.id}` : "client-edit-closed"}
+        isOpen={editClientOpen}
+        client={client}
+        isSaving={isSavingClient}
+        onClose={() => setEditClientOpen(false)}
+        onSubmit={async (patch) => {
+          await onSaveClient(patch);
+          setEditClientOpen(false);
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={deleteClientOpen}
+        title="Eliminar asegurado"
+        message={`¿Seguro que querés eliminar a ${client.full_name}? Se ocultarán también sus pólizas y avisos. Esta acción se puede revertir desde la base de datos.`}
+        confirmLabel="Eliminar asegurado"
+        isBusy={isDeletingClient}
+        onClose={() => setDeleteClientOpen(false)}
+        onConfirm={async () => {
+          await onDeleteClient();
+          setDeleteClientOpen(false);
+          onBack();
+        }}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(deletePolicyTarget)}
+        title="Eliminar póliza"
+        message={
+          deletePolicyTarget
+            ? `¿Eliminar la póliza ${deletePolicyTarget.policy_number ? `#${deletePolicyTarget.policy_number}` : ""} de ${deletePolicyTarget.branch}? Se ocultará junto con sus avisos.`
+            : ""
+        }
+        confirmLabel="Eliminar póliza"
+        isBusy={policyActions.isDeleting}
+        onClose={() => setDeletePolicyTarget(null)}
+        onConfirm={async () => {
+          if (!deletePolicyTarget) return;
+          await policyActions.onDelete(deletePolicyTarget.id);
+          setDeletePolicyTarget(null);
+        }}
+      />
+    </div>
+  );
+}
+
+function ConfirmDialog({
+  isOpen,
+  title,
+  message,
+  confirmLabel,
+  isBusy,
+  onClose,
+  onConfirm
+}: {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  isBusy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal title={title} isOpen={isOpen} onClose={() => (isBusy ? undefined : onClose())}>
+      <div className="flex flex-col gap-5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <AlertTriangle size={18} />
+          </span>
+          <p className="m-0 text-sm leading-relaxed text-slate-600">{message}</p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="sp-secondary-action" onClick={onClose} disabled={isBusy}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onConfirm}
+            disabled={isBusy}
+          >
+            {isBusy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ClientFormModal({
+  isOpen,
+  client,
+  isSaving,
+  onClose,
+  onSubmit
+}: {
+  isOpen: boolean;
+  client: Client;
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (patch: Record<string, unknown>) => Promise<unknown>;
+}) {
+  const [fullName, setFullName] = useState(client.full_name);
+  const [phone, setPhone] = useState(client.phone ?? "");
+  const [email, setEmail] = useState(client.email ?? "");
+  const [dni, setDni] = useState(client.dni ?? "");
+  const [locality, setLocality] = useState(client.locality ?? "");
+  const [address, setAddress] = useState(client.address ?? "");
+  const [birthDate, setBirthDate] = useState(client.birth_date ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <Modal title="Editar asegurado" isOpen={isOpen} onClose={onClose}>
+      <form
+        className="sp-form sp-modal-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          if (!fullName.trim()) {
+            setError("El nombre es obligatorio.");
+            return;
+          }
+          try {
+            await onSubmit({
+              fullName: fullName.trim(),
+              phone: phone.trim() || null,
+              email: email.trim() || null,
+              dni: dni.trim() || null,
+              locality: locality.trim() || null,
+              address: address.trim() || null,
+              birthDate: birthDate || null
+            });
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : "No se pudo actualizar el asegurado.");
+          }
+        }}
+      >
+        <div className="sp-form-section">
+          <h3>Datos personales</h3>
+          <label className="sp-field">
+            <span>Nombre completo</span>
+            <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Nombre y apellido" />
+          </label>
+        </div>
+        <div className="sp-form-grid">
+          <label className="sp-field">
+            <span>Teléfono</span>
+            <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Teléfono" />
+          </label>
+          <label className="sp-field">
+            <span>Email</span>
+            <input value={email} type="email" onChange={(event) => setEmail(event.target.value)} placeholder="correo@dominio.com" />
+          </label>
+        </div>
+        <div className="sp-form-grid">
+          <label className="sp-field">
+            <span>DNI</span>
+            <input value={dni} onChange={(event) => setDni(event.target.value)} placeholder="Documento" />
+          </label>
+          <label className="sp-field">
+            <span>Localidad</span>
+            <input value={locality} onChange={(event) => setLocality(event.target.value)} placeholder="Localidad" />
+          </label>
+        </div>
+        <div className="sp-form-grid">
+          <label className="sp-field">
+            <span>Dirección</span>
+            <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Dirección" />
+          </label>
+          <label className="sp-field">
+            <span>Nacimiento</span>
+            <DatePicker value={birthDate} onChange={setBirthDate} ariaLabel="Fecha de nacimiento" />
+          </label>
+        </div>
+        {error ? <div className="sp-pay-error">{error}</div> : null}
+        <div className="sp-modal-actions">
+          <button type="button" className="sp-secondary-action" onClick={onClose} disabled={isSaving}>
+            Cancelar
+          </button>
+          <button type="submit" className="sp-primary-action" disabled={isSaving}>
+            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Guardar cambios
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ClientDetailHeader({
+  client,
+  color,
+  isSaving,
+  onSaveClient,
+  onEditClient,
+  onDeleteClient
+}: {
+  client: Client;
+  color: string;
+  isSaving: boolean;
+  onSaveClient: (patch: Record<string, unknown>) => Promise<unknown>;
+  onEditClient: () => void;
+  onDeleteClient: () => void;
+}) {
+  const [editingNote, setEditingNote] = useState(false);
+  const [draft, setDraft] = useState(client.notes ?? "");
+
+  const fields: Array<{ icon: typeof Phone; label: string; value: string | null; href: string | null }> = [
+    { icon: Phone, label: "Teléfono", value: client.phone, href: client.phone ? `tel:${client.phone}` : null },
+    { icon: Mail, label: "Email", value: client.email, href: client.email ? `mailto:${client.email}` : null },
+    { icon: Hash, label: "DNI", value: client.dni, href: null },
+    { icon: MapPin, label: "Localidad", value: client.locality, href: null },
+    { icon: MapPin, label: "Dirección", value: client.address, href: null },
+    { icon: CalendarDays, label: "Nacimiento", value: client.birth_date ? formatDate(client.birth_date) : null, href: null }
+  ];
+
+  const visibleFields = fields.filter((field) => field.value);
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-lg font-bold text-white shadow-sm sm:h-16 sm:w-16 sm:text-xl"
+          style={{ backgroundColor: color }}
+        >
+          {initials(client.full_name)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="m-0 truncate text-xl font-bold text-slate-900 sm:text-2xl">{client.full_name}</h2>
+          {client.locality ? (
+            <p className="mt-1 flex items-center gap-1 text-sm text-slate-500">
+              <MapPin size={14} />
+              {client.locality}
+            </p>
+          ) : null}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onEditClient}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <Edit3 size={14} />
+            Editar
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteClient}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
+          >
+            <Trash2 size={14} />
+            Eliminar
+          </button>
+        </div>
+      </div>
+
+      {visibleFields.length > 0 ? (
+        <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-100 pt-5 sm:grid-cols-3">
+          {visibleFields.map((field) => {
+            const Icon = field.icon;
+            return (
+              <div key={field.label} className="flex min-w-0 flex-col gap-1">
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <Icon size={13} />
+                  {field.label}
+                </span>
+                {field.href ? (
+                  <a className="truncate text-sm font-medium text-slate-800 transition-colors hover:text-[color:var(--org-primary)]" href={field.href}>
+                    {field.value}
+                  </a>
+                ) : (
+                  <span className="truncate text-sm font-medium text-slate-800">{field.value}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="mt-4 border-t border-slate-100 pt-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Nota del asegurado</span>
+          {!editingNote ? (
+            <button
+              type="button"
+              className="flex items-center gap-1 text-[11px] font-semibold text-[color:var(--org-primary)] transition-colors hover:opacity-80"
+              onClick={() => {
+                setDraft(client.notes ?? "");
+                setEditingNote(true);
+              }}
+            >
+              <Edit3 size={12} />
+              {client.notes ? "Editar" : "Agregar"}
+            </button>
+          ) : null}
+        </div>
+        {editingNote ? (
+          <div className="mt-2 flex flex-col gap-2">
+            <textarea
+              value={draft}
+              rows={2}
+              className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none focus:border-[color:var(--org-primary)]"
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Escribí una nota sobre este asegurado..."
+              disabled={isSaving}
+            />
+            <div className="flex justify-end gap-2">
+              <button type="button" className="sp-secondary-action" onClick={() => setEditingNote(false)} disabled={isSaving}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="sp-primary-action"
+                disabled={isSaving}
+                onClick={async () => {
+                  await onSaveClient({ notes: draft.trim() || null });
+                  setEditingNote(false);
+                }}
+              >
+                {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                Guardar
+              </button>
+            </div>
+          </div>
+        ) : client.notes ? (
+          <p className="mt-1.5 whitespace-pre-line text-[13px] leading-snug text-slate-600">{client.notes}</p>
+        ) : (
+          <p className="mt-1.5 text-xs text-slate-400">Sin notas todavía.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PolicyHistoryPanel({
+  policy,
+  common,
+  currentUserId,
+  noteApi,
+  isDeleting,
+  open,
+  onToggle,
+  onEdit,
+  onDelete
+}: {
+  policy: Policy;
+  common: { token: string | undefined; organizationSlug: string };
+  currentUserId: string;
+  noteApi: NoticeNoteApi;
+  isDeleting: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onEdit: (policy: Policy) => void;
+  onDelete: (policy: Policy) => void;
+}) {
+  const history = useQuery({
+    queryKey: ["policy-notices", policy.id],
+    enabled: open,
+    queryFn: () => apiRequest<Notice[]>(`/policies/${policy.id}/notices`, common)
+  });
+
+  const notices = history.data ?? [];
+  const payments = notices.filter((notice) => notice.status === "pagado");
+
+  const infoItems = [
+    { label: "Compañía", value: policy.insurance_companies?.name ?? "-" },
+    { label: "Rama", value: policy.branch },
+    { label: "N° de póliza", value: policy.policy_number || "-" },
+    { label: "Patente", value: policy.vehicle_plate || "-" },
+    { label: "Periodicidad", value: intervalLabel(policy.payment_interval_months) },
+    { label: "Primer pago", value: policy.first_payment_date ? formatDate(policy.first_payment_date) : "-" }
+  ];
+
+  return (
+    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex items-center gap-2 pr-3 transition-colors hover:bg-slate-50">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 text-left"
+          onClick={onToggle}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[color:var(--org-primary-soft)] text-[color:var(--org-primary)]">
+            <FileText size={17} />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <strong className="truncate text-sm font-semibold text-slate-900">
+              {policy.branch} · {policy.insurance_companies?.name ?? "Sin compañía"}
+            </strong>
+            <span className="truncate text-xs text-slate-500">
+              {policy.policy_number ? `#${policy.policy_number}` : "Sin N°"}
+              {policy.vehicle_plate ? ` · ${policy.vehicle_plate}` : ""}
+              {` · ${intervalLabel(policy.payment_interval_months)}`}
+            </span>
+          </div>
+          <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+        <PolicyActionButtons policy={policy} isDeleting={isDeleting} onEdit={onEdit} onDelete={onDelete} compact />
+      </div>
+
+      {open ? (
+        <div className="flex flex-col gap-5 border-t border-slate-100 bg-slate-50/70 p-4">
+          {history.isLoading ? <LoadingState text="Cargando historial" /> : null}
+          {history.error ? <ErrorState text={history.error.message} /> : null}
+          {!history.isLoading && !history.error ? (
+            <>
+              <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3">
+                {infoItems.map((item) => (
+                  <div key={item.label} className="flex flex-col gap-0.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{item.label}</span>
+                    <strong className="text-sm font-medium text-slate-800">{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <h4 className="m-0 text-xs font-bold uppercase tracking-wide text-slate-500">Historial de pagos</h4>
+                {payments.length === 0 ? (
+                  <p className="m-0 text-xs text-slate-400">Todavía no hay pagos registrados.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {payments.map((payment) => (
+                      <div key={payment.id} className="flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2.5">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                          <CheckCircle size={15} />
+                        </span>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <strong className="text-sm font-semibold text-slate-900">Vto. {formatDate(payment.due_date)}</strong>
+                          <span className="truncate text-xs text-slate-500">
+                            {payment.paid_interval_months ? `${intervalLabel(payment.paid_interval_months)}` : "Pago"}
+                            {payment.payment_processed_by ? ` · cobró ${payment.payment_processed_by.full_name}` : ""}
+                          </span>
+                        </div>
+                        {payment.payment_processed_at ? (
+                          <em className="shrink-0 text-[11px] not-italic text-slate-400">{formatDate(payment.payment_processed_at.slice(0, 10))}</em>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <h4 className="m-0 text-xs font-bold uppercase tracking-wide text-slate-500">Historial de avisos</h4>
+                {notices.length === 0 ? (
+                  <p className="m-0 text-xs text-slate-400">Sin avisos para esta póliza.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {notices.map((notice) => (
+                      <div key={notice.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: NOTICE_COLUMNS.find((column) => column.key === notice.status)?.dot }} />
+                          <strong className="text-sm font-semibold text-slate-900">Vto. {formatDate(notice.due_date)}</strong>
+                          <span className={noticeStatusPill(notice.status)}>{noticeStatusLabel(notice.status)}</span>
+                          {notice.notified_by ? <em className="text-[11px] not-italic text-slate-400">Avisó {notice.notified_by.full_name}</em> : null}
+                        </div>
+                        <NoticeNotes notice={notice} noteApi={{ ...noteApi, currentUserId }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function noticeStatusLabel(status: Notice["status"]) {
+  if (status === "avisar") return "Avisar";
+  if (status === "avisado") return "Avisado";
+  return "Pagado";
+}
+
+function noticeStatusPill(status: Notice["status"]) {
+  const base = "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase";
+  if (status === "avisar") return `${base} bg-amber-50 text-amber-700`;
+  if (status === "avisado") return `${base} bg-blue-50 text-blue-700`;
+  return `${base} bg-emerald-50 text-emerald-700`;
+}
+
 function PoliciesView({
   policies,
   clients,
@@ -1993,7 +3378,8 @@ function PoliciesView({
   isLoading,
   isCreating,
   error,
-  onSubmit
+  onCreate,
+  onOpenPolicy
 }: {
   policies: Policy[];
   clients: Client[];
@@ -2001,14 +3387,14 @@ function PoliciesView({
   isLoading: boolean;
   isCreating: boolean;
   error: string | null;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onCreate: (values: PolicyFormValues) => Promise<unknown>;
+  onOpenPolicy: (policy: Policy) => void;
 }) {
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
   const [companyId, setCompanyId] = useState("all");
   const [view, setView] = useState<EntityView>(() => readView("sp-policies-view", "list"));
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newPolicyDate, setNewPolicyDate] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const branches = Array.from(new Set([...BRANCHES, ...policies.map((policy) => policy.branch)])).sort();
   const filtered = policies.filter((policy) => {
@@ -2055,7 +3441,7 @@ function PoliciesView({
             writeView("sp-policies-view", next);
           }}
         />
-        <button className="sp-primary-action" type="button" onClick={() => setIsModalOpen(true)}>
+        <button className="sp-primary-action" type="button" onClick={() => setIsCreateOpen(true)}>
           <Plus size={14} />
           Nueva póliza
         </button>
@@ -2066,93 +3452,227 @@ function PoliciesView({
         {isLoading ? <LoadingState text="Cargando pólizas" /> : null}
         {!isLoading && view === "grid" ? (
           <div className="sp-card-grid">
-            {filtered.map((policy) => <PolicyCard key={policy.id} policy={policy} />)}
+            {filtered.map((policy) => (
+              <PolicyCard key={policy.id} policy={policy} onOpen={onOpenPolicy} />
+            ))}
           </div>
         ) : null}
         {!isLoading && view === "list" ? (
           <div className="sp-list-panel embedded">
-            {filtered.length > 0 ? (
-              <div className="sp-list-header entity policy">
-                <span>Asegurado</span>
-                <span>Rama</span>
-                <span>Patente</span>
-                <span>Primer vencimiento</span>
-              </div>
-            ) : null}
-            {filtered.map((policy) => <PolicyRow key={policy.id} policy={policy} />)}
+            {filtered.map((policy) => (
+              <PolicyRow key={policy.id} policy={policy} onOpen={onOpenPolicy} />
+            ))}
           </div>
         ) : null}
         {!isLoading && filtered.length === 0 ? <EmptyState title="No hay pólizas para mostrar" text="Probá limpiar los filtros o cargar una nueva póliza." /> : null}
       </section>
-      <Modal title="Nueva póliza" isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-        <form
-          className="sp-form sp-modal-form"
-          onSubmit={async (event) => {
-            try {
-              await onSubmit(event);
-              setNewPolicyDate("");
-              setIsModalOpen(false);
-            } catch {
-              // parent mutation state renders the error
-            }
-          }}
-        >
-          <div className="sp-form-section">
-            <h3>Relación comercial</h3>
-            <div className="sp-form-grid">
-              <SearchableSelect
-                name="clientId"
-                label="Asegurado"
-                options={clients.map((client) => ({ value: client.id, label: client.full_name }))}
-                placeholder="Buscar asegurado"
-                required
-              />
-              <SearchableSelect
-                name="insuranceCompanyId"
-                label="Compañía"
-                options={companies.map((company) => ({ value: company.id, label: company.name }))}
-                placeholder="Buscar compañía"
-                required
-              />
-            </div>
-          </div>
-          <div className="sp-form-section">
-            <h3>Datos de póliza</h3>
-          </div>
-          <div className="sp-form-grid">
-            <label className="sp-field"><span>Rama</span><select name="branch" required><option value="">Seleccionar rama</option>{BRANCHES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-            <label className="sp-field"><span>Número</span><input name="policyNumber" placeholder="Número de póliza" required /></label>
-          </div>
-          <div className="sp-form-grid">
-            <label className="sp-field"><span>Patente</span><input name="vehiclePlate" placeholder="Opcional" /></label>
-            <label className="sp-field"><span>Periodicidad</span><select name="paymentIntervalMonths" defaultValue="1">{Array.from({ length: 12 }, (_, index) => index + 1).map((months) => <option key={months} value={months}>{intervalLabel(months)}</option>)}</select></label>
-          </div>
-          <label className="sp-field">
-            <span>Primer vencimiento</span>
-            <DatePicker
-              name="firstPaymentDate"
-              value={newPolicyDate}
-              onChange={setNewPolicyDate}
-              ariaLabel="Primer vencimiento"
-              required
-            />
-          </label>
-          <div className="sp-modal-actions">
-            <button className="sp-secondary-action" type="button" onClick={() => setIsModalOpen(false)} disabled={isCreating}>Cancelar</button>
-            <button className="sp-primary-action" type="submit" disabled={isCreating}>
-              {isCreating ? <span className="sp-button-spinner" aria-hidden="true" /> : <Plus size={14} />}
-              {isCreating ? "Cargando..." : "Guardar póliza"}
-            </button>
-          </div>
-        </form>
-      </Modal>
+
+      <PolicyFormModal
+        key="policy-create"
+        title="Nueva póliza"
+        submitLabel="Guardar póliza"
+        isOpen={isCreateOpen}
+        policy={null}
+        clients={clients}
+        companies={companies}
+        isSaving={isCreating}
+        onClose={() => setIsCreateOpen(false)}
+        onSubmit={async (values) => {
+          await onCreate(values);
+          setIsCreateOpen(false);
+        }}
+      />
     </div>
   );
 }
 
-function PolicyCard({ policy }: { policy: Policy }) {
+function PolicyFormModal({
+  title,
+  submitLabel,
+  isOpen,
+  policy,
+  clients,
+  companies,
+  isSaving,
+  onClose,
+  onSubmit
+}: {
+  title: string;
+  submitLabel: string;
+  isOpen: boolean;
+  policy: Policy | null;
+  clients: Client[];
+  companies: InsuranceCompany[];
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (values: PolicyFormValues) => Promise<unknown>;
+}) {
+  const [clientId, setClientId] = useState(policy?.clients?.id ?? "");
+  const [companyId, setCompanyId] = useState(policy?.insurance_companies?.id ?? "");
+  const [branch, setBranch] = useState(policy?.branch ?? "");
+  const [policyNumber, setPolicyNumber] = useState(policy?.policy_number ?? "");
+  const [vehiclePlate, setVehiclePlate] = useState(policy?.vehicle_plate ?? "");
+  const [months, setMonths] = useState<number>(policy?.payment_interval_months ?? 1);
+  const [date, setDate] = useState(policy?.first_payment_date ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const branches = Array.from(new Set([...BRANCHES, ...(branch ? [branch] : [])]));
+
   return (
-    <article className="sp-entity-card policy">
+    <Modal title={title} isOpen={isOpen} onClose={onClose}>
+      <form
+        className="sp-form sp-modal-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          if (!clientId || !companyId || !branch || !policyNumber.trim() || !date) {
+            setError("Completá asegurado, compañía, rama, número y vencimiento.");
+            return;
+          }
+          try {
+            await onSubmit({
+              clientId,
+              insuranceCompanyId: companyId,
+              branch,
+              policyNumber: policyNumber.trim(),
+              vehiclePlate: vehiclePlate.trim(),
+              paymentIntervalMonths: months,
+              firstPaymentDate: date
+            });
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : "No se pudo guardar la póliza.");
+          }
+        }}
+      >
+        <div className="sp-form-section">
+          <h3>Relación comercial</h3>
+          <div className="sp-form-grid">
+            <SearchableSelect
+              label="Asegurado"
+              value={clientId}
+              onChange={setClientId}
+              options={clients.map((client) => ({ value: client.id, label: client.full_name }))}
+              placeholder="Buscar asegurado"
+            />
+            <SearchableSelect
+              label="Compañía"
+              value={companyId}
+              onChange={setCompanyId}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              placeholder="Buscar compañía"
+            />
+          </div>
+        </div>
+        <div className="sp-form-section">
+          <h3>Datos de póliza</h3>
+        </div>
+        <div className="sp-form-grid">
+          <label className="sp-field">
+            <span>Rama</span>
+            <select value={branch} onChange={(event) => setBranch(event.target.value)}>
+              <option value="">Seleccionar rama</option>
+              {branches.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="sp-field">
+            <span>Número</span>
+            <input value={policyNumber} onChange={(event) => setPolicyNumber(event.target.value)} placeholder="Número de póliza" />
+          </label>
+        </div>
+        <div className="sp-form-grid">
+          <label className="sp-field">
+            <span>Patente</span>
+            <input value={vehiclePlate} onChange={(event) => setVehiclePlate(event.target.value)} placeholder="Opcional" />
+          </label>
+          <label className="sp-field">
+            <span>Periodicidad</span>
+            <select value={months} onChange={(event) => setMonths(Number(event.target.value))}>
+              {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{intervalLabel(value)}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className="sp-field">
+          <span>Primer vencimiento</span>
+          <DatePicker value={date} onChange={setDate} ariaLabel="Primer vencimiento" />
+        </label>
+        {error ? <div className="sp-pay-error">{error}</div> : null}
+        <div className="sp-modal-actions">
+          <button className="sp-secondary-action" type="button" onClick={onClose} disabled={isSaving}>Cancelar</button>
+          <button className="sp-primary-action" type="submit" disabled={isSaving}>
+            {isSaving ? <span className="sp-button-spinner" aria-hidden="true" /> : <Save size={14} />}
+            {submitLabel}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function PolicyActionButtons({
+  policy,
+  isDeleting,
+  onEdit,
+  onDelete,
+  compact
+}: {
+  policy: Policy;
+  isDeleting: boolean;
+  onEdit: (policy: Policy) => void;
+  onDelete: (policy: Policy) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? "flex shrink-0 items-center gap-1" : "flex gap-2"}>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onEdit(policy);
+        }}
+        className={
+          compact
+            ? "flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            : "inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+        }
+        aria-label="Editar póliza"
+      >
+        <Edit3 size={14} />
+        {compact ? null : "Editar"}
+      </button>
+      <button
+        type="button"
+        disabled={isDeleting}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete(policy);
+        }}
+        className={
+          compact
+            ? "flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50"
+            : "inline-flex items-center justify-center gap-1 rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+        }
+        aria-label="Eliminar póliza"
+      >
+        <Trash2 size={14} />
+        {compact ? null : "Eliminar"}
+      </button>
+    </div>
+  );
+}
+
+function PolicyCard({ policy, onOpen }: { policy: Policy; onOpen: (policy: Policy) => void }) {
+  return (
+    <article
+      className="sp-entity-card policy is-clickable"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(policy)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(policy);
+        }
+      }}
+    >
       <div className="sp-entity-head">
         <div className="sp-icon-box"><ShieldCheck size={18} /></div>
         <div>
@@ -2173,9 +3693,20 @@ function PolicyCard({ policy }: { policy: Policy }) {
   );
 }
 
-function PolicyRow({ policy }: { policy: Policy }) {
+function PolicyRow({ policy, onOpen }: { policy: Policy; onOpen: (policy: Policy) => void }) {
   return (
-    <div className="sp-list-row entity policy">
+    <div
+      className="sp-list-row entity policy is-clickable"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(policy)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(policy);
+        }
+      }}
+    >
       <div className="sp-icon-box small"><ShieldCheck size={15} /></div>
       <div className="sp-list-main">
         <strong>{policy.clients?.full_name ?? "Sin cliente"}</strong>
@@ -2184,6 +3715,7 @@ function PolicyRow({ policy }: { policy: Policy }) {
       <span className="sp-branch-tag">{policy.branch}</span>
       <span>{policy.vehicle_plate ?? "-"}</span>
       <span>{formatDate(policy.first_payment_date)}</span>
+      <ChevronRight className="ml-auto shrink-0 text-slate-300" size={16} />
     </div>
   );
 }
@@ -2305,6 +3837,11 @@ function SettingsView({
   const handleUploadLogo = async (file: File, kind: UploadLogoPayload["kind"]) => {
     if (!file.type.startsWith("image/")) {
       setUploadError("El logo debe ser una imagen.");
+      return;
+    }
+
+    if (file.size > LOGO_MAX_SIZE_BYTES) {
+      setUploadError("El logo debe pesar 5 MB o menos.");
       return;
     }
 
@@ -2467,7 +4004,10 @@ function TeamView({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
-    const form = new FormData(event.currentTarget);
+    // Capturamos el form antes del await: React anula event.currentTarget al
+    // terminar el handler, y leerlo después tira "Cannot read properties of null".
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const fullName = String(form.get("fullName") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
@@ -2481,7 +4021,7 @@ function TeamView({
 
     await onAddTeamMember({ fullName, email, role, password });
     onNotify(`${fullName} fue creado en el equipo como ${roleLabel(role)}.`);
-    event.currentTarget.reset();
+    formElement.reset();
     setIsModalOpen(false);
   };
 
@@ -2820,6 +4360,9 @@ function LogoDropzone({
   return (
     <div
       className={`sp-logo-dropzone ${isDragging ? "is-dragging" : ""}`}
+      onClick={() => {
+        if (!isUploading) inputRef.current?.click();
+      }}
       onDragEnter={(event) => {
         event.preventDefault();
         setIsDragging(true);
@@ -2861,13 +4404,16 @@ function LogoDropzone({
       </div>
       <div className="sp-logo-dropzone-copy">
         <span>{title}</span>
-        <em>{previewUrl ? "Imagen cargada" : "SVG, PNG, JPG o WEBP"}</em>
+        <em>{previewUrl ? "Imagen cargada" : "PNG, JPG, WEBP o GIF hasta 5 MB"}</em>
       </div>
       <button
         type="button"
         className="sp-logo-dropzone-action"
         disabled={isUploading}
-        onClick={() => inputRef.current?.click()}
+        onClick={(event) => {
+          event.stopPropagation();
+          inputRef.current?.click();
+        }}
       >
         {isUploading ? "Subiendo..." : "Seleccionar"}
       </button>
@@ -3178,7 +4724,7 @@ function LocalityCombobox({ name }: { name: string }) {
       <span>Localidad</span>
       <div className="sp-combobox sp-locality-combobox">
         <input
-          className="block h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+          className="block h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-[var(--org-primary)] focus:ring-2 focus:ring-[var(--org-primary-soft)]"
           value={query}
           placeholder="Buscar localidad"
           onFocus={() => setOpen(true)}
@@ -3396,6 +4942,10 @@ function writeView(key: string, value: string) {
   if (typeof window !== "undefined") window.localStorage.setItem(key, value);
 }
 
+function capitalizeFirst(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function emptyToNull(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
   return text || null;
@@ -3421,6 +4971,16 @@ function resolveSubdomainSlug(hostname: string) {
   const candidate = parts[0] ?? "";
   if (!candidate || candidate === "www" || candidate === "app" || candidate === "api") return null;
   return /^[a-z0-9-]{2,63}$/.test(candidate) ? candidate : null;
+}
+
+function resolveLoginSlug(hostname: string, search: string) {
+  if (FORCED_ORG_SLUG) return FORCED_ORG_SLUG;
+  const querySlug = new URLSearchParams(search).get("slug")?.trim().toLowerCase();
+  if (querySlug && /^[a-z0-9-]{2,63}$/.test(querySlug)) {
+    return querySlug;
+  }
+
+  return resolveSubdomainSlug(hostname);
 }
 
 function organizationThemeStyle({

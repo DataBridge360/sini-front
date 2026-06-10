@@ -92,7 +92,7 @@ button {
     @apply relative flex min-h-[390px] overflow-hidden px-8 py-12 text-white sm:px-12 lg:min-h-screen lg:px-16 lg:py-20;
     background:
       radial-gradient(circle at 20% 20%, var(--org-secondary-soft), transparent 30%),
-      linear-gradient(145deg, #10201f, var(--org-primary));
+      linear-gradient(145deg, color-mix(in srgb, var(--org-primary) 70%, #06120f), var(--org-primary));
   }
 
   .login-visual-panel::after {
@@ -211,11 +211,22 @@ button {
   .sp-logo-mark {
     @apply flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl;
     background: var(--org-secondary);
-    color: #10201f;
+    color: var(--org-on-primary);
+  }
+
+  .sp-logo-mark.has-image {
+    @apply h-9 w-auto rounded-none;
+    background: transparent;
+    overflow: visible;
   }
 
   .sp-logo-mark img {
     @apply h-full w-full object-contain;
+  }
+
+  .sp-logo-mark.has-image img {
+    @apply h-9 w-auto object-contain;
+    max-width: 160px;
   }
 
   .sp-logo strong {
@@ -451,6 +462,12 @@ button {
 
   .sp-date-picker-grid button.is-selected::after {
     background: var(--org-on-primary);
+  }
+
+  .sp-date-picker-popover.is-floating {
+    z-index: 200;
+    border-color: #dfe3e8;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
   }
 
 
@@ -934,10 +951,17 @@ button {
   }
 
   .sp-wallet-card {
-    @apply min-h-56 overflow-hidden rounded-2xl p-5 text-white shadow-2xl shadow-emerald-950/10;
+    @apply min-h-56 overflow-hidden rounded-2xl p-5 text-white shadow-2xl;
+    color: var(--org-on-primary);
+    box-shadow: 0 25px 50px -12px color-mix(in srgb, var(--org-primary) 30%, transparent);
     background:
-      linear-gradient(135deg, rgba(213, 243, 101, 0.22), transparent 32%),
-      linear-gradient(150deg, #10231f 0%, #15564e 55%, #0f766e 100%);
+      linear-gradient(135deg, var(--org-secondary-soft), transparent 32%),
+      linear-gradient(
+        150deg,
+        color-mix(in srgb, var(--org-primary) 72%, #06120f) 0%,
+        var(--org-primary) 55%,
+        color-mix(in srgb, var(--org-primary) 80%, white) 100%
+      );
   }
 
   .sp-wallet-card-top {
@@ -1010,9 +1034,15 @@ button {
   }
 
   .sp-wallet-actions button {
-    @apply border bg-white hover:bg-emerald-50;
+    @apply border bg-white;
     border-color: var(--sp-border-strong);
     color: var(--sp-text);
+  }
+
+  .sp-wallet-actions button:hover {
+    background: var(--org-primary-soft);
+    border-color: color-mix(in srgb, var(--org-primary) 35%, var(--sp-border-strong));
+    color: var(--sp-accent);
   }
 
   .sp-next-due-card {
@@ -1112,6 +1142,14 @@ button {
     color: var(--org-on-primary);
   }
 
+  .sp-primary-action:not(:disabled):hover {
+    background: color-mix(in srgb, var(--org-primary) 88%, #000);
+  }
+
+  .sp-primary-action:not(:disabled):active {
+    background: color-mix(in srgb, var(--org-primary) 80%, #000);
+  }
+
   .sp-primary-action:disabled,
   .sp-logo-dropzone-action:disabled {
     @apply cursor-not-allowed opacity-70;
@@ -1175,7 +1213,7 @@ button {
   }
 
   .sp-combobox-menu button.active {
-    @apply bg-emerald-50;
+    background: var(--org-primary-soft);
     color: var(--sp-accent);
   }
 
@@ -1340,7 +1378,8 @@ button {
   }
 
   .sp-success {
-    @apply text-sm font-medium text-emerald-700;
+    @apply text-sm font-medium;
+    color: var(--sp-accent);
   }
 
   .sp-profile-hero {
@@ -1882,14 +1921,15 @@ button {
     @apply px-4 pb-4 pt-5;
   }
 
-  .sp-logo-mark {
+  .sp-logo-mark.has-image {
     @apply h-10 w-auto rounded-none;
     background: transparent;
     color: #ffffff;
   }
 
-  .sp-logo-mark img {
+  .sp-logo-mark.has-image img {
     @apply h-10 w-auto object-contain;
+    max-width: 180px;
   }
 
   .sp-logo strong {
@@ -2037,6 +2077,15 @@ button {
     background: var(--org-primary);
     border-color: var(--org-primary);
     color: var(--org-on-primary);
+  }
+
+  .sp-ui-button.primary:not(:disabled):hover {
+    background: color-mix(in srgb, var(--org-primary) 88%, #000);
+    border-color: color-mix(in srgb, var(--org-primary) 88%, #000);
+  }
+
+  .sp-ui-button.primary:not(:disabled):active {
+    background: color-mix(in srgb, var(--org-primary) 80%, #000);
   }
 
   .sp-ui-button.secondary {
@@ -2858,13 +2907,14 @@ button {
   }
 
   .sp-loading-state {
+    @apply flex-col justify-center gap-3 border-dashed py-12 text-sm font-medium;
     color: var(--sp-text-muted);
   }
 
   .sp-loading-state span {
-    @apply h-4 w-4 rounded-full border-2 border-slate-300;
+    @apply h-7 w-7 rounded-full border-[3px] border-slate-200;
     border-top-color: var(--org-primary);
-    animation: sp-spin 0.8s linear infinite;
+    animation: sp-spin 0.7s linear infinite;
   }
 
   .sp-error-state {
@@ -3153,6 +3203,356 @@ button {
 
   .sp-search {
     @apply min-w-0;
+  }
+}
+
+.login-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: minmax(520px, 0.92fr) minmax(520px, 1.08fr);
+  overflow: hidden;
+  background: #f4f6fb;
+  color: #172033;
+}
+
+.login-visual-panel {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid #d8deea;
+  padding: 36px 48px;
+  background: #f8fafc;
+  color: #101928;
+}
+
+.login-visual-panel::after {
+  display: none;
+}
+
+.login-visual-panel::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    radial-gradient(circle at 22% 18%, rgba(20, 86, 160, 0.09), transparent 28%),
+    linear-gradient(145deg, #ffffff 0%, #f4f7fb 46%, #e9eef6 100%);
+}
+
+.login-diagonal-base,
+.login-diagonal-front {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: 72%;
+  pointer-events: none;
+}
+
+.login-diagonal-base {
+  background: #e8f0fa;
+  clip-path: polygon(28% 0, 100% 0, 100% 100%, 0 100%);
+  animation: sinipro2-login-diagonal-base 1.2s cubic-bezier(0, 0.55, 0.45, 1) both;
+}
+
+.login-diagonal-front {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(222, 233, 247, 0.78) 45%, rgba(198, 217, 238, 0.88));
+  clip-path: polygon(31% 0, 100% 0, 100% 100%, 3% 100%);
+  animation: sinipro2-login-diagonal-front 1.2s cubic-bezier(0, 0.55, 0.45, 1) 80ms both;
+}
+
+.login-visual-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  max-width: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  animation: none;
+}
+
+.login-visual-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  animation: sinipro2-login-item-rise 520ms ease-out 180ms both;
+}
+
+.login-visual-brand img {
+  display: block;
+  width: 100%;
+  max-width: 440px;
+  height: auto;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.login-visual-brand svg {
+  color: var(--org-primary);
+}
+
+.login-visual-content h1 {
+  margin: 0;
+  color: #101928;
+  font-size: 2.9rem;
+  font-weight: 650;
+  line-height: 1.02;
+  letter-spacing: 0;
+  text-align: center;
+  text-shadow: none;
+  animation: sinipro2-login-item-rise 520ms ease-out 330ms both;
+}
+
+.login-notices-illustration {
+  position: relative;
+  width: min(100%, 470px);
+  margin-top: 48px;
+  animation: sinipro2-login-item-rise 520ms ease-out 480ms both;
+}
+
+.login-notices-illustration > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.login-restricted-label {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: #6a7487;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  animation: sinipro2-login-item-rise 520ms ease-out 630ms both;
+}
+
+.login-form-side {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 48px;
+  background: #f4f6fb;
+}
+
+.login-mobile-brand {
+  display: none;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 460px;
+  gap: 20px;
+  border: 1px solid #d8deea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 32px;
+  box-shadow: 0 22px 60px rgba(31, 45, 71, 0.12);
+  animation: sinipro2-login-card-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.login-card-title {
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.login-card-title h2 {
+  margin: 0;
+  color: #101928;
+  font-size: 1.7rem;
+  font-weight: 650;
+  line-height: 1.15;
+}
+
+.login-card-title p {
+  margin-top: 8px;
+  color: #59657a;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.login-mark {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f2f7ff;
+  color: var(--org-primary);
+}
+
+.login-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.login-card .sp-field span {
+  color: #27364f;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.login-card .sp-field input,
+.login-card .sp-password-field input {
+  height: 48px;
+  border-color: #b9c3d2;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #172033;
+  font-size: 15px;
+}
+
+.login-card .sp-field input {
+  padding-inline: 16px;
+}
+
+.login-card .sp-password-field input {
+  padding-left: 16px;
+  padding-right: 48px;
+}
+
+.login-card .sp-field input:focus,
+.login-card .sp-password-field input:focus {
+  border-color: var(--org-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--org-primary) 18%, transparent);
+}
+
+.login-submit-button {
+  height: 48px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: var(--org-primary);
+  color: var(--org-on-primary);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--org-primary) 24%, transparent);
+}
+
+.login-submit-button > span {
+  display: none;
+}
+
+.login-submit-button::after {
+  display: none;
+}
+
+@keyframes sinipro2-login-diagonal-base {
+  from {
+    clip-path: polygon(100% 0, 100% 0, 100% 100%, 100% 100%);
+  }
+  to {
+    clip-path: polygon(28% 0, 100% 0, 100% 100%, 0 100%);
+  }
+}
+
+@keyframes sinipro2-login-diagonal-front {
+  from {
+    clip-path: polygon(100% 0, 100% 0, 100% 100%, 100% 100%);
+  }
+  to {
+    clip-path: polygon(31% 0, 100% 0, 100% 100%, 3% 100%);
+  }
+}
+
+@keyframes sinipro2-login-item-rise {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sinipro2-login-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-diagonal-base,
+  .login-diagonal-front,
+  .login-visual-brand,
+  .login-visual-content h1,
+  .login-notices-illustration,
+  .login-restricted-label,
+  .login-card {
+    animation: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .login-shell {
+    display: block;
+    min-height: 100vh;
+  }
+
+  .login-visual-panel {
+    display: none;
+  }
+
+  .login-form-side {
+    min-height: 100vh;
+    flex-direction: column;
+    padding: 32px 20px;
+  }
+
+  .login-mobile-brand {
+    display: flex;
+    min-height: 96px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+    color: var(--org-primary);
+  }
+
+  .login-mobile-brand img {
+    display: block;
+    width: 100%;
+    max-width: 320px;
+    height: auto;
+    max-height: 140px;
+    object-fit: contain;
+  }
+
+  .login-card {
+    max-width: 420px;
+    padding: 24px;
+  }
+}
+
+@media (max-width: 560px) {
+  .login-form-side {
+    padding-inline: 20px;
+  }
+
+  .login-card {
+    padding: 24px 20px;
+  }
+
+  .login-card-title {
+    gap: 12px;
+  }
+
+  .login-card-title h2 {
+    font-size: 1.5rem;
   }
 }
 
@@ -3518,8 +3918,8 @@ button {
 
 .sp-section-icon {
   @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-lg;
-  background: rgba(45, 91, 255, 0.18);
-  color: #0040df;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
 }
 
 .sp-section-icon.tertiary {
@@ -3582,17 +3982,17 @@ button {
 .sp-logo-dropzone:hover,
 .sp-logo-dropzone.is-dragging {
   background: #ebeef4;
-  border-color: #0040df;
+  border-color: var(--org-primary);
 }
 
 .sp-logo-dropzone-preview {
   @apply flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-0 p-2 transition;
-  background: #2d5bff;
-  color: #0040df;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
 }
 
 .sp-logo-dropzone-preview svg {
-  color: #0040df;
+  color: var(--org-primary);
 }
 
 .sp-logo-dropzone:hover .sp-logo-dropzone-preview {
@@ -3645,8 +4045,8 @@ button {
 }
 
 .sp-color-input input[type="text"]:focus {
-  border-color: #0040df;
-  box-shadow: 0 0 0 1px #0040df;
+  border-color: var(--org-primary);
+  box-shadow: 0 0 0 1px var(--org-primary);
 }
 
 .sp-settings-actions {
@@ -3700,12 +4100,49 @@ button {
 
 .sp-shell.app-redesign .sp-logo-mark {
   @apply h-10 w-10 rounded-full p-0;
-  background: #2d5bff;
-  color: #efefff;
+  background: var(--org-secondary);
+  color: var(--org-on-primary);
+}
+
+.sp-shell.app-redesign .sp-logo-mark.has-image {
+  @apply w-auto rounded-none p-0;
+  background: transparent;
+  overflow: visible;
 }
 
 .sp-shell.app-redesign .sp-logo-mark img {
-  @apply h-full w-full object-cover;
+  @apply h-full w-full object-contain;
+}
+
+.sp-shell.app-redesign .sp-logo-mark.has-image img {
+  @apply h-10 w-auto object-contain;
+  max-width: 180px;
+}
+
+.sp-shell.app-redesign .sp-logo.only-logo {
+  @apply mb-6 block px-3 py-4;
+}
+
+.sp-shell.app-redesign .sp-logo.only-logo .sp-logo-mark {
+  @apply h-auto w-full;
+}
+
+/* Caja de alto fijo: el logo se ESCALA (hacia arriba o abajo) para llenarla,
+   manteniendo proporción. Así queda grande y bien ajustado aunque el archivo
+   original sea chico (max-height por sí solo no agranda imágenes pequeñas). */
+.sp-shell.app-redesign .sp-logo.only-logo .sp-logo-mark.has-image {
+  @apply justify-center;
+  width: 100%;
+  height: 108px;
+  background: transparent;
+  overflow: visible;
+}
+
+.sp-shell.app-redesign .sp-logo.only-logo .sp-logo-mark.has-image img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: contain;
 }
 
 .sp-logo-copy {
@@ -3719,7 +4156,7 @@ button {
 
 .sp-shell.app-redesign .sp-logo strong {
   @apply block truncate text-2xl font-bold leading-8;
-  color: #0040df;
+  color: var(--org-primary);
 }
 
 .sp-shell.app-redesign .sp-nav {
@@ -3731,7 +4168,7 @@ button {
 }
 
 .sp-shell.app-redesign .sp-nav button {
-  @apply min-h-10 scale-95 rounded-xl px-4 py-2 text-sm font-medium transition-all active:scale-90;
+  @apply min-h-12 scale-95 gap-3 rounded-xl px-4 py-3 text-base font-semibold transition-all active:scale-90;
   color: #434656;
 }
 
@@ -3741,8 +4178,8 @@ button {
 }
 
 .sp-shell.app-redesign .sp-nav button.active {
-  background: #2d5bff;
-  color: #efefff;
+  background: var(--org-primary);
+  color: var(--org-on-primary);
   box-shadow: none;
 }
 
@@ -3768,7 +4205,7 @@ button {
 
 .sp-shell.app-redesign .sp-header h1 {
   @apply text-2xl font-bold;
-  color: #0040df;
+  color: var(--org-primary);
 }
 
 .sp-shell.app-redesign .sp-header p {
@@ -3818,7 +4255,7 @@ button {
 .sp-shell.app-redesign .sp-user-trigger em {
   @apply mt-0.5 text-[10px] font-bold uppercase not-italic;
   letter-spacing: 0;
-  color: #0040df;
+  color: var(--org-primary);
 }
 
 .sp-shell.app-redesign .sp-user-trigger > svg {
@@ -3863,12 +4300,16 @@ button {
 
 .sp-shell.app-redesign .sp-primary-action {
   @apply rounded-xl px-6;
-  background: #0040df;
-  color: #ffffff;
+  background: var(--org-primary);
+  color: var(--org-on-primary);
 }
 
-.sp-shell.app-redesign .sp-primary-action:hover {
-  opacity: 0.9;
+.sp-shell.app-redesign .sp-primary-action:not(:disabled):hover {
+  background: color-mix(in srgb, var(--org-primary) 88%, #000);
+}
+
+.sp-shell.app-redesign .sp-primary-action:not(:disabled):active {
+  background: color-mix(in srgb, var(--org-primary) 80%, #000);
 }
 
 .sp-shell.app-redesign .sp-secondary-action {
@@ -3900,6 +4341,474 @@ button {
 .sp-shell.app-redesign .sp-company-card:hover {
   box-shadow: 0 8px 24px rgba(0, 64, 223, 0.08);
   border-color: transparent;
+}
+
+/* ── Avisos: tarjeta rediseñada (estilo sinipro-1) ── */
+.sp-notice-head {
+  @apply mb-1.5 flex items-center justify-between gap-2;
+}
+.sp-notice-head h4 {
+  @apply m-0 text-[13px] font-semibold leading-tight;
+  color: var(--sp-text);
+}
+.sp-notice-avatar {
+  @apply flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[8px] font-bold;
+  background: var(--sp-surface-lowest);
+  border: 1px solid var(--sp-border);
+  color: var(--sp-text-muted);
+}
+.sp-notice-summary {
+  @apply mb-1.5 text-[11px] leading-snug;
+  color: var(--sp-text-muted);
+}
+.sp-notice-metarow {
+  @apply mb-2 flex items-center justify-between gap-2;
+}
+.sp-notice-tags {
+  @apply flex min-w-0 items-center gap-1.5;
+}
+.sp-notice-branch {
+  @apply shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide;
+  background: var(--sp-surface-low);
+  border: 1px solid var(--sp-border);
+  color: var(--sp-text-muted);
+}
+.sp-notice-phone {
+  @apply flex min-w-0 items-center gap-1 text-[10px] not-italic;
+  color: var(--sp-text-faint);
+}
+.sp-notice-due {
+  @apply shrink-0 text-[10px] font-semibold;
+}
+.sp-notice-due.danger {
+  color: var(--sp-red);
+}
+.sp-notice-due.warning {
+  color: var(--sp-amber);
+}
+.sp-notice-due.muted {
+  color: var(--sp-text-muted);
+}
+
+/* ── Avisos: botones de acción ── */
+.sp-card-actions button {
+  @apply inline-flex items-center justify-center gap-1;
+}
+.sp-action-green {
+  background: var(--sp-green-soft);
+  color: var(--sp-green);
+}
+.sp-action-green:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--sp-green) 16%, transparent);
+}
+.sp-action-paid {
+  @apply inline-flex flex-1 items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold;
+  background: var(--sp-green-soft);
+  color: var(--sp-green);
+}
+
+/* ── Diálogo de pago ── */
+.sp-pay-form {
+  @apply flex flex-col gap-4;
+}
+.sp-pay-client {
+  @apply m-0 text-xs font-medium;
+  color: var(--sp-text-muted);
+}
+.sp-pay-question {
+  @apply m-0 text-xs font-semibold uppercase tracking-wide;
+  color: var(--sp-text-muted);
+}
+.sp-pay-options {
+  @apply flex flex-col gap-2;
+}
+.sp-pay-option {
+  @apply flex items-center justify-between gap-3 rounded-lg px-4 py-3 text-left transition;
+  background: var(--sp-surface-low);
+  border: 1px solid var(--sp-border);
+}
+.sp-pay-option:hover:not(:disabled) {
+  border-color: var(--sp-border-strong);
+}
+.sp-pay-option.is-selected {
+  background: var(--sp-green-soft);
+  border-color: var(--sp-green);
+}
+.sp-pay-option-copy {
+  @apply flex flex-col gap-0.5;
+}
+.sp-pay-option-copy strong {
+  @apply text-sm font-semibold;
+  color: var(--sp-text);
+}
+.sp-pay-option-copy em {
+  @apply text-[11px] not-italic;
+  color: var(--sp-text-muted);
+}
+.sp-pay-check {
+  @apply flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white;
+  background: var(--sp-green);
+}
+.sp-pay-error {
+  @apply rounded-lg px-3 py-2 text-sm;
+  background: var(--sp-red-soft);
+  border: 1px solid #fecdca;
+  color: var(--sp-red);
+}
+
+/* ── Asegurado clickeable + detalle de pólizas ── */
+.sp-entity-card.is-clickable,
+.sp-list-row.is-clickable {
+  @apply cursor-pointer;
+}
+.sp-entity-card.is-clickable:focus-visible,
+.sp-list-row.is-clickable:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--org-primary) 34%, transparent);
+  outline-offset: 2px;
+}
+
+.sp-client-detail {
+  @apply flex flex-col gap-4;
+}
+.sp-client-detail-meta {
+  @apply flex flex-wrap gap-x-4 gap-y-1.5;
+}
+.sp-client-detail-meta span {
+  @apply flex items-center gap-1.5 text-xs;
+  color: var(--sp-text-muted);
+}
+.sp-client-detail-head {
+  @apply flex items-center justify-between border-t pt-3;
+  border-color: var(--sp-border);
+}
+.sp-client-detail-head h3 {
+  @apply m-0 text-sm font-semibold;
+  color: var(--sp-text);
+}
+.sp-client-detail-head span {
+  @apply text-xs;
+  color: var(--sp-text-faint);
+}
+.sp-client-policies {
+  @apply flex flex-col gap-2;
+}
+.sp-client-policy {
+  @apply rounded-lg px-4 py-3;
+  background: var(--sp-surface-low);
+  border: 1px solid var(--sp-border);
+}
+.sp-client-policy-top {
+  @apply mb-1.5 flex items-center justify-between gap-2;
+}
+.sp-client-policy-top strong {
+  @apply truncate text-sm font-semibold;
+  color: var(--sp-text);
+}
+.sp-client-policy-meta {
+  @apply flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px];
+  color: var(--sp-text-muted);
+}
+.sp-client-policy-meta span {
+  @apply flex items-center gap-1;
+}
+
+/* ── Tarjeta de aviso: diferenciación por estado ── */
+.sp-shell.app-redesign .sp-notice-card {
+  position: relative;
+}
+.sp-shell.app-redesign .sp-notice-card.status-avisar {
+  border-left: 3px solid #d98a0b;
+  background: color-mix(in srgb, #d98a0b 4%, #ffffff);
+}
+.sp-shell.app-redesign .sp-notice-card.status-avisado {
+  border-left: 3px solid #3f7ef5;
+  background: color-mix(in srgb, #3f7ef5 4%, #ffffff);
+}
+.sp-shell.app-redesign .sp-notice-card.status-pagado {
+  border-left: 3px solid var(--sp-green);
+  background: color-mix(in srgb, var(--sp-green) 5%, #ffffff);
+}
+
+/* ── Aviso: auditoría (quién avisó / cobró) ── */
+.sp-notice-audit {
+  @apply mb-2 flex flex-col gap-0.5;
+}
+.sp-notice-audit span {
+  @apply flex items-center gap-1 text-[10px] font-medium;
+  color: var(--sp-text-faint);
+}
+
+/* ── Aviso: notas ── */
+.sp-notice-notes {
+  @apply mt-1 border-t pt-2;
+  border-color: var(--sp-border);
+}
+.sp-notice-notes-toggle {
+  @apply flex w-full items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide;
+  color: var(--sp-text-muted);
+}
+.sp-notice-notes-toggle .is-open {
+  transform: rotate(180deg);
+}
+.sp-notice-notes-body {
+  @apply mt-1.5 flex flex-col gap-1.5;
+}
+.sp-notice-note {
+  @apply flex items-start justify-between gap-1.5 rounded-md px-2 py-1.5 text-[10px];
+  background: var(--sp-surface-low);
+  border: 1px solid var(--sp-border);
+}
+.sp-notice-note.own {
+  background: var(--sp-amber-soft);
+  border-color: transparent;
+  border-left: 2px solid var(--sp-amber);
+}
+.sp-notice-note-text {
+  @apply min-w-0 flex-1;
+  color: var(--sp-text-muted);
+}
+.sp-notice-note.own .sp-notice-note-text {
+  color: var(--sp-amber);
+}
+.sp-notice-note button {
+  @apply shrink-0;
+  color: var(--sp-red);
+}
+.sp-notice-note-add {
+  @apply flex items-center gap-1.5;
+}
+.sp-notice-note-add input {
+  @apply h-7 min-w-0 flex-1 rounded-md border px-2 text-[11px] outline-none;
+  background: var(--sp-surface);
+  border-color: var(--sp-border);
+  color: var(--sp-text);
+}
+.sp-notice-note-add button {
+  @apply flex h-7 w-7 shrink-0 items-center justify-center rounded-md;
+  background: var(--sp-accent-soft);
+  color: var(--sp-accent);
+}
+.sp-notice-note-add button:disabled {
+  @apply cursor-not-allowed opacity-60;
+}
+
+/* ── Botón revertir ── */
+.sp-action-revert {
+  background: rgba(120, 130, 150, 0.1);
+  color: var(--sp-text-muted);
+}
+.sp-action-revert:hover:not(:disabled) {
+  background: rgba(120, 130, 150, 0.2);
+}
+
+/* ── Pantalla de detalle del asegurado ── */
+.sp-client-screen {
+  @apply flex flex-col gap-5;
+}
+.sp-back-link {
+  @apply inline-flex w-fit items-center gap-1.5 text-sm font-semibold;
+  color: var(--org-primary);
+}
+.sp-client-hero {
+  @apply flex flex-col gap-5 rounded-xl border bg-white p-6;
+  border-color: var(--sp-border);
+  box-shadow: 0 4px 12px rgba(0, 64, 223, 0.04);
+}
+.sp-client-hero-top {
+  @apply flex items-center gap-4;
+}
+.sp-avatar.lg {
+  @apply h-14 w-14 rounded-2xl text-lg;
+}
+.sp-client-hero-top h2 {
+  @apply m-0 text-xl font-bold;
+  color: var(--sp-text);
+}
+.sp-client-hero-top p {
+  @apply mt-1 flex items-center gap-1 text-sm;
+  color: var(--sp-text-muted);
+}
+.sp-client-hero-grid {
+  @apply grid gap-x-6 gap-y-3 border-t pt-4;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  border-color: var(--sp-border);
+}
+.sp-client-field {
+  @apply flex flex-col gap-1;
+}
+.sp-client-field-label {
+  @apply flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide;
+  color: var(--sp-text-faint);
+}
+.sp-client-field-value {
+  @apply truncate text-sm font-medium;
+  color: var(--sp-text);
+}
+a.sp-client-field-value:hover {
+  color: var(--org-primary);
+}
+.sp-client-note {
+  @apply flex flex-col gap-2 rounded-lg border p-4;
+  background: var(--sp-surface-low);
+  border-color: var(--sp-border);
+}
+.sp-client-note-head {
+  @apply flex items-center justify-between;
+}
+.sp-client-note-head > span {
+  @apply flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide;
+  color: var(--sp-text-muted);
+}
+.sp-client-note-head button {
+  @apply flex items-center gap-1 text-xs font-semibold;
+  color: var(--org-primary);
+}
+.sp-client-note-text {
+  @apply m-0 whitespace-pre-line text-sm;
+  color: var(--sp-text);
+}
+.sp-client-note-empty {
+  @apply m-0 text-sm;
+  color: var(--sp-text-faint);
+}
+.sp-client-note-edit {
+  @apply flex flex-col gap-2;
+}
+.sp-client-note-edit textarea {
+  @apply w-full rounded-lg border px-3 py-2 text-sm outline-none;
+  background: var(--sp-surface);
+  border-color: var(--sp-border-strong);
+  color: var(--sp-text);
+}
+.sp-client-note-actions {
+  @apply flex justify-end gap-2;
+}
+
+/* Paneles de póliza con historial */
+.sp-policy-panels {
+  @apply flex flex-col gap-2.5;
+}
+.sp-policy-panel {
+  @apply overflow-hidden rounded-xl border bg-white;
+  border-color: var(--sp-border);
+}
+.sp-policy-panel-head {
+  @apply flex w-full items-center gap-3 px-4 py-3 text-left transition-colors;
+}
+.sp-policy-panel-head:hover {
+  background: var(--sp-surface-hover);
+}
+.sp-policy-panel-icon {
+  @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-lg;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+}
+.sp-policy-panel-id {
+  @apply flex min-w-0 flex-1 flex-col;
+}
+.sp-policy-panel-id strong {
+  @apply truncate text-sm font-semibold;
+  color: var(--sp-text);
+}
+.sp-policy-panel-id span {
+  @apply truncate text-xs;
+  color: var(--sp-text-muted);
+}
+.sp-policy-chevron {
+  @apply shrink-0 transition-transform;
+  color: var(--sp-text-faint);
+}
+.sp-policy-chevron.is-open {
+  transform: rotate(180deg);
+}
+.sp-policy-panel-body {
+  @apply flex flex-col gap-4 border-t p-4;
+  border-color: var(--sp-border);
+  background: var(--sp-surface-low);
+}
+.sp-policy-info-grid {
+  @apply grid gap-x-5 gap-y-3;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.sp-policy-info-grid > div {
+  @apply flex flex-col gap-0.5;
+}
+.sp-policy-info-grid span {
+  @apply text-[11px] font-semibold uppercase tracking-wide;
+  color: var(--sp-text-faint);
+}
+.sp-policy-info-grid strong {
+  @apply text-sm font-medium;
+  color: var(--sp-text);
+}
+.sp-history-block {
+  @apply flex flex-col gap-2;
+}
+.sp-history-block h4 {
+  @apply m-0 text-xs font-bold uppercase tracking-wide;
+  color: var(--sp-text-muted);
+}
+.sp-history-empty {
+  @apply m-0 text-xs;
+  color: var(--sp-text-faint);
+}
+.sp-history-payment {
+  @apply flex items-center gap-2.5 rounded-lg border px-3 py-2;
+  background: var(--sp-green-soft);
+  border-color: transparent;
+}
+.sp-history-payment-icon {
+  @apply flex shrink-0 items-center justify-center;
+  color: var(--sp-green);
+}
+.sp-history-payment-main {
+  @apply flex min-w-0 flex-1 flex-col;
+}
+.sp-history-payment-main strong {
+  @apply text-sm font-semibold;
+  color: var(--sp-text);
+}
+.sp-history-payment-main span {
+  @apply truncate text-xs;
+  color: var(--sp-text-muted);
+}
+.sp-history-payment em {
+  @apply shrink-0 text-[11px] not-italic;
+  color: var(--sp-text-faint);
+}
+.sp-history-notice {
+  @apply rounded-lg border px-3 py-2;
+  background: var(--sp-surface);
+  border-color: var(--sp-border);
+}
+.sp-history-notice-top {
+  @apply flex flex-wrap items-center gap-2;
+}
+.sp-history-notice-top i {
+  @apply h-2 w-2 shrink-0 rounded-full;
+}
+.sp-history-notice-top strong {
+  @apply text-sm font-semibold;
+  color: var(--sp-text);
+}
+.sp-history-status {
+  @apply rounded px-1.5 py-0.5 text-[10px] font-bold uppercase;
+}
+.sp-history-status.avisar {
+  background: var(--sp-amber-soft);
+  color: var(--sp-amber);
+}
+.sp-history-status.avisado {
+  background: var(--sp-accent-soft);
+  color: var(--sp-accent);
+}
+.sp-history-status.pagado {
+  background: var(--sp-green-soft);
+  color: var(--sp-green);
+}
+.sp-history-notice-top em {
+  @apply text-[11px] not-italic;
+  color: var(--sp-text-faint);
 }
 
 .sp-shell.app-redesign .sp-section-title h2,
@@ -3941,6 +4850,16 @@ button {
   color: #181c20;
 }
 
+/* El px-4 de la regla anterior pisa el pl-9 base y encimaba el icono con el
+   placeholder. Restauramos espacio a la izquierda para los inputs con icono. */
+.sp-shell.app-redesign .sp-search input {
+  @apply pl-11;
+}
+
+.sp-shell.app-redesign .sp-search svg {
+  @apply left-4;
+}
+
 .sp-shell.app-redesign .sp-date-picker-trigger {
   @apply min-h-12 rounded-xl px-4;
   border-color: #e0e0de;
@@ -3966,8 +4885,8 @@ button {
 }
 
 .sp-shell.app-redesign .sp-date-picker-grid button.is-selected {
-  background: #0040df;
-  color: #ffffff;
+  background: var(--org-primary);
+  color: var(--org-on-primary);
 }
 
 .sp-shell.app-redesign .sp-search,
@@ -3987,7 +4906,7 @@ button {
 
 .sp-shell.app-redesign .sp-view-toggle button.active {
   background: #ffffff;
-  color: #0040df;
+  color: var(--org-primary);
 }
 
 .sp-shell.app-redesign .sp-user-dropdown {
@@ -4035,8 +4954,8 @@ button {
 
 .sp-team-header-actions > span {
   @apply rounded-full px-2 py-1 text-sm font-medium;
-  background: rgba(0, 64, 223, 0.1);
-  color: #0040df;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
 }
 
 .sp-team-header-actions .sp-primary-action {
@@ -4272,7 +5191,8 @@ button {
     @apply flex-row gap-1 overflow-x-auto px-2 py-2;
   }
 
-  .sp-shell.app-redesign .sp-logo {
+  .sp-shell.app-redesign .sp-logo,
+  .sp-shell.app-redesign .sp-logo.only-logo {
     @apply hidden;
   }
 
