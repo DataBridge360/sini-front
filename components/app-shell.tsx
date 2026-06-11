@@ -184,9 +184,9 @@ const AVATAR_COLORS = [
 ];
 
 const NOTICE_COLUMNS = [
-  { key: "avisar" as const, label: "Avisar", dot: "#f59e0b", icon: AlertTriangle },
-  { key: "avisado" as const, label: "Avisados", dot: "#4d8eff", icon: Clock },
-  { key: "pagado" as const, label: "Pagados", dot: "#4ae176", icon: CheckCircle }
+  { key: "avisar" as const, label: "Avisar", hint: "Pendientes de contactar", dot: "#f59e0b", icon: AlertTriangle },
+  { key: "avisado" as const, label: "Avisados", hint: "Ya contactados, falta el pago", dot: "#4d8eff", icon: Clock },
+  { key: "pagado" as const, label: "Pagados", hint: "Pago registrado", dot: "#4ae176", icon: CheckCircle }
 ];
 
 const SPANISH_MONTHS = [
@@ -205,7 +205,8 @@ const SPANISH_MONTHS = [
 ];
 
 const SPANISH_WEEK_DAYS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
-const LOGO_MAX_SIZE_BYTES = 5_000_000;
+// Debe coincidir con el límite del backend y del bucket de Supabase (2MB).
+const LOGO_MAX_SIZE_BYTES = 2_000_000;
 
 export function AppShell() {
   const queryClient = useQueryClient();
@@ -753,7 +754,7 @@ export function AppShell() {
         <header className="sp-header">
           <div>
             <h1>{titleForTab(tab)}</h1>
-            <p>Panel operativo</p>
+            <p>{subtitleForTab(tab)}</p>
           </div>
           <div className="sp-header-actions">
             {/* Notificaciones y ayuda ocultas por ahora */}
@@ -778,9 +779,14 @@ export function AppShell() {
               notices={allNotices}
               clients={allClients}
               policies={allPolicies}
+              companies={allCompanies}
               isLoading={notices.isLoading || clients.isLoading || policies.isLoading}
+              isCreatingClient={createClient.isPending}
+              isCreatingPolicy={createPolicy.isPending}
               error={notices.error?.message ?? clients.error?.message ?? policies.error?.message ?? null}
               setTab={setTab}
+              onCreateClient={(body) => createClient.mutateAsync(body)}
+              onCreatePolicy={(values) => createPolicy.mutateAsync(values)}
             />
           ) : null}
           {tab === "notices" ? (
@@ -817,12 +823,7 @@ export function AppShell() {
                 setOpenPolicyId(null);
                 setClientDetailId(client.id);
               }}
-              onSubmit={async (event) => {
-                event.preventDefault();
-                const formElement = event.currentTarget;
-                await createClient.mutateAsync(Object.fromEntries(new FormData(formElement)));
-                formElement.reset();
-              }}
+              onCreate={(body) => createClient.mutateAsync(body)}
             />
           ) : null}
           {tab === "clients" && clientDetailId ? (
@@ -1478,18 +1479,29 @@ function DashboardView({
   notices,
   clients,
   policies,
+  companies,
   isLoading,
+  isCreatingClient,
+  isCreatingPolicy,
   error,
-  setTab
+  setTab,
+  onCreateClient,
+  onCreatePolicy
 }: {
   userName: string;
   notices: Notice[];
   clients: Client[];
   policies: Policy[];
+  companies: InsuranceCompany[];
   isLoading: boolean;
+  isCreatingClient: boolean;
+  isCreatingPolicy: boolean;
   error: string | null;
   setTab: (tab: Tab) => void;
+  onCreateClient: (body: Record<string, FormDataEntryValue>) => Promise<unknown>;
+  onCreatePolicy: (values: PolicyFormValues) => Promise<unknown>;
 }) {
+  const [createOpen, setCreateOpen] = useState<"client" | "policy" | null>(null);
   const firstName = (userName || "").trim().split(/\s+/)[0] || "equipo";
   const todayLabel = capitalizeFirst(
     new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date())
@@ -1566,22 +1578,22 @@ function DashboardView({
 
   const quickActions = [
     {
-      label: "Gestionar avisos",
-      description: "Revisar vencimientos y registrar pagos",
-      icon: Bell,
-      tab: "notices" as const
-    },
-    {
       label: "Nueva póliza",
-      description: "Crear una póliza y generar sus avisos",
-      icon: Plus,
-      tab: "policies" as const
+      description: "Cargá una póliza y sus avisos se generan solos",
+      icon: FileText,
+      onClick: () => setCreateOpen("policy")
     },
     {
       label: "Nuevo asegurado",
-      description: "Cargar datos de contacto y localidad",
+      description: "Sumá un cliente con sus datos de contacto",
       icon: Users,
-      tab: "clients" as const
+      onClick: () => setCreateOpen("client")
+    },
+    {
+      label: "Gestionar avisos",
+      description: "Revisá vencimientos y registrá pagos",
+      icon: Bell,
+      onClick: () => setTab("notices")
     }
   ];
 
@@ -1595,15 +1607,19 @@ function DashboardView({
           <span className="text-xs font-semibold uppercase text-slate-500">{todayLabel}</span>
           <h2 className="m-0 mt-1 text-2xl font-semibold text-slate-950">Hola, {firstName} 👋</h2>
           <p className="m-0 mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Este es el estado de tu cartera y los últimos movimientos registrados.
+            {clients.length === 0
+              ? "Para empezar, cargá tu primer asegurado y después creá su póliza."
+              : policies.length === 0
+                ? "Ya tenés asegurados cargados: creá la primera póliza para generar sus avisos."
+                : "Este es el estado de tu cartera y los últimos movimientos registrados."}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2 max-[900px]:w-full max-[900px]:flex-wrap max-[520px]:flex-col">
-          <button type="button" className="sp-secondary-action" onClick={() => setTab("clients")}>
+          <button type="button" className="sp-secondary-action" onClick={() => setCreateOpen("client")}>
             <Users size={15} />
-            Asegurado
+            Nuevo asegurado
           </button>
-          <button type="button" className="sp-primary-action" onClick={() => setTab("policies")}>
+          <button type="button" className="sp-primary-action" onClick={() => setCreateOpen("policy")}>
             <Plus size={15} />
             Nueva póliza
           </button>
@@ -1633,54 +1649,94 @@ function DashboardView({
         })}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="sp-section-title">
-          <div>
-            <h2>Últimos pagos</h2>
-            <span>{paid.length} pagos registrados en total</span>
+      {/* Fila 1: lo accionable primero — agenda de vencimientos y el más urgente */}
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <article className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="sp-section-title">
+            <div>
+              <h2>Agenda inmediata</h2>
+              <span>Vencimientos ordenados por prioridad</span>
+            </div>
+            <button type="button" onClick={() => setTab("notices")}>
+              Ver todo
+              <ArrowUpRight size={14} />
+            </button>
           </div>
-          <button type="button" onClick={() => setTab("notices")}>
-            Ver avisos
-            <ArrowUpRight size={14} />
-          </button>
-        </div>
-        {recentPayments.length === 0 ? (
-          <EmptyState title="Sin pagos registrados" text="Cuando marques un aviso como pagado, vas a verlo acá." compact />
-        ) : (
           <div className="grid gap-1">
-            {recentPayments.map((notice) => {
-              const client = notice.policies?.clients;
-              return (
-                <button
-                  key={notice.id}
-                  className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left transition-colors hover:bg-slate-50"
-                  type="button"
-                  onClick={() => setTab("notices")}
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--org-primary-soft)] text-[var(--org-primary)]">
-                    <CheckCircle size={17} />
-                  </span>
-                  <span className="grid min-w-0 gap-0.5">
-                    <strong className="truncate text-sm font-semibold text-slate-950">{client?.full_name ?? "Sin cliente"}</strong>
-                    <em className="truncate text-xs not-italic text-slate-500">
-                      {notice.policies?.insurance_companies?.name ?? "Sin compañía"}
-                      {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
-                    </em>
-                  </span>
-                  <span className="grid justify-items-end gap-0.5 text-right">
-                    <b className="text-xs font-semibold text-slate-700">{formatDate(notice.due_date)}</b>
-                    {notice.paid_interval_months ? (
-                      <em className="text-[11px] not-italic text-slate-400">{intervalLabel(notice.paid_interval_months)}</em>
-                    ) : null}
-                  </span>
-                </button>
-              );
-            })}
+            {recentNotices.length === 0 ? (
+              <EmptyState title="Sin avisos cargados" text="Cuando existan vencimientos, van a aparecer en esta lista." compact />
+            ) : (
+              recentNotices.map((notice) => {
+                const client = notice.policies?.clients;
+                const days = getDaysUntilDue(notice.due_date);
+                return (
+                  <button
+                    key={notice.id}
+                    className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left transition-colors hover:bg-slate-50"
+                    type="button"
+                    onClick={() => setTab("notices")}
+                  >
+                    <span className="grid min-w-0 gap-0.5">
+                      <strong className="truncate text-sm font-semibold text-slate-950">{client?.full_name ?? "Sin cliente"}</strong>
+                      <em className="truncate text-xs not-italic text-slate-500">
+                        {notice.policies?.insurance_companies?.name ?? "Sin compañía"}
+                        {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
+                      </em>
+                    </span>
+                    <span className="grid shrink-0 justify-items-end gap-0.5">
+                      <DueChip days={days} status={notice.status} />
+                      <em className="text-[11px] not-italic text-slate-400">{formatDate(notice.due_date)}</em>
+                    </span>
+                  </button>
+                );
+              })
+            )}
           </div>
-        )}
+        </article>
+
+        <aside className="min-h-[280px] rounded-lg border border-slate-200 bg-white p-4">
+          <div className="sp-section-title">
+            <div>
+              <h2>Próximo vencimiento</h2>
+              <span>Prioridad operativa</span>
+            </div>
+            <CalendarDays size={18} />
+          </div>
+          {nextNotice ? (
+            <div className="grid gap-3">
+              <strong className="text-xl font-semibold leading-tight text-slate-950">
+                {nextNotice.policies?.clients?.full_name ?? "Sin cliente"}
+              </strong>
+              <span className="text-sm text-slate-500">
+                {nextNotice.policies?.insurance_companies?.name ?? "Sin compañía"}
+                {nextNotice.policies?.policy_number ? ` · #${nextNotice.policies.policy_number}` : ""}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <DueChip days={getDaysUntilDue(nextNotice.due_date)} status={nextNotice.status} />
+                <span className="text-xs font-medium text-slate-500">{formatDate(nextNotice.due_date)}</span>
+              </div>
+              {nextNotice.policies?.clients?.phone ? (
+                <a
+                  className="flex w-fit items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-[color:var(--org-primary)]"
+                  href={`tel:${nextNotice.policies.clients.phone}`}
+                >
+                  <Phone size={12} />
+                  {nextNotice.policies.clients.phone}
+                </a>
+              ) : null}
+              <button type="button" className="sp-primary-action mt-1 w-fit" onClick={() => setTab("notices")}>
+                Resolver
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+          ) : (
+            <EmptyState title="Sin pendientes" text="No hay vencimientos abiertos para gestionar." compact />
+          )}
+        </aside>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      {/* Fila 2: métricas de seguimiento + accesos rápidos de creación */}
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <article className="min-h-[280px] rounded-lg border border-slate-200 bg-white p-4">
           <div className="sp-section-title">
             <div>
@@ -1724,79 +1780,11 @@ function DashboardView({
           </div>
         </article>
 
-        <aside className="min-h-[280px] rounded-lg border border-slate-200 bg-white p-4">
-          <div className="sp-section-title">
-            <div>
-              <h2>Próximo vencimiento</h2>
-              <span>Prioridad operativa</span>
-            </div>
-            <CalendarDays size={18} />
-          </div>
-          {nextNotice ? (
-            <div className="grid gap-3">
-              <strong className="text-xl font-semibold leading-tight text-slate-950">
-                {nextNotice.policies?.clients?.full_name ?? "Sin cliente"}
-              </strong>
-              <span className="text-sm text-slate-500">{nextNotice.policies?.insurance_companies?.name ?? "Sin compañía"}</span>
-              <b className={`w-fit rounded-md bg-slate-50 px-2.5 py-1 text-xs font-semibold ${dueClass(getDaysUntilDue(nextNotice.due_date))}`}>
-                {dueLabel(getDaysUntilDue(nextNotice.due_date))} · {formatDate(nextNotice.due_date)}
-              </b>
-              <button type="button" className="sp-primary-action mt-2 w-fit" onClick={() => setTab("notices")}>
-                Resolver
-                <ArrowUpRight size={14} />
-              </button>
-            </div>
-          ) : (
-            <EmptyState title="Sin pendientes" text="No hay vencimientos abiertos para gestionar." compact />
-          )}
-        </aside>
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <article className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="sp-section-title">
-            <div>
-              <h2>Agenda inmediata</h2>
-              <span>Vencimientos ordenados por prioridad</span>
-            </div>
-            <button type="button" onClick={() => setTab("notices")}>
-              Ver todo
-              <ArrowUpRight size={14} />
-            </button>
-          </div>
-          <div className="grid gap-1">
-            {recentNotices.length === 0 ? (
-              <EmptyState title="Sin avisos cargados" text="Cuando existan vencimientos, van a aparecer en esta lista." compact />
-            ) : (
-              recentNotices.map((notice) => {
-                const client = notice.policies?.clients;
-                const days = getDaysUntilDue(notice.due_date);
-                return (
-                  <button
-                    key={notice.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left transition-colors hover:bg-slate-50"
-                    type="button"
-                    onClick={() => setTab("notices")}
-                  >
-                    <span className="grid min-w-0 gap-0.5">
-                      <strong className="truncate text-sm font-semibold text-slate-950">{client?.full_name ?? "Sin cliente"}</strong>
-                      <em className="truncate text-xs not-italic text-slate-500">
-                        {notice.policies?.policy_number ? `#${notice.policies.policy_number}` : "Sin póliza"}
-                      </em>
-                    </span>
-                    <b className={`text-xs font-semibold ${dueClass(days)}`}>{dueLabel(days)}</b>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </article>
-
         <article className="rounded-lg border border-slate-200 bg-white p-4">
           <div className="sp-section-title">
             <div>
               <h2>Accesos rápidos</h2>
-              <span>Flujos de trabajo frecuentes</span>
+              <span>Creá registros sin salir del dashboard</span>
             </div>
           </div>
           <div className="grid gap-2">
@@ -1805,21 +1793,94 @@ function DashboardView({
               return (
                 <button
                   key={action.label}
-                  className="grid grid-cols-[36px_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md border border-slate-200 bg-white p-3 text-left transition-colors hover:bg-slate-50"
+                  className="flex cursor-pointer items-center gap-3 rounded-md border border-slate-200 bg-white p-3 text-left transition-colors hover:border-[color:var(--org-primary)] hover:bg-slate-50"
                   type="button"
-                  onClick={() => setTab(action.tab)}
+                  onClick={action.onClick}
                 >
-                  <span className="row-span-2 flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-slate-600">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--org-primary-soft)] text-[var(--org-primary)]">
                     <Icon size={16} />
                   </span>
-                  <strong className="text-sm font-semibold text-slate-950">{action.label}</strong>
-                  <em className="text-xs not-italic leading-5 text-slate-500">{action.description}</em>
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <strong className="text-sm font-semibold text-slate-950">{action.label}</strong>
+                    <em className="text-xs not-italic leading-5 text-slate-500">{action.description}</em>
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-slate-300" />
                 </button>
               );
             })}
           </div>
         </article>
       </section>
+
+      {/* Fila 3: historial reciente */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="sp-section-title">
+          <div>
+            <h2>Últimos pagos</h2>
+            <span>{paid.length} pagos registrados en total</span>
+          </div>
+          <button type="button" onClick={() => setTab("notices")}>
+            Ver avisos
+            <ArrowUpRight size={14} />
+          </button>
+        </div>
+        {recentPayments.length === 0 ? (
+          <EmptyState title="Sin pagos registrados" text="Cuando marques un aviso como pagado, vas a verlo acá." compact />
+        ) : (
+          <div className="grid gap-1">
+            {recentPayments.map((notice) => {
+              const client = notice.policies?.clients;
+              return (
+                <button
+                  key={notice.id}
+                  className="grid cursor-pointer grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-slate-200 px-3 py-3 text-left transition-colors hover:bg-slate-50"
+                  type="button"
+                  onClick={() => setTab("notices")}
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--org-primary-soft)] text-[var(--org-primary)]">
+                    <CheckCircle size={17} />
+                  </span>
+                  <span className="grid min-w-0 gap-0.5">
+                    <strong className="truncate text-sm font-semibold text-slate-950">{client?.full_name ?? "Sin cliente"}</strong>
+                    <em className="truncate text-xs not-italic text-slate-500">
+                      {notice.policies?.insurance_companies?.name ?? "Sin compañía"}
+                      {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
+                    </em>
+                  </span>
+                  <span className="grid justify-items-end gap-0.5 text-right">
+                    <b className="text-xs font-semibold text-slate-700">{formatDate(notice.due_date)}</b>
+                    {notice.paid_interval_months ? (
+                      <em className="text-[11px] not-italic text-slate-400">{intervalLabel(notice.paid_interval_months)}</em>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <ClientCreateModal
+        isOpen={createOpen === "client"}
+        isCreating={isCreatingClient}
+        onClose={() => setCreateOpen(null)}
+        onCreate={onCreateClient}
+      />
+      <PolicyFormModal
+        key={createOpen === "policy" ? "dashboard-policy-open" : "dashboard-policy-closed"}
+        title="Nueva póliza"
+        submitLabel="Guardar póliza"
+        isOpen={createOpen === "policy"}
+        policy={null}
+        clients={clients}
+        companies={companies}
+        isSaving={isCreatingPolicy}
+        onClose={() => setCreateOpen(null)}
+        onSubmit={async (values) => {
+          await onCreatePolicy(values);
+          setCreateOpen(null);
+        }}
+      />
     </div>
   );
 }
@@ -1907,11 +1968,14 @@ function NoticesView({
             {NOTICE_COLUMNS.map((column) => (
               <section key={column.key} className="sp-kanban-column">
                 <header>
-                  <div>
-                    <i style={{ backgroundColor: column.dot }} />
-                    <h3>{column.label}</h3>
+                  <div className="min-w-0">
+                    <i className="shrink-0" style={{ backgroundColor: column.dot }} />
+                    <h3 className="shrink-0">{column.label}</h3>
+                    <em className="ml-1 hidden truncate text-[11px] font-normal not-italic text-slate-400 min-[1100px]:inline">
+                      {column.hint}
+                    </em>
                   </div>
-                  <span>{grouped[column.key].length}</span>
+                  <span className="shrink-0">{grouped[column.key].length}</span>
                 </header>
                 <div className="sp-kanban-scroll">
                   {grouped[column.key].length === 0 ? (
@@ -2201,15 +2265,6 @@ function NoticeCard({
   const client = notice.policies?.clients;
   const company = notice.policies?.insurance_companies;
   const days = getDaysUntilDue(notice.due_date);
-  // Si está pagado, el vencimiento se muestra en verde (ya cobrado), aunque haya vencido.
-  const dueColor =
-    notice.status === "pagado"
-      ? "text-emerald-600"
-      : days < 0
-        ? "text-red-600"
-        : days <= 7
-          ? "text-amber-600"
-          : "text-slate-500";
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
@@ -2226,29 +2281,49 @@ function NoticeCard({
           }
         }}
       >
-        {/* Nivel 1: nombre del asegurado + vencimiento */}
-        <div className="flex items-baseline justify-between gap-2">
+        {/* Nivel 1: nombre del asegurado + chip de vencimiento */}
+        <div className="flex items-start justify-between gap-2">
           <h4 className="truncate text-sm font-semibold leading-tight text-slate-900">{client?.full_name ?? "Sin cliente"}</h4>
-          <b className={`shrink-0 text-xs font-semibold ${dueColor}`}>{dueLabel(days)}</b>
+          <DueChip days={days} status={notice.status} />
         </div>
 
-        {/* Nivel 2: compañía / póliza / patente */}
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {company?.name ?? "Sin compañía"}
-          {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
-          {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
+        {/* Fecha real de vencimiento, siempre visible */}
+        <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+          <CalendarDays size={11} className="shrink-0" />
+          Vence el {formatDate(notice.due_date)}
         </p>
 
-        {/* Nivel 3: rama + teléfono */}
-        <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+        {/* Nivel 2: compañía / póliza / patente, con íconos para escanear rápido */}
+        <div className="mt-2 grid gap-1">
+          <p className="m-0 flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
+            <Building2 size={12} className="shrink-0 text-slate-400" />
+            <span className="truncate">{company?.name ?? "Sin compañía"}</span>
+          </p>
+          {notice.policies?.policy_number || notice.policies?.vehicle_plate ? (
+            <p className="m-0 flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
+              <Hash size={12} className="shrink-0 text-slate-400" />
+              <span className="truncate">
+                {notice.policies?.policy_number ?? "Sin N°"}
+                {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
+              </span>
+            </p>
+          ) : null}
+        </div>
+
+        {/* Nivel 3: rama + teléfono (clickeable para llamar) */}
+        <div className="mt-2 flex min-w-0 items-center gap-1.5">
           <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
             {notice.policies?.branch ?? "Rama"}
           </span>
           {client?.phone ? (
-            <span className="flex min-w-0 items-center gap-1 truncate text-[11px] text-slate-400">
-              <Phone size={11} />
-              {client.phone}
-            </span>
+            <a
+              href={`tel:${client.phone}`}
+              onClick={(event) => event.stopPropagation()}
+              className="flex min-w-0 items-center gap-1 truncate text-[11px] font-medium text-slate-500 transition-colors hover:text-[color:var(--org-primary)]"
+            >
+              <Phone size={11} className="shrink-0" />
+              <span className="truncate">{client.phone}</span>
+            </a>
           ) : null}
         </div>
 
@@ -2276,6 +2351,27 @@ function NoticeCard({
         onRequestPay={onRequestPay}
       />
     </article>
+  );
+}
+
+// Chip de vencimiento con fondo tintado: comunica urgencia de un vistazo.
+// Pagado siempre se muestra en verde, aunque la fecha haya pasado.
+function DueChip({ days, status }: { days: number; status: NoticeStatus }) {
+  const tone =
+    status === "pagado"
+      ? { className: "bg-emerald-50 text-emerald-700", Icon: CheckCircle }
+      : days < 0
+        ? { className: "bg-red-50 text-red-700", Icon: AlertTriangle }
+        : days <= 7
+          ? { className: "bg-amber-50 text-amber-700", Icon: Clock }
+          : { className: "bg-slate-100 text-slate-600", Icon: CalendarDays };
+  const Icon = tone.Icon;
+
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold ${tone.className}`}>
+      <Icon size={11} />
+      {dueLabel(days)}
+    </span>
   );
 }
 
@@ -2343,13 +2439,10 @@ function NoticeListRow({
         </span>
       </div>
       <span className="sp-branch-tag">{notice.policies?.branch ?? "Rama"}</span>
-      <b
-        className={`shrink-0 text-xs font-semibold ${
-          notice.status === "pagado" ? "text-emerald-600" : days < 0 ? "text-red-600" : days <= 7 ? "text-amber-600" : "text-slate-500"
-        }`}
-      >
-        {dueLabel(days)}
-      </b>
+      <span className="grid justify-items-start gap-0.5">
+        <DueChip days={days} status={notice.status} />
+        <em className="text-[11px] not-italic text-slate-400">{formatDate(notice.due_date)}</em>
+      </span>
       {!compact ? (
         <NoticeActions
           notice={notice}
@@ -2587,6 +2680,67 @@ function PaymentDialog({
   );
 }
 
+// Modal de alta de asegurado, compartido entre el dashboard y la vista de asegurados.
+function ClientCreateModal({
+  isOpen,
+  isCreating,
+  onClose,
+  onCreate
+}: {
+  isOpen: boolean;
+  isCreating: boolean;
+  onClose: () => void;
+  onCreate: (body: Record<string, FormDataEntryValue>) => Promise<unknown>;
+}) {
+  const [error, setError] = useState<string | null>(null);
+
+  const close = () => {
+    setError(null);
+    onClose();
+  };
+
+  return (
+    <Modal title="Nuevo asegurado" isOpen={isOpen} onClose={close}>
+      <form
+        className="sp-form sp-modal-form"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setError(null);
+          const formElement = event.currentTarget;
+          try {
+            await onCreate(Object.fromEntries(new FormData(formElement)));
+            formElement.reset();
+            close();
+          } catch (caught) {
+            setError(caught instanceof Error ? caught.message : "No se pudo crear el asegurado.");
+          }
+        }}
+      >
+        <div className="sp-form-section">
+          <h3>Datos personales</h3>
+          <label className="sp-field"><span>Nombre completo</span><input name="fullName" placeholder="Nombre y apellido" required /></label>
+        </div>
+        <div className="sp-form-grid">
+          <label className="sp-field"><span>Teléfono</span><input name="phone" placeholder="Teléfono" /></label>
+          <label className="sp-field"><span>Email</span><input name="email" type="email" placeholder="correo@dominio.com" /></label>
+        </div>
+        <div className="sp-form-grid">
+          <label className="sp-field"><span>DNI</span><input name="dni" placeholder="Documento" /></label>
+          <LocalityCombobox name="locality" />
+        </div>
+        {error ? <div className="sp-pay-error">{error}</div> : null}
+        <div className="sp-modal-actions">
+          <button className="sp-secondary-action" type="button" onClick={close} disabled={isCreating}>Cancelar</button>
+          <button className="sp-primary-action" type="submit" disabled={isCreating}>
+            {isCreating ? <span className="sp-button-spinner" aria-hidden="true" /> : <Plus size={14} />}
+            {isCreating ? "Cargando..." : "Agregar asegurado"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function ClientsView({
   clients,
   policies,
@@ -2594,7 +2748,7 @@ function ClientsView({
   isCreating,
   error,
   onOpenClient,
-  onSubmit
+  onCreate
 }: {
   clients: Client[];
   policies: Policy[];
@@ -2602,7 +2756,7 @@ function ClientsView({
   isCreating: boolean;
   error: string | null;
   onOpenClient: (client: Client) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onCreate: (body: Record<string, FormDataEntryValue>) => Promise<unknown>;
 }) {
   const [search, setSearch] = useState("");
   const [locality, setLocality] = useState("all");
@@ -2676,39 +2830,12 @@ function ClientsView({
         ) : null}
         {!isLoading && filtered.length === 0 ? <EmptyState title="No se encontraron asegurados" text="Probá ajustar la búsqueda o crear un nuevo asegurado." /> : null}
       </section>
-      <Modal title="Nuevo asegurado" isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-        <form
-          className="sp-form sp-modal-form"
-          onSubmit={async (event) => {
-            try {
-              await onSubmit(event);
-              setIsModalOpen(false);
-            } catch {
-              // parent mutation state renders the error
-            }
-          }}
-        >
-          <div className="sp-form-section">
-            <h3>Datos personales</h3>
-            <label className="sp-field"><span>Nombre completo</span><input name="fullName" placeholder="Nombre y apellido" required /></label>
-          </div>
-          <div className="sp-form-grid">
-            <label className="sp-field"><span>Teléfono</span><input name="phone" placeholder="Teléfono" /></label>
-            <label className="sp-field"><span>Email</span><input name="email" type="email" placeholder="correo@dominio.com" /></label>
-          </div>
-          <div className="sp-form-grid">
-            <label className="sp-field"><span>DNI</span><input name="dni" placeholder="Documento" /></label>
-            <LocalityCombobox name="locality" />
-          </div>
-          <div className="sp-modal-actions">
-            <button className="sp-secondary-action" type="button" onClick={() => setIsModalOpen(false)} disabled={isCreating}>Cancelar</button>
-            <button className="sp-primary-action" type="submit" disabled={isCreating}>
-              {isCreating ? <span className="sp-button-spinner" aria-hidden="true" /> : <Plus size={14} />}
-              {isCreating ? "Cargando..." : "Agregar asegurado"}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      <ClientCreateModal
+        isOpen={isModalOpen}
+        isCreating={isCreating}
+        onClose={() => setIsModalOpen(false)}
+        onCreate={onCreate}
+      />
     </div>
   );
 }
@@ -3819,7 +3946,9 @@ function SettingsView({
   const initialPrimaryColor = organization?.primary_color ?? fallbackOrganization?.primaryColor ?? "#127c72";
   const initialSecondaryColor = organization?.secondary_color ?? fallbackOrganization?.secondaryColor ?? "#64748b";
   const initialLogoUrl = organization?.logo_url ?? fallbackOrganization?.logoUrl ?? null;
+  const initialLoginLogoUrl = organization?.login_logo_url ?? fallbackOrganization?.loginLogoUrl ?? null;
   const [logoUrl, setLogoUrl] = useState<string | null>(initialLogoUrl);
+  const [loginLogoUrl, setLoginLogoUrl] = useState<string | null>(initialLoginLogoUrl);
   const [primaryColor, setPrimaryColor] = useState(initialPrimaryColor);
   const [secondaryColor, setSecondaryColor] = useState(initialSecondaryColor);
   const [uploadingKind, setUploadingKind] = useState<UploadLogoPayload["kind"] | null>(null);
@@ -3828,11 +3957,12 @@ function SettingsView({
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setLogoUrl(initialLogoUrl);
+      setLoginLogoUrl(initialLoginLogoUrl);
       setPrimaryColor(initialPrimaryColor);
       setSecondaryColor(initialSecondaryColor);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [initialLogoUrl, initialPrimaryColor, initialSecondaryColor]);
+  }, [initialLogoUrl, initialLoginLogoUrl, initialPrimaryColor, initialSecondaryColor]);
 
   const handleUploadLogo = async (file: File, kind: UploadLogoPayload["kind"]) => {
     if (!file.type.startsWith("image/")) {
@@ -3841,7 +3971,7 @@ function SettingsView({
     }
 
     if (file.size > LOGO_MAX_SIZE_BYTES) {
-      setUploadError("El logo debe pesar 5 MB o menos.");
+      setUploadError("El logo debe pesar 2 MB o menos.");
       return;
     }
 
@@ -3849,7 +3979,11 @@ function SettingsView({
     setUploadingKind(kind);
     try {
       const result = await onUploadLogo({ file, kind });
-      setLogoUrl(result.url);
+      if (kind === "login") {
+        setLoginLogoUrl(result.url);
+      } else {
+        setLogoUrl(result.url);
+      }
     } catch (uploadError) {
       setUploadError(uploadError instanceof Error ? uploadError.message : "No se pudo subir el logo.");
     } finally {
@@ -3859,6 +3993,10 @@ function SettingsView({
 
   const primaryPickerColor = isHexColor(primaryColor) ? primaryColor : "#000000";
   const secondaryPickerColor = isHexColor(secondaryColor) ? secondaryColor : "#000000";
+  // Para la vista previa usamos el último color válido: mientras se tipea un
+  // hex incompleto no queremos que el preview "parpadee" en negro.
+  const previewPrimary = normalizeHexColor(primaryColor) ?? normalizeHexColor(initialPrimaryColor) ?? "#176e64";
+  const previewSecondary = normalizeHexColor(secondaryColor) ?? normalizeHexColor(initialSecondaryColor) ?? "#64748b";
 
   return (
     <div className="sp-page padded sp-settings-page">
@@ -3897,10 +4035,12 @@ function SettingsView({
               <label className="sp-field">
                 <span>Email de soporte</span>
                 <input name="supportEmail" type="email" defaultValue={organization?.support_email ?? ""} placeholder="soporte@dominio.com" />
+                <small>Canal de contacto interno; no se muestra públicamente.</small>
               </label>
               <label className="sp-field">
                 <span>Teléfono de soporte</span>
                 <input name="supportPhone" defaultValue={organization?.support_phone ?? ""} placeholder="+54..." />
+                <small>Opcional. Ej: +54 9 11 5555-5555.</small>
               </label>
             </div>
           </section>
@@ -3910,18 +4050,31 @@ function SettingsView({
               <span className="sp-section-icon tertiary"><Palette size={21} /></span>
               <div>
                 <h2>Marca y colores</h2>
-                <span>El mismo logo se utiliza en login, sidebar y panel</span>
+                <span>Subí tus logos y elegí los colores que identifican a tu organización</span>
               </div>
             </div>
             <input name="logoUrl" type="hidden" value={logoUrl ?? ""} readOnly />
-            <span className="sp-upload-title">Logo principal</span>
             <div className="sp-logo-upload-grid">
-              <LogoDropzone
-                title="Haz clic o arrastra una imagen"
-                previewUrl={logoUrl}
-                isUploading={uploadingKind === "main"}
-                onFile={(file) => handleUploadLogo(file, "main")}
-              />
+              <div>
+                <span className="sp-upload-title">Logo del panel</span>
+                <LogoDropzone
+                  title="Hacé clic o arrastrá una imagen"
+                  hint="Se muestra en la barra lateral · PNG, JPG, WEBP o GIF hasta 2 MB"
+                  previewUrl={logoUrl}
+                  isUploading={uploadingKind === "main"}
+                  onFile={(file) => handleUploadLogo(file, "main")}
+                />
+              </div>
+              <div>
+                <span className="sp-upload-title">Logo de la pantalla de ingreso</span>
+                <LogoDropzone
+                  title="Hacé clic o arrastrá una imagen"
+                  hint="Se muestra al iniciar sesión; si no cargás uno se usa el logo del panel"
+                  previewUrl={loginLogoUrl}
+                  isUploading={uploadingKind === "login"}
+                  onFile={(file) => handleUploadLogo(file, "login")}
+                />
+              </div>
             </div>
             <div className="sp-form-grid">
               <label className="sp-field">
@@ -3930,6 +4083,7 @@ function SettingsView({
                   <input aria-label="Selector de color principal" type="color" value={primaryPickerColor} onChange={(event) => setPrimaryColor(event.currentTarget.value)} />
                   <input name="primaryColor" type="text" value={primaryColor} onChange={(event) => setPrimaryColor(event.currentTarget.value.toUpperCase())} spellCheck={false} />
                 </div>
+                <small>Botones, acciones y barra lateral.</small>
               </label>
               <label className="sp-field">
                 <span>Color secundario</span>
@@ -3937,7 +4091,31 @@ function SettingsView({
                   <input aria-label="Selector de color secundario" type="color" value={secondaryPickerColor} onChange={(event) => setSecondaryColor(event.currentTarget.value)} />
                   <input name="secondaryColor" type="text" value={secondaryColor} onChange={(event) => setSecondaryColor(event.currentTarget.value.toUpperCase())} spellCheck={false} />
                 </div>
+                <small>Detalles y resaltados del menú.</small>
               </label>
+            </div>
+            <div className="mt-6 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Vista previa de tus colores</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-xs font-semibold"
+                  style={{ backgroundColor: previewPrimary, color: contrastColor(previewPrimary) }}
+                >
+                  Botón principal
+                </span>
+                <span
+                  className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-xs font-semibold text-white"
+                  style={{ background: `color-mix(in srgb, ${previewPrimary} 68%, #111827)` }}
+                >
+                  Barra lateral
+                </span>
+                <span
+                  className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-xs font-semibold"
+                  style={{ backgroundColor: hexToRgba(previewSecondary, 0.16), color: previewSecondary }}
+                >
+                  Detalles
+                </span>
+              </div>
             </div>
             {uploadError ? <div className="sp-error">{uploadError}</div> : null}
           </section>
@@ -4160,7 +4338,7 @@ function TeamView({
                       <td>{roleLabel(member.role)}</td>
                       <td>
                         <span className={`sp-team-status ${member.isActive ? "is-active" : ""}`}>
-                          {member.isActive ? "Activo" : "Pendiente"}
+                          {member.isActive ? "Activo" : "Inactivo"}
                         </span>
                       </td>
                       <td>
@@ -4338,11 +4516,13 @@ function TeamView({
 
 function LogoDropzone({
   title,
+  hint,
   previewUrl,
   isUploading,
   onFile
 }: {
   title: string;
+  hint?: string;
   previewUrl: string | null;
   isUploading: boolean;
   onFile: (file: File) => Promise<void> | void;
@@ -4404,7 +4584,7 @@ function LogoDropzone({
       </div>
       <div className="sp-logo-dropzone-copy">
         <span>{title}</span>
-        <em>{previewUrl ? "Imagen cargada" : "PNG, JPG, WEBP o GIF hasta 5 MB"}</em>
+        <em>{hint ?? (previewUrl ? "Imagen cargada" : "PNG, JPG, WEBP o GIF hasta 2 MB")}</em>
       </div>
       <button
         type="button"
@@ -4833,6 +5013,20 @@ function titleForTab(tab: Tab) {
   return labels[tab];
 }
 
+function subtitleForTab(tab: Tab) {
+  const labels: Record<Tab, string> = {
+    dashboard: "Resumen de tu cartera y próximos vencimientos",
+    notices: "Avisá los vencimientos y registrá los pagos",
+    clients: "Tu cartera de asegurados y sus datos de contacto",
+    policies: "Pólizas activas de la organización",
+    companies: "Compañías aseguradoras con las que trabajás",
+    team: "Personas con acceso a esta organización",
+    settings: "Marca, colores y datos de tu organización",
+    profile: "Tus datos personales y contraseña"
+  };
+  return labels[tab];
+}
+
 function roleLabel(role: string) {
   const labels: Record<string, string> = {
     productor: "Productor",
@@ -4872,12 +5066,6 @@ function dueLabel(days: number) {
   if (days === 0) return "Vence hoy";
   if (days === 1) return "Mañana";
   return `En ${days} días`;
-}
-
-function dueClass(days: number) {
-  if (days < 0) return "danger";
-  if (days <= 7) return "warning";
-  return "muted";
 }
 
 function countUrgentNotices(notices: Notice[]) {

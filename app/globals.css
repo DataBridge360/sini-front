@@ -3965,7 +3965,7 @@ button {
 }
 
 .sp-logo-upload-grid {
-  @apply mb-10 grid grid-cols-1;
+  @apply mb-10 grid grid-cols-1 gap-4 md:grid-cols-2;
 }
 
 .sp-upload-title {
