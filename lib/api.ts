@@ -206,6 +206,17 @@ type RequestOptions = {
 
 export type ApiCommonOptions = Pick<RequestOptions, "token" | "organizationSlug">;
 
+// Respuesta de los listados con paginación server-side (PAGINADO.md).
+export type Paginated<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+// Fila de /clients paginado: incluye el conteo de pólizas activas embebido.
+export type ClientListItem = Client & { policies?: Array<{ count: number }> };
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const makeInit = (token = options.token): RequestInit => {
     const headers = new Headers();

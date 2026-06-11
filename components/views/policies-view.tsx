@@ -1,56 +1,81 @@
 "use client";
 
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CalendarDays, ChevronRight, Hash, Plus, Search, ShieldCheck, User } from "lucide-react";
 import { useState } from "react";
-import type { Client, InsuranceCompany, Policy } from "@/lib/api";
+import {
+  apiRequest,
+  type ApiCommonOptions,
+  type Client,
+  type InsuranceCompany,
+  type Paginated,
+  type Policy
+} from "@/lib/api";
 import { readView, writeView } from "@/lib/browser";
 import { formatDate } from "@/lib/format";
 import { BRANCHES, type EntityView, type PolicyFormValues } from "@/lib/shell-types";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
-import { paginate, Pagination } from "@/components/ui/pagination";
+import { PAGE_SIZE, Pagination } from "@/components/ui/pagination";
 import { SearchableSelect } from "@/components/ui/selects";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ViewToggle } from "@/components/ui/view-toggle";
 
+const NO_POLICIES: Policy[] = [];
+
+// Listado con paginación server-side (PAGINADO.md): búsqueda (asegurado,
+// número, patente) y filtros resueltos en el backend, de a 10 por página.
 export function PoliciesView({
-  policies,
+  common,
   clients,
   companies,
-  isLoading,
   isCreating,
-  error,
   onCreate,
   onOpenPolicy
 }: {
-  policies: Policy[];
+  common: ApiCommonOptions;
   clients: Client[];
   companies: InsuranceCompany[];
-  isLoading: boolean;
   isCreating: boolean;
-  error: string | null;
   onCreate: (values: PolicyFormValues) => Promise<unknown>;
   onOpenPolicy: (policy: Policy) => void;
 }) {
+  const slug = common.organizationSlug ?? "";
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
   const [companyId, setCompanyId] = useState("all");
   const [page, setPage] = useState(1);
   const [view, setView] = useState<EntityView>(() => readView("sp-policies-view", "list"));
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const debouncedSearch = useDebouncedValue(search.trim());
 
-  const branches = Array.from(new Set([...BRANCHES, ...policies.map((policy) => policy.branch)])).sort();
-  const filtered = policies.filter((policy) => {
-    const term = search.toLowerCase();
-    const matchesSearch =
-      !term ||
-      policy.clients?.full_name?.toLowerCase().includes(term) ||
-      policy.policy_number?.toLowerCase().includes(term) ||
-      policy.vehicle_plate?.toLowerCase().includes(term);
-    const matchesBranch = branch === "all" || policy.branch === branch;
-    const matchesCompany = companyId === "all" || policy.insurance_companies?.id === companyId;
-    return matchesSearch && matchesBranch && matchesCompany;
+  // Cambiar búsqueda o filtros siempre vuelve a la primera página
+  // (reset de estado derivado durante el render, sin efecto).
+  const filtersKey = `${debouncedSearch}|${branch}|${companyId}`;
+  const [lastFiltersKey, setLastFiltersKey] = useState(filtersKey);
+  if (filtersKey !== lastFiltersKey) {
+    setLastFiltersKey(filtersKey);
+    setPage(1);
+  }
+
+  const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+  if (debouncedSearch) params.set("search", debouncedSearch);
+  if (branch !== "all") params.set("branch", branch);
+  if (companyId !== "all") params.set("companyId", companyId);
+
+  const policiesQuery = useQuery({
+    queryKey: ["policies", slug, "page", { page, search: debouncedSearch, branch, companyId }],
+    placeholderData: keepPreviousData,
+    queryFn: () => apiRequest<Paginated<Policy>>(`/policies?${params.toString()}`, common)
   });
-  const paged = paginate(filtered, page);
+
+  const items = policiesQuery.data?.items ?? NO_POLICIES;
+  const total = policiesQuery.data?.total ?? 0;
+  const currentPage = policiesQuery.data?.page ?? page;
+  const pageSize = policiesQuery.data?.pageSize ?? PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = (currentPage - 1) * pageSize;
+  const isLoading = policiesQuery.isLoading;
 
   return (
     <div className="sp-page padded">
@@ -60,21 +85,12 @@ export function PoliciesView({
           <input
             placeholder="Asegurado, N° póliza, patente..."
             value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
+            onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <select
-          value={branch}
-          onChange={(event) => {
-            setBranch(event.target.value);
-            setPage(1);
-          }}
-        >
+        <select value={branch} onChange={(event) => setBranch(event.target.value)}>
           <option value="all">Todas las ramas</option>
-          {branches.map((item) => <option key={item} value={item}>{item}</option>)}
+          {BRANCHES.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
         <SearchableSelect
           value={companyId}
@@ -83,12 +99,9 @@ export function PoliciesView({
             ...companies.map((company) => ({ value: company.id, label: company.name }))
           ]}
           placeholder="Compañía"
-          onChange={(value) => {
-            setCompanyId(value);
-            setPage(1);
-          }}
+          onChange={setCompanyId}
         />
-        <span>{filtered.length} de {policies.length}</span>
+        <span>{items.length} de {total}</span>
         <ViewToggle
           leftLabel="Grid"
           rightLabel="Lista"
@@ -107,30 +120,32 @@ export function PoliciesView({
       </div>
 
       <section className="sp-section-card wide">
-        {error ? <ErrorState text={error} /> : null}
+        {policiesQuery.error ? <ErrorState text={policiesQuery.error.message} /> : null}
         {isLoading ? <LoadingState text="Cargando pólizas" /> : null}
         {!isLoading && view === "grid" ? (
           <div className="sp-card-grid">
-            {paged.items.map((policy) => (
+            {items.map((policy) => (
               <PolicyCard key={policy.id} policy={policy} onOpen={onOpenPolicy} />
             ))}
           </div>
         ) : null}
         {!isLoading && view === "list" ? (
           <div className="sp-list-panel embedded">
-            {paged.items.map((policy) => (
+            {items.map((policy) => (
               <PolicyRow key={policy.id} policy={policy} onOpen={onOpenPolicy} />
             ))}
           </div>
         ) : null}
-        {!isLoading && filtered.length === 0 ? <EmptyState title="No hay pólizas para mostrar" text="Probá limpiar los filtros o cargar una nueva póliza." /> : null}
+        {!isLoading && items.length === 0 ? (
+          <EmptyState title="No hay pólizas para mostrar" text="Probá limpiar los filtros o cargar una nueva póliza." />
+        ) : null}
         {!isLoading ? (
           <Pagination
-            page={paged.page}
-            totalPages={paged.totalPages}
-            start={paged.start}
-            count={paged.items.length}
-            total={paged.total}
+            page={currentPage}
+            totalPages={totalPages}
+            start={start}
+            count={items.length}
+            total={total}
             onChange={setPage}
           />
         ) : null}
@@ -216,4 +231,3 @@ function PolicyRow({ policy, onOpen }: { policy: Policy; onOpen: (policy: Policy
     </div>
   );
 }
-
