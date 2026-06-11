@@ -167,7 +167,7 @@ export function SettingsView({
                 <span>Color principal</span>
                 <div className="sp-color-input">
                   <input aria-label="Selector de color principal" type="color" value={primaryPickerColor} onChange={(event) => setPrimaryColor(event.currentTarget.value)} />
-                  <input name="primaryColor" type="text" value={primaryColor} onChange={(event) => setPrimaryColor(event.currentTarget.value.toUpperCase())} spellCheck={false} />
+                  <input name="primaryColor" type="text" value={primaryColor} onChange={(event) => setPrimaryColor(event.currentTarget.value.toUpperCase())} spellCheck={false} pattern="#[0-9a-fA-F]{6}" title="Usá un color en formato #RRGGBB" />
                 </div>
                 <small>Botones, acciones y barra lateral.</small>
               </label>
@@ -175,7 +175,7 @@ export function SettingsView({
                 <span>Color secundario</span>
                 <div className="sp-color-input">
                   <input aria-label="Selector de color secundario" type="color" value={secondaryPickerColor} onChange={(event) => setSecondaryColor(event.currentTarget.value)} />
-                  <input name="secondaryColor" type="text" value={secondaryColor} onChange={(event) => setSecondaryColor(event.currentTarget.value.toUpperCase())} spellCheck={false} />
+                  <input name="secondaryColor" type="text" value={secondaryColor} onChange={(event) => setSecondaryColor(event.currentTarget.value.toUpperCase())} spellCheck={false} pattern="#[0-9a-fA-F]{6}" title="Usá un color en formato #RRGGBB" />
                 </div>
                 <small>Detalles y resaltados del menú.</small>
               </label>

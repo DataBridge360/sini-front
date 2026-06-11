@@ -37,7 +37,7 @@ import {
   type UserProfile
 } from "@/lib/api";
 import { readTransitionMs } from "@/lib/browser";
-import { organizationThemeStyle } from "@/lib/colors";
+import { normalizeHexColor, organizationThemeStyle } from "@/lib/colors";
 import { emptyToNull, roleLabel } from "@/lib/format";
 import { countUrgentNotices } from "@/lib/notices";
 import {
@@ -57,6 +57,13 @@ import { ToastViewport, type ToastMessage } from "@/components/ui/toast";
 // Cada vista se carga on-demand (code-split): el usuario solo descarga el chunk
 // de la pestaña que visita, y el de login no viaja a usuarios autenticados.
 const viewLoading = () => <LoadingState text="Cargando..." />;
+
+// Fallbacks estables: un literal [] nuevo por render invalida la memoizacion aguas abajo.
+const NO_NOTICES: Notice[] = [];
+const NO_CLIENTS: Client[] = [];
+const NO_COMPANIES: InsuranceCompany[] = [];
+const NO_POLICIES: Policy[] = [];
+const NO_TEAM: OrganizationTeamMember[] = [];
 
 const LoginView = dynamic(() => import("@/components/views/login-view").then((m) => m.LoginView), {
   ssr: false,
@@ -170,6 +177,8 @@ export function AppShell() {
   const companies = useQuery({
     queryKey: ["insurance-companies", slug],
     enabled: Boolean(auth && slug),
+    // Catalogo estable: 5 min sin refetch al cambiar de pestana.
+    staleTime: 5 * 60 * 1000,
     queryFn: () => apiRequest<InsuranceCompany[]>("/insurance-companies", common)
   });
 
@@ -192,6 +201,8 @@ export function AppShell() {
   const organizationSettings = useQuery({
     queryKey: ["organization-settings", slug],
     enabled: Boolean(auth && slug && canManageOrganization),
+    // Branding y datos de soporte cambian poco; las mutaciones lo actualizan via setQueryData.
+    staleTime: 5 * 60 * 1000,
     queryFn: () => apiRequest<OrganizationSettings>("/organizations/current", common)
   });
 
@@ -482,10 +493,10 @@ export function AppShell() {
     );
   }
 
-  const allNotices = notices.data ?? [];
-  const allClients = clients.data ?? [];
-  const allCompanies = companies.data ?? [];
-  const allPolicies = policies.data ?? [];
+  const allNotices = notices.data ?? NO_NOTICES;
+  const allClients = clients.data ?? NO_CLIENTS;
+  const allCompanies = companies.data ?? NO_COMPANIES;
+  const allPolicies = policies.data ?? NO_POLICIES;
   const policyActions: PolicyActions = {
     clients: allClients,
     companies: allCompanies,
@@ -655,7 +666,7 @@ export function AppShell() {
           {tab === "team" && canManageOrganization ? (
             <TeamView
               currentUserId={auth.user.id}
-              team={organizationTeam.data ?? []}
+              team={organizationTeam.data ?? NO_TEAM}
               isLoading={organizationTeam.isLoading}
               isAdding={createOrganizationTeamMember.isPending}
               isUpdating={
@@ -696,8 +707,9 @@ export function AppShell() {
                 updateOrganization.mutate({
                   displayName: String(form.get("displayName") ?? ""),
                   logoUrl: emptyToNull(form.get("logoUrl")),
-                  primaryColor: emptyToNull(form.get("primaryColor")),
-                  secondaryColor: emptyToNull(form.get("secondaryColor")),
+                  // Los colores viajan normalizados (#rrggbb) o null: un hex inválido no se persiste.
+                  primaryColor: normalizeHexColor(String(form.get("primaryColor") ?? "")),
+                  secondaryColor: normalizeHexColor(String(form.get("secondaryColor") ?? "")),
                   supportEmail: emptyToNull(form.get("supportEmail")),
                   supportPhone: emptyToNull(form.get("supportPhone"))
                 });

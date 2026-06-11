@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -126,59 +127,54 @@ export function SearchableSelect({
   );
 }
 
+const NO_LOCALITY_OPTIONS: SelectOption[] = [];
+
+async function fetchLocalities(term: string, signal: AbortSignal): Promise<SelectOption[]> {
+  const params = new URLSearchParams({
+    nombre: term,
+    campos: "id,nombre,provincia.nombre",
+    max: "12"
+  });
+  const response = await fetch(`https://apis.datos.gob.ar/georef/api/localidades?${params}`, { signal });
+  const payload = (await response.json()) as {
+    localidades?: Array<{ id?: string; nombre?: string; provincia?: { nombre?: string } }>;
+  };
+  return (payload.localidades ?? [])
+    .map((locality, index) => ({
+      key: locality.id ?? `${locality.nombre ?? "localidad"}-${locality.provincia?.nombre ?? "provincia"}-${index}`,
+      value: locality.provincia?.nombre
+        ? `${locality.nombre ?? ""}, ${locality.provincia.nombre}`
+        : locality.nombre ?? "",
+      label: locality.nombre ?? "",
+      ...(locality.provincia?.nombre ? { meta: locality.provincia.nombre } : {})
+    }))
+    .filter((option) => option.value.trim() && option.label);
+}
+
 export function LocalityCombobox({ name }: { name: string }) {
   const [query, setQuery] = useState("");
   const [value, setValue] = useState("");
-  const [options, setOptions] = useState<SelectOption[]>([]);
   const [open, setOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [debouncedTerm, setDebouncedTerm] = useState("");
 
   useEffect(() => {
-    const term = query.trim();
-    if (term.length < 2) {
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      setIsLoading(true);
-      try {
-        const params = new URLSearchParams({
-          nombre: term,
-          campos: "id,nombre,provincia.nombre",
-          max: "12"
-        });
-        const response = await fetch(`https://apis.datos.gob.ar/georef/api/localidades?${params}`, {
-          signal: controller.signal
-        });
-        const payload = (await response.json()) as {
-          localidades?: Array<{ id?: string; nombre?: string; provincia?: { nombre?: string } }>;
-        };
-        const nextOptions = (payload.localidades ?? []).map((locality, index) => ({
-            key: locality.id ?? `${locality.nombre ?? "localidad"}-${locality.provincia?.nombre ?? "provincia"}-${index}`,
-            value: locality.provincia?.nombre
-              ? `${locality.nombre ?? ""}, ${locality.provincia.nombre}`
-              : locality.nombre ?? "",
-            label: locality.nombre ?? "",
-            ...(locality.provincia?.nombre ? { meta: locality.provincia.nombre } : {})
-          })).filter((option) => option.value.trim());
-        setOptions(nextOptions);
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setOptions([]);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    }, 280);
-
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
+    const timeout = window.setTimeout(() => setDebouncedTerm(query.trim()), 280);
+    return () => window.clearTimeout(timeout);
   }, [query]);
 
-  const visibleOptions = options.filter((option) => option.label);
+  const term = query.trim();
+  // El catálogo de localidades es estable: cachear por término evita volver a
+  // consultar la API externa al reabrir el formulario y teclear lo mismo.
+  const localities = useQuery({
+    queryKey: ["localidades", debouncedTerm],
+    enabled: debouncedTerm.length >= 2,
+    staleTime: 24 * 60 * 60 * 1000,
+    retry: 1,
+    queryFn: ({ signal }) => fetchLocalities(debouncedTerm, signal)
+  });
+
+  const visibleOptions = term.length >= 2 ? localities.data ?? NO_LOCALITY_OPTIONS : NO_LOCALITY_OPTIONS;
+  const isLoading = term.length >= 2 && (term !== debouncedTerm || localities.isFetching);
 
   return (
     <label className="sp-field">
@@ -192,7 +188,7 @@ export function LocalityCombobox({ name }: { name: string }) {
           onChange={(event) => {
             setQuery(event.target.value);
             setValue(event.target.value);
-            if (event.target.value.trim().length < 2) setOptions([]);
+
             setOpen(true);
           }}
         />

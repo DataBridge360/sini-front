@@ -4,6 +4,18 @@
 // Para activar la resolución por subdominio más adelante, poné FORCED_ORG_SLUG = null.
 export const FORCED_ORG_SLUG: string | null = "lucassegura";
 
+// Con NEXT_PUBLIC_BASE_DOMAIN configurado la resolución es exacta y soporta
+// dominios multi-nivel (p. ej. sinipro.com.ar); sin él se usa la heurística
+// de "subdominio = primera etiqueta cuando hay 3+ partes".
+const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN?.trim().toLowerCase() || null;
+
+const RESERVED_SUBDOMAINS = new Set(["www", "app", "api"]);
+
+function validSlug(candidate: string) {
+  if (!candidate || RESERVED_SUBDOMAINS.has(candidate)) return null;
+  return /^[a-z0-9-]{2,63}$/.test(candidate) ? candidate : null;
+}
+
 export function resolveSubdomainSlug(hostname: string) {
   const normalized = hostname.toLowerCase();
   if (
@@ -20,10 +32,15 @@ export function resolveSubdomainSlug(hostname: string) {
     return /^[a-z0-9-]{2,63}$/.test(localCandidate) ? localCandidate : null;
   }
 
+  if (BASE_DOMAIN) {
+    if (!normalized.endsWith(`.${BASE_DOMAIN}`)) return null;
+    const candidate = normalized.slice(0, -(BASE_DOMAIN.length + 1));
+    if (candidate.includes(".")) return null;
+    return validSlug(candidate);
+  }
+
   if (parts.length < 3) return null;
-  const candidate = parts[0] ?? "";
-  if (!candidate || candidate === "www" || candidate === "app" || candidate === "api") return null;
-  return /^[a-z0-9-]{2,63}$/.test(candidate) ? candidate : null;
+  return validSlug(parts[0] ?? "");
 }
 
 export function resolveLoginSlug(hostname: string, search: string) {
