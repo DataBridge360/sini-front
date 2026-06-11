@@ -9,6 +9,7 @@ import {
   ChevronDown,
   FileText,
   LayoutDashboard,
+  ListTodo,
   LogOut,
   Settings,
   Shield,
@@ -74,6 +75,10 @@ const DashboardView = dynamic(() => import("@/components/views/dashboard-view").
   loading: viewLoading
 });
 const NoticesView = dynamic(() => import("@/components/views/notices-view").then((m) => m.NoticesView), {
+  ssr: false,
+  loading: viewLoading
+});
+const TasksView = dynamic(() => import("@/components/views/tasks-view").then((m) => m.TasksView), {
   ssr: false,
   loading: viewLoading
 });
@@ -565,9 +570,9 @@ export function AppShell() {
           {tab === "dashboard" ? (
             <DashboardView
               userName={auth.user.fullName}
+              common={common}
               notices={allNotices}
               clients={allClients}
-              policies={allPolicies}
               companies={allCompanies}
               isLoading={notices.isLoading || clients.isLoading || policies.isLoading}
               isCreatingClient={createClient.isPending}
@@ -599,6 +604,16 @@ export function AppShell() {
                 setClientDetailId(clientId);
                 setTab("clients");
               }}
+            />
+          ) : null}
+          {tab === "tasks" ? (
+            <TasksView
+              common={common}
+              currentUserId={auth.user.id}
+              canModerate={canManageOrganization}
+              clients={allClients}
+              policies={allPolicies}
+              notify={notify}
             />
           ) : null}
           {tab === "clients" && !clientDetailId ? (
@@ -755,6 +770,7 @@ function Sidebar({
   const nav: Array<{ key: Tab; name: string; icon: typeof LayoutDashboard; count?: number }> = [
     { key: "dashboard" as const, name: "Dashboard", icon: LayoutDashboard },
     { key: "notices" as const, name: "Avisos", icon: CalendarDays, count: urgentCount },
+    { key: "tasks" as const, name: "Tareas", icon: ListTodo },
     { key: "policies" as const, name: "Pólizas", icon: FileText },
     { key: "clients" as const, name: "Asegurados", icon: Users },
     { key: "companies" as const, name: "Compañías", icon: Building2 }
@@ -910,6 +926,7 @@ function titleForTab(tab: Tab) {
   const labels: Record<Tab, string> = {
     dashboard: "Dashboard",
     notices: "Avisos",
+    tasks: "Tareas",
     clients: "Asegurados",
     policies: "Pólizas",
     companies: "Compañías",
@@ -924,6 +941,7 @@ function subtitleForTab(tab: Tab) {
   const labels: Record<Tab, string> = {
     dashboard: "Resumen de tu cartera y próximos vencimientos",
     notices: "Avisá los vencimientos y registrá los pagos",
+    tasks: "Organizá el trabajo del equipo en un tablero kanban",
     clients: "Tu cartera de asegurados y sus datos de contacto",
     policies: "Pólizas activas de la organización",
     companies: "Compañías aseguradoras con las que trabajás",

@@ -8,6 +8,7 @@ import { AVATAR_COLORS, initials } from "@/lib/format";
 import type { EntityView } from "@/lib/shell-types";
 import { ClientCreateModal } from "@/components/clients/client-create-modal";
 import { EntityToolbar } from "@/components/ui/entity-toolbar";
+import { paginate, Pagination } from "@/components/ui/pagination";
 import { SearchableSelect } from "@/components/ui/selects";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 
@@ -30,6 +31,7 @@ export function ClientsView({
 }) {
   const [search, setSearch] = useState("");
   const [locality, setLocality] = useState("all");
+  const [page, setPage] = useState(1);
   const [view, setView] = useState<EntityView>(() => readView("sp-clients-view", "list"));
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -48,11 +50,16 @@ export function ClientsView({
     );
   }, [clients, locality, search]);
 
+  const paged = paginate(filtered, page);
+
   return (
     <div className="sp-page padded">
       <EntityToolbar
         search={search}
-        setSearch={setSearch}
+        setSearch={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
         count={filtered.length}
         total={clients.length}
         view={view}
@@ -71,7 +78,10 @@ export function ClientsView({
             ...localities.map((item) => ({ value: item, label: item }))
           ]}
           placeholder="Localidad"
-          onChange={setLocality}
+          onChange={(value) => {
+            setLocality(value);
+            setPage(1);
+          }}
         />
       </EntityToolbar>
       <section className="sp-section-card wide">
@@ -79,26 +89,36 @@ export function ClientsView({
         {isLoading ? <LoadingState text="Cargando asegurados" /> : null}
         {!isLoading && view === "grid" ? (
           <div className="sp-card-grid">
-            {filtered.map((client, index) => (
-              <ClientCard key={client.id} client={client} policies={policies} color={AVATAR_COLORS[index % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
+            {paged.items.map((client, index) => (
+              <ClientCard key={client.id} client={client} policies={policies} color={AVATAR_COLORS[(paged.start + index) % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
             ))}
           </div>
         ) : null}
         {!isLoading && view === "list" ? (
           <div className="sp-list-panel embedded">
-            {filtered.length > 0 ? (
+            {paged.items.length > 0 ? (
               <div className="sp-list-header entity">
                 <span>Asegurado</span>
                 <span>Localidad</span>
                 <span>Pólizas</span>
               </div>
             ) : null}
-            {filtered.map((client, index) => (
-              <ClientRow key={client.id} client={client} policies={policies} color={AVATAR_COLORS[index % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
+            {paged.items.map((client, index) => (
+              <ClientRow key={client.id} client={client} policies={policies} color={AVATAR_COLORS[(paged.start + index) % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
             ))}
           </div>
         ) : null}
         {!isLoading && filtered.length === 0 ? <EmptyState title="No se encontraron asegurados" text="Probá ajustar la búsqueda o crear un nuevo asegurado." /> : null}
+        {!isLoading ? (
+          <Pagination
+            page={paged.page}
+            totalPages={paged.totalPages}
+            start={paged.start}
+            count={paged.items.length}
+            total={paged.total}
+            onChange={setPage}
+          />
+        ) : null}
       </section>
       <ClientCreateModal
         isOpen={isModalOpen}

@@ -134,12 +134,77 @@ export type Notice = {
   } | null;
 };
 
+export type TaskStatus = "por_hacer" | "pendiente" | "en_proceso" | "finalizado";
+export type TaskPriority = "alta" | "media" | "baja";
+
+export type TaskMessage = {
+  id: string;
+  message: string;
+  created_at: string;
+  user_id: string;
+  user: UserRef | null;
+};
+
+export type TaskAttachment = {
+  id: string;
+  file_name: string;
+  mime_type: string;
+  file_size_bytes: number;
+  storage_path: string;
+  created_at: string;
+  uploaded_by_user_id: string;
+  uploaded_by: UserRef | null;
+  // Signed URL temporal (bucket privado); se renueva en cada refetch.
+  url: string | null;
+};
+
+export type Task = {
+  id: string;
+  title: string;
+  // Documento TipTap en JSON.
+  description: unknown;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  assigned_to_user_id: string | null;
+  created_by_user_id: string;
+  assigned_to: UserRef | null;
+  created_by: UserRef | null;
+  clients?: { id: string; full_name: string } | null;
+  policies?: {
+    id: string;
+    policy_number: string;
+    branch: string;
+    vehicle_plate: string | null;
+    clients?: { id: string; full_name: string } | null;
+  } | null;
+  messages: TaskMessage[];
+  attachments: TaskAttachment[];
+};
+
+export type OrganizationMember = { id: string; full_name: string };
+
+export type TaskFormPayload = {
+  title: string;
+  description: unknown;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: string | null;
+  assignedToUserId: string | null;
+  clientId: string | null;
+  policyId: string | null;
+};
+
 type RequestOptions = {
   token?: string | undefined;
   organizationSlug?: string | undefined;
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
 };
+
+export type ApiCommonOptions = Pick<RequestOptions, "token" | "organizationSlug">;
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const makeInit = (token = options.token): RequestInit => {

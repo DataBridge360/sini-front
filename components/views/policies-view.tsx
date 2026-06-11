@@ -7,6 +7,7 @@ import { readView, writeView } from "@/lib/browser";
 import { formatDate } from "@/lib/format";
 import { BRANCHES, type EntityView, type PolicyFormValues } from "@/lib/shell-types";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
+import { paginate, Pagination } from "@/components/ui/pagination";
 import { SearchableSelect } from "@/components/ui/selects";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ViewToggle } from "@/components/ui/view-toggle";
@@ -33,6 +34,7 @@ export function PoliciesView({
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
   const [companyId, setCompanyId] = useState("all");
+  const [page, setPage] = useState(1);
   const [view, setView] = useState<EntityView>(() => readView("sp-policies-view", "list"));
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -48,15 +50,29 @@ export function PoliciesView({
     const matchesCompany = companyId === "all" || policy.insurance_companies?.id === companyId;
     return matchesSearch && matchesBranch && matchesCompany;
   });
+  const paged = paginate(filtered, page);
 
   return (
     <div className="sp-page padded">
       <div className="sp-entity-toolbar">
         <div className="sp-search">
           <Search size={15} />
-          <input placeholder="Asegurado, N° póliza, patente..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input
+            placeholder="Asegurado, N° póliza, patente..."
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+          />
         </div>
-        <select value={branch} onChange={(event) => setBranch(event.target.value)}>
+        <select
+          value={branch}
+          onChange={(event) => {
+            setBranch(event.target.value);
+            setPage(1);
+          }}
+        >
           <option value="all">Todas las ramas</option>
           {branches.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
@@ -67,7 +83,10 @@ export function PoliciesView({
             ...companies.map((company) => ({ value: company.id, label: company.name }))
           ]}
           placeholder="Compañía"
-          onChange={setCompanyId}
+          onChange={(value) => {
+            setCompanyId(value);
+            setPage(1);
+          }}
         />
         <span>{filtered.length} de {policies.length}</span>
         <ViewToggle
@@ -92,19 +111,29 @@ export function PoliciesView({
         {isLoading ? <LoadingState text="Cargando pólizas" /> : null}
         {!isLoading && view === "grid" ? (
           <div className="sp-card-grid">
-            {filtered.map((policy) => (
+            {paged.items.map((policy) => (
               <PolicyCard key={policy.id} policy={policy} onOpen={onOpenPolicy} />
             ))}
           </div>
         ) : null}
         {!isLoading && view === "list" ? (
           <div className="sp-list-panel embedded">
-            {filtered.map((policy) => (
+            {paged.items.map((policy) => (
               <PolicyRow key={policy.id} policy={policy} onOpen={onOpenPolicy} />
             ))}
           </div>
         ) : null}
         {!isLoading && filtered.length === 0 ? <EmptyState title="No hay pólizas para mostrar" text="Probá limpiar los filtros o cargar una nueva póliza." /> : null}
+        {!isLoading ? (
+          <Pagination
+            page={paged.page}
+            totalPages={paged.totalPages}
+            start={paged.start}
+            count={paged.items.length}
+            total={paged.total}
+            onChange={setPage}
+          />
+        ) : null}
       </section>
 
       <PolicyFormModal

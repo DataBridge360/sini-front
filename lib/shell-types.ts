@@ -2,7 +2,7 @@
 
 import type { Client, InsuranceCompany, OrganizationSettings } from "@/lib/api";
 
-export type Tab = "dashboard" | "notices" | "clients" | "policies" | "companies" | "team" | "settings" | "profile";
+export type Tab = "dashboard" | "notices" | "tasks" | "clients" | "policies" | "companies" | "team" | "settings" | "profile";
 
 export type NoticeNoteApi = {
   currentUserId: string;

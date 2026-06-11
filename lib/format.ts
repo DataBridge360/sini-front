@@ -52,6 +52,17 @@ export function formatDate(value: string) {
   return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
+export function formatDateTime(value: string) {
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
 export function formatDateInput(value: string) {
   const date = parseIsoDate(value);
   if (!date) return "";
