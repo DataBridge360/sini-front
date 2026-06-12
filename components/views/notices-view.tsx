@@ -33,7 +33,7 @@ import {
   type NoticeView
 } from "@/lib/notices";
 import { BRANCHES, type NoticeNoteApi } from "@/lib/shell-types";
-import { DueChip, NOTICE_COLUMNS, NoticeAudit, NoticeNotes } from "@/components/notices/shared";
+import { DueChip, NOTICE_COLUMNS, NoticeNotes } from "@/components/notices/shared";
 import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -77,6 +77,12 @@ export function NoticesView({
 
   const requestNotify = (notice: Notice) => setNotifyTarget([notice]);
   const openDetail = (notice: Notice) => setDetailNotices([notice]);
+
+  // El estado del detalle guarda un snapshot: se refresca contra las props para
+  // que las notas agregadas desde el modal aparezcan sin cerrar y reabrir.
+  const freshDetailNotices = detailNotices
+    ? detailNotices.map((stale) => notices.find((notice) => notice.id === stale.id) ?? stale)
+    : null;
 
   const branches = useMemo(() => {
     const fromData = notices.map((notice) => notice.policies?.branch).filter(Boolean) as string[];
@@ -172,7 +178,6 @@ export function NoticesView({
                           isMarkingNotified={markingNoticeId === cluster[0].id}
                           isPaying={payingNoticeId === cluster[0].id}
                           isReverting={revertingNoticeId === cluster[0].id}
-                          noteApi={noteApi}
                           onRequestNotify={requestNotify}
                           onRequestRevert={setRevertTarget}
                           onRequestPay={setPayNoticeTarget}
@@ -243,7 +248,8 @@ export function NoticesView({
 
       <NoticeDetailModal
         key={detailNotices ? detailNotices.map((notice) => notice.id).join("|") : "detail-modal"}
-        notices={detailNotices}
+        notices={freshDetailNotices}
+        noteApi={noteApi}
         onClose={() => setDetailNotices(null)}
         onViewPolicy={(notice) => {
           setDetailNotices(null);
@@ -355,10 +361,12 @@ function NotifyDialog({
 // como una tarjeta destacada, todas juntas en el mismo modal.
 function NoticeDetailModal({
   notices,
+  noteApi,
   onClose,
   onViewPolicy
 }: {
   notices: Notice[] | null;
+  noteApi: NoticeNoteApi;
   onClose: () => void;
   onViewPolicy: (notice: Notice) => void;
 }) {
@@ -409,7 +417,7 @@ function NoticeDetailModal({
 
         {/* Una tarjeta destacada por póliza */}
         {notices.map((notice) => (
-          <PolicyShowcase key={notice.id} notice={notice} onViewPolicy={onViewPolicy} />
+          <PolicyShowcase key={notice.id} notice={notice} noteApi={noteApi} onViewPolicy={onViewPolicy} />
         ))}
 
         {/* Contacto del asegurado */}
@@ -467,7 +475,15 @@ function NoticeDetailModal({
 
 // Tarjeta destacada de una póliza dentro del detalle: banda con el color de la
 // organización + datos clave + auditoría y notas internas de ese aviso.
-function PolicyShowcase({ notice, onViewPolicy }: { notice: Notice; onViewPolicy: (notice: Notice) => void }) {
+function PolicyShowcase({
+  notice,
+  noteApi,
+  onViewPolicy
+}: {
+  notice: Notice;
+  noteApi: NoticeNoteApi;
+  onViewPolicy: (notice: Notice) => void;
+}) {
   const company = notice.policies?.insurance_companies;
 
   return (
@@ -529,29 +545,25 @@ function PolicyShowcase({ notice, onViewPolicy }: { notice: Notice; onViewPolicy
         ) : null}
       </div>
 
-      {notice.notified_by || notice.payment_processed_by || (notice.notes && notice.notes.length > 0) ? (
-        <div className="flex flex-col gap-1.5 border-t border-slate-100 px-4 py-2.5">
-          {notice.notified_by ? (
-            <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
-              <Bell size={13} className="text-blue-500" />
-              Avisado por <strong className="font-semibold text-slate-700">{notice.notified_by.full_name}</strong>
-              {notice.notified_at ? <span className="text-slate-400">· {formatDate(notice.notified_at.slice(0, 10))}</span> : null}
-            </p>
-          ) : null}
-          {notice.payment_processed_by ? (
-            <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
-              <CheckCircle size={13} className="text-emerald-500" />
-              Cobrado por <strong className="font-semibold text-slate-700">{notice.payment_processed_by.full_name}</strong>
-              {notice.payment_processed_at ? <span className="text-slate-400">· {formatDate(notice.payment_processed_at.slice(0, 10))}</span> : null}
-            </p>
-          ) : null}
-          {(notice.notes ?? []).map((note) => (
-            <p key={note.id} className="m-0 rounded-md bg-slate-50 px-2.5 py-1.5 text-[12.5px] leading-snug text-slate-600">
-              <strong className="font-semibold text-slate-700">{note.user?.full_name ?? "Usuario"}:</strong> {note.note}
-            </p>
-          ))}
-        </div>
-      ) : null}
+      <div className="flex flex-col gap-1.5 border-t border-slate-100 px-4 py-2.5">
+        {notice.notified_by ? (
+          <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
+            <Bell size={13} className="text-blue-500" />
+            Avisado por <strong className="font-semibold text-slate-700">{notice.notified_by.full_name}</strong>
+            {notice.notified_at ? <span className="text-slate-400">· {formatDate(notice.notified_at.slice(0, 10))}</span> : null}
+          </p>
+        ) : null}
+        {notice.payment_processed_by ? (
+          <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
+            <CheckCircle size={13} className="text-emerald-500" />
+            Cobrado por <strong className="font-semibold text-slate-700">{notice.payment_processed_by.full_name}</strong>
+            {notice.payment_processed_at ? <span className="text-slate-400">· {formatDate(notice.payment_processed_at.slice(0, 10))}</span> : null}
+          </p>
+        ) : null}
+        {/* Notas internas editables: la tarjeta del tablero quedó minimalista,
+            así que el alta/baja de notas vive acá en el detalle. */}
+        <NoticeNotes notice={notice} noteApi={noteApi} />
+      </div>
     </div>
   );
 }
@@ -630,12 +642,14 @@ function FiltersPanel({
   );
 }
 
+// Tarjeta sobria: titular, una línea de póliza y vencimiento. Todo el resto
+// (contacto, notas, auditoría) vive en el modal de detalle. La tarjeta entera
+// es clickeable, salvo los botones de acción.
 function NoticeCard({
   notice,
   isMarkingNotified,
   isPaying,
   isReverting,
-  noteApi,
   onRequestNotify,
   onRequestRevert,
   onRequestPay,
@@ -645,7 +659,6 @@ function NoticeCard({
   isMarkingNotified: boolean;
   isPaying: boolean;
   isReverting: boolean;
-  noteApi: NoticeNoteApi;
   onRequestNotify: (notice: Notice) => void;
   onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
@@ -657,73 +670,30 @@ function NoticeCard({
   const clientName = client?.full_name ?? "Sin cliente";
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
-      {/* Cuerpo clickeable: abre el detalle del aviso */}
-      <div
-        role="button"
-        tabIndex={0}
-        className="cursor-pointer rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary-soft)]"
-        onClick={() => onOpenDetail(notice)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onOpenDetail(notice);
-          }
-        }}
-      >
-        {/* Cabecera: titular + chip de urgencia */}
-        <div className="flex items-start gap-2.5">
-          <span className="min-w-0 flex-1">
-            <h4 className="m-0 truncate text-[13.5px] font-semibold leading-snug text-slate-900">{clientName}</h4>
-            <p className="m-0 truncate text-[11.5px] text-slate-500">
-              {company?.name ?? "Sin compañía"}
-              {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
-            </p>
-          </span>
-          <DueChip days={days} status={notice.status} />
-        </div>
-
-        {/* Pills de datos: fecha, rama, patente y teléfono */}
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold text-slate-500">
-            <CalendarDays size={10.5} className="shrink-0" />
-            {formatDate(notice.due_date)}
-          </span>
-          {notice.policies?.branch ? (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              {notice.policies.branch}
-            </span>
-          ) : null}
-          {notice.policies?.vehicle_plate ? (
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold text-slate-500">
-              {notice.policies.vehicle_plate}
-            </span>
-          ) : null}
-          {client?.phone ? (
-            <a
-              href={`tel:${client.phone}`}
-              onClick={(event) => event.stopPropagation()}
-              className="inline-flex min-w-0 items-center gap-1 rounded-full bg-[color:var(--org-primary-soft)] px-2 py-0.5 text-[10.5px] font-semibold text-[color:var(--org-primary)] transition-opacity hover:opacity-80"
-            >
-              <Phone size={10.5} className="shrink-0" />
-              <span className="truncate">{client.phone}</span>
-            </a>
-          ) : null}
-        </div>
-
-        {/* Estado (avisó / cobró) de forma sutil */}
-        <NoticeAudit notice={notice} />
-
-        {/* Nota del asegurado (solo lectura desde el aviso) */}
-        {client?.notes ? (
-          <p className="mt-2 line-clamp-2 border-l-2 border-slate-200 pl-2 text-[11px] leading-snug text-slate-400">
-            {client.notes}
-          </p>
-        ) : null}
+    <article
+      role="button"
+      tabIndex={0}
+      className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-slate-300 hover:bg-slate-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary-soft)]"
+      onClick={() => onOpenDetail(notice)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenDetail(notice);
+        }
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="m-0 min-w-0 truncate text-[13px] font-semibold leading-snug text-slate-900">{clientName}</h4>
+        <DueChip days={days} status={notice.status} />
       </div>
-
-      {/* Notas del aviso (editables, colapsadas y sutiles) */}
-      <NoticeNotes notice={notice} noteApi={noteApi} />
+      <p className="m-0 mt-1 truncate text-[11.5px] text-slate-500">
+        {company?.name ?? "Sin compañía"}
+        {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
+        {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
+      </p>
+      <p className="m-0 mt-0.5 truncate text-[11px] text-slate-400">
+        {notice.policies?.branch ?? "Rama"} · Vence el {formatDate(notice.due_date)}
+      </p>
 
       <NoticeActions
         notice={notice}
@@ -772,84 +742,64 @@ function NoticeGroupCard({
   const spin = <Loader2 size={13} className="animate-spin" />;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
-      {/* Cabecera clickeable: abre el detalle con todas las pólizas juntas */}
-      <div
-        role="button"
-        tabIndex={0}
-        className="flex cursor-pointer items-start gap-2.5 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary-soft)]"
-        onClick={() => onOpenDetail(notices)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onOpenDetail(notices);
-          }
-        }}
-      >
-        <span className="min-w-0 flex-1">
-          <h4 className="m-0 truncate text-[13.5px] font-semibold leading-snug text-slate-900">{clientName}</h4>
-          <p className="m-0 flex items-center gap-1 truncate text-[11.5px] text-slate-500">
-            <Layers size={11} className="shrink-0" />
-            {notices.length} pólizas vencen juntas
-          </p>
-        </span>
+    <article
+      role="button"
+      tabIndex={0}
+      className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-slate-300 hover:bg-slate-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary-soft)]"
+      onClick={() => onOpenDetail(notices)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenDetail(notices);
+        }
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="m-0 min-w-0 truncate text-[13px] font-semibold leading-snug text-slate-900">{clientName}</h4>
         <DueChip days={minDays} status={status} />
       </div>
+      <p className="m-0 mt-1 flex items-center gap-1 truncate text-[11px] text-slate-400">
+        <Layers size={11} className="shrink-0" />
+        {notices.length} pólizas con vencimientos juntos
+      </p>
 
-      {client?.phone ? (
-        <div className="mt-2 flex">
-          <a
-            href={`tel:${client.phone}`}
-            className="inline-flex min-w-0 items-center gap-1 rounded-full bg-[color:var(--org-primary-soft)] px-2 py-0.5 text-[10.5px] font-semibold text-[color:var(--org-primary)] transition-opacity hover:opacity-80"
-          >
-            <Phone size={10.5} className="shrink-0" />
-            <span className="truncate">{client.phone}</span>
-          </a>
-        </div>
-      ) : null}
-
-      {/* Sub-avisos: una línea por póliza, clickeable para ver el detalle */}
-      <div className="mt-2.5 flex flex-col divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60">
+      {/* Una línea por póliza: compañía · número a la izquierda, fecha a la derecha */}
+      <div className="mt-2 flex flex-col divide-y divide-slate-100 border-t border-slate-100">
         {notices.map((notice) => {
           const rowBusy =
             markingNoticeId === notice.id || payingNoticeId === notice.id || revertingNoticeId === notice.id;
           return (
-            <div key={notice.id} className="flex items-center gap-2 px-2.5 py-2">
-              <button
-                type="button"
-                className="min-w-0 flex-1 cursor-pointer text-left"
-                onClick={() => onOpenDetail(notices)}
-              >
-                <span className="block truncate text-[12px] font-semibold text-slate-700">
-                  {notice.policies?.insurance_companies?.name ?? "Sin compañía"}
-                  {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
-                </span>
-                <span className="block truncate text-[11px] text-slate-400">
-                  {notice.policies?.branch ?? "Rama"}
-                  {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
-                  {" · Vence el "}
-                  {formatDate(notice.due_date)}
-                </span>
-              </button>
+            <div key={notice.id} className="flex items-center gap-2 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-[11.5px] text-slate-600">
+                {notice.policies?.insurance_companies?.name ?? "Sin compañía"}
+                {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
+              </span>
+              <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{formatDate(notice.due_date)}</span>
               {status === "avisado" ? (
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => onRequestPay(notice)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10.5px] font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRequestPay(notice);
+                  }}
                   disabled={rowBusy}
                 >
-                  {payingNoticeId === notice.id ? spin : <CheckCircle size={12} />}
+                  {payingNoticeId === notice.id ? spin : <CheckCircle size={11} />}
                   Pagar
                 </button>
               ) : null}
               {status === "pagado" ? (
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => onRequestRevert(notice)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[10.5px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRequestRevert(notice);
+                  }}
                   disabled={rowBusy}
                 >
-                  {revertingNoticeId === notice.id ? spin : <RotateCcw size={12} />}
+                  {revertingNoticeId === notice.id ? spin : <RotateCcw size={11} />}
                   Revertir
                 </button>
               ) : null}
@@ -859,22 +809,20 @@ function NoticeGroupCard({
       </div>
 
       {status === "avisar" ? (
-        <div className="mt-2.5 border-t border-slate-100 pt-2.5">
+        <div className="border-t border-slate-100 pt-2">
           <button
             type="button"
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-blue-600 py-2 text-[11.5px] font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={() => onRequestNotifyAll(notices)}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRequestNotifyAll(notices);
+            }}
             disabled={busy}
           >
             {busy ? spin : <Bell size={13} />}
             Marcar avisados ({notices.length})
           </button>
         </div>
-      ) : null}
-      {status === "avisado" ? (
-        <p className="m-0 mt-2 text-center text-[10.5px] text-slate-400">
-          Registrá el pago de cada póliza por separado.
-        </p>
       ) : null}
     </article>
   );
@@ -971,18 +919,20 @@ function NoticeActions({
   inline?: boolean;
 }) {
   const busy = isMarkingNotified || isPaying || isReverting;
-  const wrap = `mt-2.5 flex gap-1.5 border-t border-slate-100 pt-2.5 ${inline ? "mt-0 border-0 pt-0" : ""}`;
+  const wrap = `mt-2.5 flex gap-1.5 border-t border-slate-100 pt-2 ${inline ? "mt-0 border-0 pt-0" : ""}`;
   const base =
-    "inline-flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[11.5px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
+    "inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
   const blue = `${base} bg-blue-600 text-white hover:bg-blue-700`;
   const green = `${base} bg-emerald-600 text-white hover:bg-emerald-700`;
   const neutral = `${base} bg-slate-100 text-slate-600 hover:bg-slate-200`;
   const spin = <Loader2 size={13} className="animate-spin" />;
+  // La tarjeta entera abre el detalle: los botones cortan la propagación.
+  const stop = (event: React.MouseEvent) => event.stopPropagation();
 
   // Flujo estricto: avisar -> avisado (azul) -> pagado (verde).
   if (notice.status === "pagado") {
     return (
-      <div className={wrap}>
+      <div className={wrap} onClick={stop}>
         <button type="button" className={neutral} onClick={() => onRequestRevert(notice)} disabled={busy}>
           {isReverting ? spin : <RotateCcw size={13} />}
           Revertir pago
@@ -993,7 +943,7 @@ function NoticeActions({
 
   if (notice.status === "avisar") {
     return (
-      <div className={wrap}>
+      <div className={wrap} onClick={stop}>
         <button type="button" className={blue} onClick={() => onRequestNotify(notice)} disabled={busy}>
           {isMarkingNotified ? spin : <Bell size={13} />}
           Marcar avisado
@@ -1003,7 +953,7 @@ function NoticeActions({
   }
 
   return (
-    <div className={wrap}>
+    <div className={wrap} onClick={stop}>
       <button type="button" className={neutral} onClick={() => onRequestRevert(notice)} disabled={busy}>
         {isReverting ? spin : <RotateCcw size={13} />}
         Avisar
