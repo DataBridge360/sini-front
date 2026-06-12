@@ -2,19 +2,16 @@
 
 import {
   Bell,
-  CalendarDays,
   Check,
   CheckCircle,
   Copy,
   FileText,
-  Hash,
   Layers,
   Loader2,
   Mail,
   Phone,
   RotateCcw,
   Search,
-  ShieldCheck,
   X
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -333,10 +330,10 @@ function NotifyDialog({
         </div>
         <button
           type="button"
-          className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition-colors ${
+          className={`inline-flex w-fit items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
             copied
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-[color:var(--org-primary-soft)] text-[color:var(--org-primary)] hover:brightness-95"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-slate-200 text-slate-600 hover:bg-slate-50"
           }`}
           onClick={copyMessage}
         >
@@ -400,15 +397,15 @@ function NoticeDetailModal({
         {/* Cabecera: asegurado + estado + urgencia */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="m-0 truncate text-xl font-bold text-slate-900">{client?.full_name ?? "Sin cliente"}</h3>
-            <p className="m-0 mt-1.5 flex flex-wrap items-center gap-1.5">
+            <h3 className="m-0 truncate text-lg font-semibold text-slate-900">{client?.full_name ?? "Sin cliente"}</h3>
+            <p className="m-0 mt-1 flex flex-wrap items-center gap-1.5">
               <DueChip days={minDays} status={first.status} />
               {notices.length > 1 ? (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-400">
+                <span className="inline-flex items-center gap-1 text-xs text-slate-400">
                   <Layers size={12} /> {notices.length} pólizas con vencimientos juntos
                 </span>
               ) : (
-                <span className="text-xs font-medium text-slate-400">Vence el {formatDate(first.due_date)}</span>
+                <span className="text-xs text-slate-400">Vence el {formatDate(first.due_date)}</span>
               )}
             </p>
           </div>
@@ -420,13 +417,13 @@ function NoticeDetailModal({
           <PolicyShowcase key={notice.id} notice={notice} noteApi={noteApi} onViewPolicy={onViewPolicy} />
         ))}
 
-        {/* Contacto del asegurado */}
+        {/* Contacto del asegurado: links discretos */}
         {client?.phone || client?.email ? (
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             {client?.phone ? (
               <a
                 href={`tel:${client.phone}`}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--org-primary-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--org-primary)] transition-opacity hover:opacity-80"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-[color:var(--org-primary)]"
               >
                 <Phone size={12} />
                 {client.phone}
@@ -435,7 +432,7 @@ function NoticeDetailModal({
             {client?.email ? (
               <a
                 href={`mailto:${client.email}`}
-                className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
+                className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-[color:var(--org-primary)]"
               >
                 <Mail size={12} />
                 <span className="truncate">{client.email}</span>
@@ -445,9 +442,9 @@ function NoticeDetailModal({
         ) : null}
 
         {client?.notes ? (
-          <div className="rounded-lg border-l-2 border-amber-300 bg-amber-50 px-3 py-2">
+          <div className="border-l-2 border-amber-300 pl-3">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Nota del asegurado</span>
-            <p className="m-0 mt-1 whitespace-pre-line text-[13px] leading-snug text-amber-900">{client.notes}</p>
+            <p className="m-0 mt-0.5 whitespace-pre-line text-[12.5px] leading-snug text-slate-600">{client.notes}</p>
           </div>
         ) : null}
 
@@ -455,10 +452,10 @@ function NoticeDetailModal({
           {showCopy ? (
             <button
               type="button"
-              className={`mr-auto inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition-colors ${
+              className={`mr-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 copied
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "bg-[color:var(--org-primary-soft)] text-[color:var(--org-primary)] hover:brightness-95"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
               onClick={copyMessage}
             >
@@ -473,8 +470,8 @@ function NoticeDetailModal({
   );
 }
 
-// Tarjeta destacada de una póliza dentro del detalle: banda con el color de la
-// organización + datos clave + auditoría y notas internas de ese aviso.
+// Sección de una póliza dentro del detalle: encabezado sobrio, datos clave en
+// columnas y la auditoría/notas internas de ese aviso.
 function PolicyShowcase({
   notice,
   noteApi,
@@ -487,58 +484,39 @@ function PolicyShowcase({
   const company = notice.policies?.insurance_companies;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200">
-      <div
-        className="flex items-center gap-3 px-4 py-3.5 text-white"
-        style={{
-          background:
-            "linear-gradient(135deg, color-mix(in srgb, var(--org-primary) 82%, #0b1220) 0%, var(--org-primary) 100%)"
-        }}
-      >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
-          <ShieldCheck size={19} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-bold uppercase tracking-wide text-white/65">
+    <div className="rounded-xl border border-slate-200">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-semibold text-slate-800">
             {company?.name ?? "Sin compañía"}
+            {notice.policies?.policy_number ? ` · Póliza N° ${notice.policies.policy_number}` : ""}
           </span>
-          <span className="block truncate text-lg font-bold leading-tight">
-            {notice.policies?.policy_number ? `Póliza N° ${notice.policies.policy_number}` : "Póliza sin número"}
-          </span>
-        </span>
-        <span className="shrink-0 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
-          {notice.policies?.branch ?? "Rama"}
+          <span className="block text-[11px] text-slate-400">{notice.policies?.branch ?? "Rama"}</span>
         </span>
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/15 px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-white/25"
+          className="inline-flex shrink-0 items-center gap-1 text-[11.5px] font-semibold text-[color:var(--org-primary)] transition-opacity hover:opacity-75"
           onClick={() => onViewPolicy(notice)}
         >
           <FileText size={12} />
           Ver póliza
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-3 bg-slate-50 px-4 py-3 max-[520px]:grid-cols-2">
+      <div className="grid grid-cols-3 gap-3 px-4 py-3 max-[520px]:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
-            <CalendarDays size={11} /> Vencimiento
-          </span>
-          <span className="truncate text-sm font-bold text-slate-800">{formatDate(notice.due_date)}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Vencimiento</span>
+          <span className="truncate text-[13px] font-semibold text-slate-800">{formatDate(notice.due_date)}</span>
         </div>
         {notice.policies?.vehicle_plate ? (
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
-              <Hash size={11} /> Patente
-            </span>
-            <span className="truncate text-sm font-bold text-slate-800">{notice.policies.vehicle_plate}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Patente</span>
+            <span className="truncate text-[13px] font-semibold text-slate-800">{notice.policies.vehicle_plate}</span>
           </div>
         ) : null}
         {notice.status === "pagado" && notice.paid_interval_months ? (
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
-              <CheckCircle size={11} /> Pagó
-            </span>
-            <span className="truncate text-sm font-bold text-emerald-700">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Pagó</span>
+            <span className="truncate text-[13px] font-semibold text-emerald-700">
               {capitalizeFirst(intervalLabel(notice.paid_interval_months))}
             </span>
           </div>
@@ -778,7 +756,7 @@ function NoticeGroupCard({
               {status === "avisado" ? (
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10.5px] font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[10.5px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={(event) => {
                     event.stopPropagation();
                     onRequestPay(notice);
@@ -792,7 +770,7 @@ function NoticeGroupCard({
               {status === "pagado" ? (
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[10.5px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-50 px-2 py-1 text-[10.5px] font-semibold text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={(event) => {
                     event.stopPropagation();
                     onRequestRevert(notice);
@@ -812,7 +790,7 @@ function NoticeGroupCard({
         <div className="border-t border-slate-100 pt-2">
           <button
             type="button"
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-50 py-1.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
             onClick={(event) => {
               event.stopPropagation();
               onRequestNotifyAll(notices);
@@ -920,11 +898,12 @@ function NoticeActions({
 }) {
   const busy = isMarkingNotified || isPaying || isReverting;
   const wrap = `mt-2.5 flex gap-1.5 border-t border-slate-100 pt-2 ${inline ? "mt-0 border-0 pt-0" : ""}`;
+  // Tintes suaves: marcan la acción sin competir con el contenido de la tarjeta.
   const base =
     "inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
-  const blue = `${base} bg-blue-600 text-white hover:bg-blue-700`;
-  const green = `${base} bg-emerald-600 text-white hover:bg-emerald-700`;
-  const neutral = `${base} bg-slate-100 text-slate-600 hover:bg-slate-200`;
+  const blue = `${base} bg-blue-50 text-blue-700 hover:bg-blue-100`;
+  const green = `${base} bg-emerald-50 text-emerald-700 hover:bg-emerald-100`;
+  const neutral = `${base} bg-slate-50 text-slate-500 hover:bg-slate-100`;
   const spin = <Loader2 size={13} className="animate-spin" />;
   // La tarjeta entera abre el detalle: los botones cortan la propagación.
   const stop = (event: React.MouseEvent) => event.stopPropagation();
