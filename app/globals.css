@@ -3965,7 +3965,7 @@ button {
 }
 
 .sp-logo-upload-grid {
-  @apply mb-10 grid grid-cols-1;
+  @apply mb-10 grid grid-cols-1 gap-4 md:grid-cols-2;
 }
 
 .sp-upload-title {
@@ -5219,5 +5219,151 @@ a.sp-client-field-value:hover {
   .t-modal,
   .t-panel-slide {
     transition: none !important;
+  }
+}
+
+/* ============================================================
+   Módulo Tareas: kanban de 4 columnas + editor rico (TipTap)
+   ============================================================ */
+
+@layer components {
+  /* Tablero horizontal: columnas con ancho mínimo cómodo y scroll-x, estilo ClickUp.
+     Anula el grid base de .sp-kanban para que nada quede apretado. */
+  .sp-kanban.sp-kanban-flow {
+    @apply flex h-full items-stretch gap-4 overflow-x-auto overflow-y-hidden pb-2;
+    scrollbar-width: thin;
+    scrollbar-color: var(--sp-border-strong) transparent;
+  }
+
+  .sp-kanban.sp-kanban-flow::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .sp-kanban.sp-kanban-flow::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: var(--sp-border-strong);
+  }
+
+  .sp-kanban.sp-kanban-flow .sp-kanban-column {
+    @apply w-[320px] min-w-[300px] flex-1;
+    max-width: 380px;
+  }
+
+  /* Contenido ProseMirror: mismo lenguaje visual dentro y fuera de edición */
+  .sp-rich-text .tiptap {
+    @apply min-h-full text-sm leading-relaxed text-slate-700 outline-none;
+  }
+
+  .sp-rich-text .tiptap > * + * {
+    margin-top: 0.5em;
+  }
+
+  .sp-rich-text .tiptap h1 {
+    @apply text-xl font-bold text-slate-900;
+  }
+
+  .sp-rich-text .tiptap h2 {
+    @apply text-lg font-bold text-slate-900;
+  }
+
+  .sp-rich-text .tiptap h3 {
+    @apply text-base font-semibold text-slate-900;
+  }
+
+  .sp-rich-text .tiptap ul {
+    @apply list-disc pl-5;
+  }
+
+  .sp-rich-text .tiptap ol {
+    @apply list-decimal pl-5;
+  }
+
+  .sp-rich-text .tiptap blockquote {
+    @apply border-l-2 border-slate-300 pl-3 italic text-slate-500;
+  }
+
+  .sp-rich-text .tiptap code {
+    @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-[12px] text-slate-800;
+  }
+
+  .sp-rich-text .tiptap pre {
+    @apply overflow-x-auto rounded-lg bg-slate-900 p-3 text-slate-100;
+  }
+
+  .sp-rich-text .tiptap pre code {
+    @apply bg-transparent p-0 text-inherit;
+  }
+
+  .sp-rich-text .tiptap a {
+    @apply underline;
+    color: var(--org-primary);
+  }
+
+  .sp-rich-text .tiptap hr {
+    @apply my-3 border-slate-200;
+  }
+
+  /* Checklists (TaskList) */
+  .sp-rich-text .tiptap ul[data-type="taskList"] {
+    @apply list-none pl-0;
+  }
+
+  .sp-rich-text .tiptap ul[data-type="taskList"] li {
+    @apply flex items-start gap-2;
+  }
+
+  .sp-rich-text .tiptap ul[data-type="taskList"] li > label {
+    @apply mt-1 shrink-0;
+  }
+
+  .sp-rich-text .tiptap ul[data-type="taskList"] li > div {
+    @apply min-w-0 flex-1;
+  }
+
+  .sp-rich-text .tiptap ul[data-type="taskList"] input[type="checkbox"] {
+    accent-color: var(--org-primary);
+  }
+
+  .sp-rich-text .tiptap li[data-checked="true"] > div {
+    @apply text-slate-400 line-through;
+  }
+
+  /* Tablas */
+  .sp-rich-text .tiptap table {
+    @apply my-2 w-full border-collapse text-[13px];
+    table-layout: fixed;
+  }
+
+  .sp-rich-text .tiptap th,
+  .sp-rich-text .tiptap td {
+    @apply border border-slate-200 px-2 py-1.5 align-top;
+    word-break: break-word;
+  }
+
+  .sp-rich-text .tiptap th {
+    @apply bg-slate-50 text-left font-semibold text-slate-700;
+  }
+
+  .sp-rich-text .tiptap .selectedCell {
+    background: var(--org-primary-soft);
+  }
+
+  /* Placeholder del editor vacío */
+  .sp-rich-text .tiptap p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    @apply pointer-events-none float-left h-0 text-slate-400;
+  }
+}
+
+/* Mobile: cada columna ocupa casi toda la pantalla y se navega deslizando,
+   con un borde de la siguiente visible como pista de que hay más. */
+@media (max-width: 640px) {
+  .sp-kanban.sp-kanban-flow {
+    scroll-snap-type: x mandatory;
+  }
+
+  .sp-kanban.sp-kanban-flow .sp-kanban-column {
+    @apply w-[84vw] min-w-[84vw];
+    scroll-snap-align: start;
   }
 }
