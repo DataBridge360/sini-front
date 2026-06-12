@@ -359,7 +359,9 @@ function TaskDescription({ task, api }: { task: Task; api: TaskApi }) {
 
 function TaskAttachments({ task, api }: { task: Task; api: TaskApi }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const attachments = task.attachments ?? [];
+  const confirming = attachments.find((attachment) => attachment.id === confirmingId);
 
   return (
     <div className="mt-6">
@@ -426,7 +428,7 @@ function TaskAttachments({ task, api }: { task: Task; api: TaskApi }) {
                       aria-label="Eliminar adjunto"
                       className="shrink-0 text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50"
                       disabled={api.deletingAttachmentId === attachment.id}
-                      onClick={() => void api.onDeleteAttachment(task.id, attachment.id).catch(() => undefined)}
+                      onClick={() => setConfirmingId(attachment.id)}
                     >
                       {api.deletingAttachmentId === attachment.id ? (
                         <Loader2 size={13} className="animate-spin" />
@@ -441,12 +443,29 @@ function TaskAttachments({ task, api }: { task: Task; api: TaskApi }) {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={Boolean(confirming)}
+        title="Eliminar adjunto"
+        message={`¿Eliminar el archivo "${confirming?.file_name ?? ""}"? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar adjunto"
+        isBusy={Boolean(confirmingId && api.deletingAttachmentId === confirmingId)}
+        onClose={() => setConfirmingId(null)}
+        onConfirm={() => {
+          if (!confirmingId) return;
+          void api
+            .onDeleteAttachment(task.id, confirmingId)
+            .catch(() => undefined)
+            .finally(() => setConfirmingId(null));
+        }}
+      />
     </div>
   );
 }
 
 function TaskChat({ task, api }: { task: Task; api: TaskApi }) {
   const [draft, setDraft] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const messages = task.messages ?? [];
 
@@ -505,7 +524,7 @@ function TaskChat({ task, api }: { task: Task; api: TaskApi }) {
                         aria-label="Eliminar mensaje"
                         className={`absolute -top-1.5 ${own ? "-left-1.5" : "-right-1.5"} hidden h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm transition-colors hover:text-red-600 group-hover:flex`}
                         disabled={api.deletingMessageId === message.id}
-                        onClick={() => void api.onDeleteMessage(task.id, message.id).catch(() => undefined)}
+                        onClick={() => setConfirmingId(message.id)}
                       >
                         {api.deletingMessageId === message.id ? (
                           <Loader2 size={10} className="animate-spin" />
@@ -557,6 +576,22 @@ function TaskChat({ task, api }: { task: Task; api: TaskApi }) {
           ) : null}
         </p>
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(confirmingId)}
+        title="Eliminar mensaje"
+        message="¿Eliminar este mensaje del chat? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar mensaje"
+        isBusy={Boolean(confirmingId && api.deletingMessageId === confirmingId)}
+        onClose={() => setConfirmingId(null)}
+        onConfirm={() => {
+          if (!confirmingId) return;
+          void api
+            .onDeleteMessage(task.id, confirmingId)
+            .catch(() => undefined)
+            .finally(() => setConfirmingId(null));
+        }}
+      />
     </aside>
   );
 }

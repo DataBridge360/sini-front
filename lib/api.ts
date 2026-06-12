@@ -134,7 +134,7 @@ export type Notice = {
   } | null;
 };
 
-export type TaskStatus = "por_hacer" | "pendiente" | "en_proceso" | "finalizado";
+export type TaskStatus = "pendiente" | "en_proceso" | "finalizado";
 export type TaskPriority = "alta" | "media" | "baja";
 
 export type TaskMessage = {

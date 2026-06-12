@@ -1,7 +1,7 @@
 // Reglas de dominio de los avisos (ventana del tablero, filtros, estados).
 
 import type { Notice } from "@/lib/api";
-import { getDaysUntilDue } from "@/lib/format";
+import { formatDate, getDaysUntilDue } from "@/lib/format";
 
 export type NoticeStatus = Notice["status"];
 export type NoticeView = "kanban" | "list";
@@ -118,5 +118,92 @@ export function noticeStatusPill(status: Notice["status"]) {
   if (status === "avisar") return `${base} bg-amber-50 text-amber-700`;
   if (status === "avisado") return `${base} bg-blue-50 text-blue-700`;
   return `${base} bg-emerald-50 text-emerald-700`;
+}
+
+// Cómo se nombra el seguro en el mensaje al cliente, según la rama.
+// Para vehículos se incluye la patente si está cargada.
+function policyPhrases(policy: Notice["policies"]) {
+  const branch = (policy?.branch ?? "").trim();
+  const normalized = branch
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const plate = policy?.vehicle_plate ? ` patente ${policy.vehicle_plate}` : "";
+  const number = policy?.policy_number ? ` N° ${policy.policy_number}` : "";
+
+  if (normalized.includes("automotor") || normalized.includes("auto")) {
+    return { inline: `el pago del seguro de su **vehículo${plate}**`, bullet: `Seguro del vehículo${plate}` };
+  }
+  if (normalized.includes("moto")) {
+    return { inline: `el pago del seguro de su **moto${plate}**`, bullet: `Seguro de la moto${plate}` };
+  }
+  if (normalized.includes("hogar") || normalized.includes("vivienda")) {
+    return { inline: "el pago del seguro de su **vivienda**", bullet: "Seguro del hogar" };
+  }
+  if (normalized.includes("comercio")) {
+    return { inline: "el pago del seguro de su **comercio**", bullet: "Seguro del comercio" };
+  }
+  if (normalized.includes("vida")) {
+    return { inline: "el pago de su **seguro de vida**", bullet: "Seguro de vida" };
+  }
+  if (normalized.includes("accidentes")) {
+    return {
+      inline: "el pago de su **seguro de accidentes personales**",
+      bullet: "Seguro de accidentes personales"
+    };
+  }
+  if (normalized.includes("responsabilidad")) {
+    return {
+      inline: "el pago de su **seguro de responsabilidad civil**",
+      bullet: "Seguro de responsabilidad civil"
+    };
+  }
+  const generic = branch ? `póliza de ${branch}${number}` : `póliza${number}`;
+  return { inline: `el pago de su **${generic}**`, bullet: capitalizeWords(generic) };
+}
+
+function capitalizeWords(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+// Mensaje listo para copiar y mandar por WhatsApp al avisar un vencimiento.
+// Con varios avisos del mismo asegurado arma una lista; con uno solo, la
+// oración completa adaptada al tipo de seguro (vehículo con patente, etc.).
+export function buildNoticeReminderMessage(notices: Notice[]): string {
+  const first = notices[0];
+  if (!first) return "";
+  const clientName = first.policies?.clients?.full_name?.trim();
+  const greetingName = clientName || "cliente";
+
+  const intro =
+    notices.length === 1
+      ? `Le escribimos para recordarle que ${policyPhrases(first.policies).inline} tiene como fecha de vencimiento el día **${formatDate(first.due_date)}**.`
+      : [
+          "Le escribimos para recordarle los próximos vencimientos de sus seguros:",
+          "",
+          ...notices.map(
+            (notice) => `* **${policyPhrases(notice.policies).bullet}**: vence el día **${formatDate(notice.due_date)}**.`
+          )
+        ].join("\n");
+
+  return [
+    `**Estimado/a ${greetingName}, esperamos que se encuentre muy bien.** ℹ️`,
+    "",
+    intro,
+    "",
+    "**💳 Métodos de pago disponibles:**",
+    "",
+    "* **Efectivo:** En nuestras oficinas.",
+    "* **Mercado Pago:** Responda a este mensaje solicitando el link de pago y se lo enviaremos a la brevedad.",
+    "",
+    "**⚠️ Importante:**",
+    "Le recordamos que la falta de pago en término puede ocasionar la suspensión de su cobertura.",
+    "",
+    "Quedamos a su disposición ante cualquier consulta.",
+    "",
+    "¡Que tenga un excelente día! ✅",
+    "",
+    "**Saludos cordiales.**"
+  ].join("\n");
 }
 

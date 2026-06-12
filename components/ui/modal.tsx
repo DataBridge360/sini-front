@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
+import { AlertTriangle, Loader2, RotateCcw, Trash2, X } from "lucide-react";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { readTransitionMs } from "@/lib/browser";
 
@@ -84,6 +84,8 @@ export function ConfirmDialog({
   message,
   confirmLabel,
   isBusy,
+  // "danger" para eliminaciones (rojo), "warning" para volver atrás un estado (ámbar).
+  tone = "danger",
   onClose,
   onConfirm
 }: {
@@ -92,14 +94,20 @@ export function ConfirmDialog({
   message: string;
   confirmLabel: string;
   isBusy: boolean;
+  tone?: "danger" | "warning";
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const iconClass =
+    tone === "danger" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600";
+  const buttonClass =
+    tone === "danger" ? "bg-red-600 hover:bg-red-700" : "bg-amber-600 hover:bg-amber-700";
+
   return (
     <Modal title={title} isOpen={isOpen} onClose={() => (isBusy ? undefined : onClose())}>
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconClass}`}>
             <AlertTriangle size={18} />
           </span>
           <p className="m-0 text-sm leading-relaxed text-slate-600">{message}</p>
@@ -110,11 +118,11 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${buttonClass}`}
             onClick={onConfirm}
             disabled={isBusy}
           >
-            {isBusy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            {isBusy ? <Loader2 size={15} className="animate-spin" /> : tone === "danger" ? <Trash2 size={15} /> : <RotateCcw size={15} />}
             {confirmLabel}
           </button>
         </div>

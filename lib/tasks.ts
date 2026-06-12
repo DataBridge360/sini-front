@@ -3,8 +3,7 @@
 import type { Task, TaskPriority, TaskStatus } from "@/lib/api";
 
 export const TASK_COLUMNS = [
-  { key: "por_hacer" as const, label: "Por hacer", hint: "Todavía sin arrancar", dot: "#94a3b8" },
-  { key: "pendiente" as const, label: "Pendiente", hint: "Esperando algo para avanzar", dot: "#f59e0b" },
+  { key: "pendiente" as const, label: "Pendiente", hint: "Todavía sin arrancar", dot: "#f59e0b" },
   { key: "en_proceso" as const, label: "En proceso", hint: "Se está trabajando", dot: "#4d8eff" },
   { key: "finalizado" as const, label: "Finalizado", hint: "Trabajo terminado", dot: "#4ae176" }
 ];

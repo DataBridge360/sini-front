@@ -5229,22 +5229,22 @@ a.sp-client-field-value:hover {
 @layer components {
   /* Tablero horizontal: columnas con ancho mínimo cómodo y scroll-x, estilo ClickUp.
      Anula el grid base de .sp-kanban para que nada quede apretado. */
-  .sp-kanban.sp-kanban-4 {
+  .sp-kanban.sp-kanban-flow {
     @apply flex h-full items-stretch gap-4 overflow-x-auto overflow-y-hidden pb-2;
     scrollbar-width: thin;
     scrollbar-color: var(--sp-border-strong) transparent;
   }
 
-  .sp-kanban.sp-kanban-4::-webkit-scrollbar {
+  .sp-kanban.sp-kanban-flow::-webkit-scrollbar {
     height: 8px;
   }
 
-  .sp-kanban.sp-kanban-4::-webkit-scrollbar-thumb {
+  .sp-kanban.sp-kanban-flow::-webkit-scrollbar-thumb {
     border-radius: 9999px;
     background: var(--sp-border-strong);
   }
 
-  .sp-kanban.sp-kanban-4 .sp-kanban-column {
+  .sp-kanban.sp-kanban-flow .sp-kanban-column {
     @apply w-[320px] min-w-[300px] flex-1;
     max-width: 380px;
   }
@@ -5358,11 +5358,11 @@ a.sp-client-field-value:hover {
 /* Mobile: cada columna ocupa casi toda la pantalla y se navega deslizando,
    con un borde de la siguiente visible como pista de que hay más. */
 @media (max-width: 640px) {
-  .sp-kanban.sp-kanban-4 {
+  .sp-kanban.sp-kanban-flow {
     scroll-snap-type: x mandatory;
   }
 
-  .sp-kanban.sp-kanban-4 .sp-kanban-column {
+  .sp-kanban.sp-kanban-flow .sp-kanban-column {
     @apply w-[84vw] min-w-[84vw];
     scroll-snap-align: start;
   }

@@ -282,7 +282,7 @@ export function TasksView({
               releaseDragFlag();
             }}
           >
-            <div className="sp-kanban sp-kanban-4">
+            <div className="sp-kanban sp-kanban-flow">
               {TASK_COLUMNS.map((column) => (
                 <TaskColumn
                   key={column.key}

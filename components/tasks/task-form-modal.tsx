@@ -30,7 +30,7 @@ export function TaskFormModal({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState<JSONContent | null>(null);
-  const [status, setStatus] = useState<TaskStatus>("por_hacer");
+  const [status, setStatus] = useState<TaskStatus>("pendiente");
   const [priority, setPriority] = useState<TaskPriority>("media");
   const [dueDate, setDueDate] = useState("");
   const [assignedToUserId, setAssignedToUserId] = useState<string | null>(null);
@@ -66,7 +66,7 @@ export function TaskFormModal({
   const reset = () => {
     setTitle("");
     setDescription(null);
-    setStatus("por_hacer");
+    setStatus("pendiente");
     setPriority("media");
     setDueDate("");
     setAssignedToUserId(null);

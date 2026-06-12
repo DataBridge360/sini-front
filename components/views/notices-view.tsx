@@ -1,11 +1,28 @@
 "use client";
 
-import { Bell, CalendarDays, Check, CheckCircle, FileText, Layers, Loader2, Phone, RotateCcw, Search, X } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  Check,
+  CheckCircle,
+  Copy,
+  FileText,
+  Hash,
+  Layers,
+  Loader2,
+  Mail,
+  Phone,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  X
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { intervalLabel, type InsuranceCompany, type Notice } from "@/lib/api";
 import { readView, writeView } from "@/lib/browser";
-import { avatarColor, capitalizeFirst, dueLabel, formatDate, getDaysUntilDue, initials } from "@/lib/format";
+import { capitalizeFirst, formatDate, getDaysUntilDue } from "@/lib/format";
 import {
+  buildNoticeReminderMessage,
   clusterNoticesByClient,
   EMPTY_NOTICE_FILTERS,
   isNoticeInWindow,
@@ -18,7 +35,7 @@ import {
 import { BRANCHES, type NoticeNoteApi } from "@/lib/shell-types";
 import { DueChip, NOTICE_COLUMNS, NoticeAudit, NoticeNotes } from "@/components/notices/shared";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ViewToggle } from "@/components/ui/view-toggle";
 
@@ -53,6 +70,11 @@ export function NoticesView({
   const [view, setView] = useState<NoticeView>(() => readView("sp-notices-view", "kanban"));
   const [payNoticeTarget, setPayNoticeTarget] = useState<Notice | null>(null);
   const [detailNotice, setDetailNotice] = useState<Notice | null>(null);
+  // Confirmaciones: marcar avisado (1 o N del mismo asegurado) y revertir estado.
+  const [notifyTarget, setNotifyTarget] = useState<Notice[] | null>(null);
+  const [revertTarget, setRevertTarget] = useState<Notice | null>(null);
+
+  const requestNotify = (notice: Notice) => setNotifyTarget([notice]);
 
   const branches = useMemo(() => {
     const fromData = notices.map((notice) => notice.policies?.branch).filter(Boolean) as string[];
@@ -149,8 +171,8 @@ export function NoticesView({
                           isPaying={payingNoticeId === cluster[0].id}
                           isReverting={revertingNoticeId === cluster[0].id}
                           noteApi={noteApi}
-                          onNotified={onNotified}
-                          onRevert={onRevert}
+                          onRequestNotify={requestNotify}
+                          onRequestRevert={setRevertTarget}
                           onRequestPay={setPayNoticeTarget}
                           onOpenDetail={setDetailNotice}
                         />
@@ -161,8 +183,8 @@ export function NoticesView({
                           markingNoticeId={markingNoticeId}
                           payingNoticeId={payingNoticeId}
                           revertingNoticeId={revertingNoticeId}
-                          onNotified={onNotified}
-                          onRevert={onRevert}
+                          onRequestNotifyAll={setNotifyTarget}
+                          onRequestRevert={setRevertTarget}
                           onRequestPay={setPayNoticeTarget}
                           onOpenDetail={setDetailNotice}
                         />
@@ -193,8 +215,8 @@ export function NoticesView({
                     isMarkingNotified={markingNoticeId === notice.id}
                     isPaying={payingNoticeId === notice.id}
                     isReverting={revertingNoticeId === notice.id}
-                    onNotified={onNotified}
-                    onRevert={onRevert}
+                    onRequestNotify={requestNotify}
+                    onRequestRevert={setRevertTarget}
                     onRequestPay={setPayNoticeTarget}
                     onOpenDetail={setDetailNotice}
                   />
@@ -225,7 +247,104 @@ export function NoticesView({
           onViewPolicy(notice);
         }}
       />
+
+      {/* Confirmación de "avisado" con mensaje sugerido listo para copiar */}
+      <NotifyDialog
+        key={notifyTarget ? notifyTarget.map((notice) => notice.id).join("|") : "notify-dialog"}
+        notices={notifyTarget}
+        onClose={() => setNotifyTarget(null)}
+        onConfirm={() => {
+          notifyTarget?.forEach((notice) => onNotified(notice.id));
+          setNotifyTarget(null);
+        }}
+      />
+
+      {/* Confirmación para volver atrás el estado de un aviso */}
+      <ConfirmDialog
+        isOpen={Boolean(revertTarget)}
+        title={revertTarget?.status === "pagado" ? "Revertir pago" : "Volver a «Avisar»"}
+        message={
+          revertTarget?.status === "pagado"
+            ? `¿Revertir el pago de ${revertTarget?.policies?.clients?.full_name ?? "este aviso"}? El aviso vuelve a la columna "Avisados".`
+            : `¿Volver el aviso de ${revertTarget?.policies?.clients?.full_name ?? "este asegurado"} a "Avisar"? Va a quedar de nuevo como pendiente de contactar.`
+        }
+        confirmLabel={revertTarget?.status === "pagado" ? "Revertir pago" : "Volver atrás"}
+        tone="warning"
+        isBusy={Boolean(revertTarget && revertingNoticeId === revertTarget.id)}
+        onClose={() => setRevertTarget(null)}
+        onConfirm={() => {
+          if (revertTarget) onRevert(revertTarget.id);
+          setRevertTarget(null);
+        }}
+      />
     </div>
+  );
+}
+
+// Confirmación de "marcar avisado" con el mensaje sugerido para el cliente,
+// listo para copiar y mandar por WhatsApp. Se adapta al tipo de seguro y a
+// la cantidad de vencimientos (aviso simple o agrupado).
+function NotifyDialog({
+  notices,
+  onClose,
+  onConfirm
+}: {
+  notices: Notice[] | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const isOpen = Boolean(notices && notices.length > 0);
+  const message = notices ? buildNoticeReminderMessage(notices) : "";
+  const clientName = notices?.[0]?.policies?.clients?.full_name ?? "el asegurado";
+
+  const copyMessage = () => {
+    void navigator.clipboard
+      .writeText(message)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2500);
+      })
+      .catch(() => undefined);
+  };
+
+  return (
+    <Modal
+      title={notices && notices.length > 1 ? `Marcar avisados (${notices.length})` : "Marcar avisado"}
+      isOpen={isOpen}
+      onClose={onClose}
+    >
+      <div className="flex flex-col gap-3">
+        <p className="m-0 text-sm leading-relaxed text-slate-600">
+          Vas a marcar como avisado{notices && notices.length > 1 ? `s los ${notices.length} vencimientos` : " el vencimiento"} de{" "}
+          <strong className="font-semibold text-slate-800">{clientName}</strong>. Podés copiar el mensaje sugerido y enviárselo:
+        </p>
+        <div className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-[12.5px] leading-relaxed text-slate-700">
+          {message}
+        </div>
+        <button
+          type="button"
+          className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition-colors ${
+            copied
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-[color:var(--org-primary-soft)] text-[color:var(--org-primary)] hover:brightness-95"
+          }`}
+          onClick={copyMessage}
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? "Mensaje copiado" : "Copiar mensaje"}
+        </button>
+        <div className="sp-modal-actions">
+          <button type="button" className="sp-secondary-action" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="sp-primary-action" onClick={onConfirm}>
+            <Bell size={14} />
+            Confirmar avisado
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -245,51 +364,97 @@ function NoticeDetailModal({
   const client = notice.policies?.clients;
   const company = notice.policies?.insurance_companies;
   const days = getDaysUntilDue(notice.due_date);
-  const dueColor =
-    notice.status === "pagado" ? "text-emerald-600" : days < 0 ? "text-red-600" : days <= 7 ? "text-amber-600" : "text-slate-600";
-
-  const rows: Array<{ label: string; value: string | null; href?: string | undefined }> = [
-    { label: "Compañía", value: company?.name ?? null },
-    { label: "N° de póliza", value: notice.policies?.policy_number || null },
-    { label: "Rama", value: notice.policies?.branch || null },
-    { label: "Patente", value: notice.policies?.vehicle_plate || null },
-    { label: "Teléfono", value: client?.phone ?? null, href: client?.phone ? `tel:${client.phone}` : undefined },
-    { label: "Email", value: client?.email ?? null, href: client?.email ? `mailto:${client.email}` : undefined }
-  ];
-  const visibleRows = rows.filter((row) => row.value);
 
   return (
     <Modal title="Detalle del aviso" isOpen={Boolean(notice)} onClose={onClose}>
       <div className="flex flex-col gap-4">
+        {/* Cabecera: asegurado + estado + urgencia */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="m-0 truncate text-lg font-bold text-slate-900">{client?.full_name ?? "Sin cliente"}</h3>
-            <p className="mt-0.5 text-sm font-semibold">
-              <span className={dueColor}>{dueLabel(days)}</span>
-              <span className="text-slate-400"> · {formatDate(notice.due_date)}</span>
+            <h3 className="m-0 truncate text-xl font-bold text-slate-900">{client?.full_name ?? "Sin cliente"}</h3>
+            <p className="m-0 mt-1.5 flex flex-wrap items-center gap-1.5">
+              <DueChip days={days} status={notice.status} />
+              <span className="text-xs font-medium text-slate-400">Vence el {formatDate(notice.due_date)}</span>
             </p>
           </div>
           <span className={noticeStatusPill(notice.status)}>{noticeStatusLabel(notice.status)}</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
-          {visibleRows.map((row) => (
-            <div key={row.label} className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{row.label}</span>
-              {row.href ? (
-                <a className="truncate text-sm font-medium text-slate-800 hover:text-[color:var(--org-primary)]" href={row.href}>{row.value}</a>
-              ) : (
-                <span className="truncate text-sm font-medium text-slate-800">{row.value}</span>
-              )}
-            </div>
-          ))}
-          {notice.status === "pagado" && notice.paid_interval_months ? (
+        {/* Póliza destacada, estilo tarjeta de billetera */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200">
+          <div
+            className="flex items-center gap-3 px-4 py-3.5 text-white"
+            style={{
+              background:
+                "linear-gradient(135deg, color-mix(in srgb, var(--org-primary) 82%, #0b1220) 0%, var(--org-primary) 100%)"
+            }}
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
+              <ShieldCheck size={19} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-bold uppercase tracking-wide text-white/65">
+                {company?.name ?? "Sin compañía"}
+              </span>
+              <span className="block truncate text-lg font-bold leading-tight">
+                {notice.policies?.policy_number ? `Póliza N° ${notice.policies.policy_number}` : "Póliza sin número"}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+              {notice.policies?.branch ?? "Rama"}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 bg-slate-50 px-4 py-3 max-[520px]:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Periodicidad pagada</span>
-              <span className="truncate text-sm font-medium text-slate-800">{intervalLabel(notice.paid_interval_months)}</span>
+              <span className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                <CalendarDays size={11} /> Vencimiento
+              </span>
+              <span className="truncate text-sm font-bold text-slate-800">{formatDate(notice.due_date)}</span>
             </div>
-          ) : null}
+            {notice.policies?.vehicle_plate ? (
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                  <Hash size={11} /> Patente
+                </span>
+                <span className="truncate text-sm font-bold text-slate-800">{notice.policies.vehicle_plate}</span>
+              </div>
+            ) : null}
+            {notice.status === "pagado" && notice.paid_interval_months ? (
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                  <CheckCircle size={11} /> Pagó
+                </span>
+                <span className="truncate text-sm font-bold text-emerald-700">
+                  {capitalizeFirst(intervalLabel(notice.paid_interval_months))}
+                </span>
+              </div>
+            ) : null}
+          </div>
         </div>
+
+        {/* Contacto del asegurado */}
+        {client?.phone || client?.email ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {client?.phone ? (
+              <a
+                href={`tel:${client.phone}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[color:var(--org-primary-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--org-primary)] transition-opacity hover:opacity-80"
+              >
+                <Phone size={12} />
+                {client.phone}
+              </a>
+            ) : null}
+            {client?.email ? (
+              <a
+                href={`mailto:${client.email}`}
+                className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
+              >
+                <Mail size={12} />
+                <span className="truncate">{client.email}</span>
+              </a>
+            ) : null}
+          </div>
+        ) : null}
 
         {notice.notified_by || notice.payment_processed_by ? (
           <div className="flex flex-col gap-1.5">
@@ -420,8 +585,8 @@ function NoticeCard({
   isPaying,
   isReverting,
   noteApi,
-  onNotified,
-  onRevert,
+  onRequestNotify,
+  onRequestRevert,
   onRequestPay,
   onOpenDetail
 }: {
@@ -430,8 +595,8 @@ function NoticeCard({
   isPaying: boolean;
   isReverting: boolean;
   noteApi: NoticeNoteApi;
-  onNotified: (id: string) => void;
-  onRevert: (id: string) => void;
+  onRequestNotify: (notice: Notice) => void;
+  onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
   onOpenDetail: (notice: Notice) => void;
 }) {
@@ -455,14 +620,8 @@ function NoticeCard({
           }
         }}
       >
-        {/* Cabecera estilo billetera: avatar circular + titular + chip de urgencia */}
+        {/* Cabecera: titular + chip de urgencia */}
         <div className="flex items-start gap-2.5">
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-            style={{ backgroundColor: avatarColor(clientName) }}
-          >
-            {initials(clientName)}
-          </span>
           <span className="min-w-0 flex-1">
             <h4 className="m-0 truncate text-[13.5px] font-semibold leading-snug text-slate-900">{clientName}</h4>
             <p className="m-0 truncate text-[11.5px] text-slate-500">
@@ -520,8 +679,8 @@ function NoticeCard({
         isMarkingNotified={isMarkingNotified}
         isPaying={isPaying}
         isReverting={isReverting}
-        onNotified={onNotified}
-        onRevert={onRevert}
+        onRequestNotify={onRequestNotify}
+        onRequestRevert={onRequestRevert}
         onRequestPay={onRequestPay}
       />
     </article>
@@ -535,8 +694,8 @@ function NoticeGroupCard({
   markingNoticeId,
   payingNoticeId,
   revertingNoticeId,
-  onNotified,
-  onRevert,
+  onRequestNotifyAll,
+  onRequestRevert,
   onRequestPay,
   onOpenDetail
 }: {
@@ -544,8 +703,8 @@ function NoticeGroupCard({
   markingNoticeId: string | null;
   payingNoticeId: string | null;
   revertingNoticeId: string | null;
-  onNotified: (id: string) => void;
-  onRevert: (id: string) => void;
+  onRequestNotifyAll: (notices: Notice[]) => void;
+  onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
   onOpenDetail: (notice: Notice) => void;
 }) {
@@ -564,12 +723,6 @@ function NoticeGroupCard({
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md">
       <div className="flex items-start gap-2.5">
-        <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-          style={{ backgroundColor: avatarColor(clientName) }}
-        >
-          {initials(clientName)}
-        </span>
         <span className="min-w-0 flex-1">
           <h4 className="m-0 truncate text-[13.5px] font-semibold leading-snug text-slate-900">{clientName}</h4>
           <p className="m-0 flex items-center gap-1 truncate text-[11.5px] text-slate-500">
@@ -630,7 +783,7 @@ function NoticeGroupCard({
                 <button
                   type="button"
                   className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => onRevert(notice.id)}
+                  onClick={() => onRequestRevert(notice)}
                   disabled={rowBusy}
                 >
                   {revertingNoticeId === notice.id ? spin : <RotateCcw size={12} />}
@@ -647,7 +800,7 @@ function NoticeGroupCard({
           <button
             type="button"
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-blue-600 py-2 text-[11.5px] font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={() => notices.forEach((notice) => onNotified(notice.id))}
+            onClick={() => onRequestNotifyAll(notices)}
             disabled={busy}
           >
             {busy ? spin : <Bell size={13} />}
@@ -672,8 +825,8 @@ function NoticeListRow({
   isMarkingNotified,
   isPaying,
   isReverting,
-  onNotified,
-  onRevert,
+  onRequestNotify,
+  onRequestRevert,
   onRequestPay,
   onOpenDetail,
   compact
@@ -682,8 +835,8 @@ function NoticeListRow({
   isMarkingNotified: boolean;
   isPaying: boolean;
   isReverting: boolean;
-  onNotified: (id: string) => void;
-  onRevert: (id: string) => void;
+  onRequestNotify: (notice: Notice) => void;
+  onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
   onOpenDetail: (notice: Notice) => void;
   compact?: boolean;
@@ -725,8 +878,8 @@ function NoticeListRow({
           isMarkingNotified={isMarkingNotified}
           isPaying={isPaying}
           isReverting={isReverting}
-          onNotified={onNotified}
-          onRevert={onRevert}
+          onRequestNotify={onRequestNotify}
+          onRequestRevert={onRequestRevert}
           onRequestPay={onRequestPay}
           inline
         />
@@ -740,8 +893,8 @@ function NoticeActions({
   isMarkingNotified,
   isPaying,
   isReverting,
-  onNotified,
-  onRevert,
+  onRequestNotify,
+  onRequestRevert,
   onRequestPay,
   inline
 }: {
@@ -749,8 +902,8 @@ function NoticeActions({
   isMarkingNotified: boolean;
   isPaying: boolean;
   isReverting: boolean;
-  onNotified: (id: string) => void;
-  onRevert: (id: string) => void;
+  onRequestNotify: (notice: Notice) => void;
+  onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
   inline?: boolean;
 }) {
@@ -767,7 +920,7 @@ function NoticeActions({
   if (notice.status === "pagado") {
     return (
       <div className={wrap}>
-        <button type="button" className={neutral} onClick={() => onRevert(notice.id)} disabled={busy}>
+        <button type="button" className={neutral} onClick={() => onRequestRevert(notice)} disabled={busy}>
           {isReverting ? spin : <RotateCcw size={13} />}
           Revertir pago
         </button>
@@ -778,7 +931,7 @@ function NoticeActions({
   if (notice.status === "avisar") {
     return (
       <div className={wrap}>
-        <button type="button" className={blue} onClick={() => onNotified(notice.id)} disabled={busy}>
+        <button type="button" className={blue} onClick={() => onRequestNotify(notice)} disabled={busy}>
           {isMarkingNotified ? spin : <Bell size={13} />}
           Marcar avisado
         </button>
@@ -788,7 +941,7 @@ function NoticeActions({
 
   return (
     <div className={wrap}>
-      <button type="button" className={neutral} onClick={() => onRevert(notice.id)} disabled={busy}>
+      <button type="button" className={neutral} onClick={() => onRequestRevert(notice)} disabled={busy}>
         {isReverting ? spin : <RotateCcw size={13} />}
         Avisar
       </button>

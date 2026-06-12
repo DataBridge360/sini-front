@@ -6,6 +6,7 @@ import type { Notice } from "@/lib/api";
 import { dueLabel } from "@/lib/format";
 import type { NoticeStatus } from "@/lib/notices";
 import type { NoticeNoteApi } from "@/lib/shell-types";
+import { ConfirmDialog } from "@/components/ui/modal";
 
 export const NOTICE_COLUMNS = [
   { key: "avisar" as const, label: "Avisar", hint: "Pendientes de contactar", dot: "#f59e0b", icon: AlertTriangle },
@@ -53,6 +54,7 @@ export function NoticeAudit({ notice }: { notice: Notice }) {
 export function NoticeNotes({ notice, noteApi }: { notice: Notice; noteApi: NoticeNoteApi }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [confirmingNoteId, setConfirmingNoteId] = useState<string | null>(null);
   const notes = notice.notes ?? [];
   const isAdding = noteApi.busyNoticeId === notice.id;
 
@@ -93,7 +95,7 @@ export function NoticeNotes({ notice, noteApi }: { notice: Notice; noteApi: Noti
                     type="button"
                     aria-label="Eliminar nota"
                     className="shrink-0 text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50"
-                    onClick={() => noteApi.onDelete(notice.id, note.id)}
+                    onClick={() => setConfirmingNoteId(note.id)}
                     disabled={noteApi.deletingNoteId === note.id}
                   >
                     <Trash2 size={12} />
@@ -127,6 +129,22 @@ export function NoticeNotes({ notice, noteApi }: { notice: Notice; noteApi: Noti
           </div>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        isOpen={Boolean(confirmingNoteId)}
+        title="Eliminar nota"
+        message="¿Eliminar esta nota interna? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar nota"
+        isBusy={Boolean(confirmingNoteId && noteApi.deletingNoteId === confirmingNoteId)}
+        onClose={() => setConfirmingNoteId(null)}
+        onConfirm={() => {
+          if (!confirmingNoteId) return;
+          void noteApi
+            .onDelete(notice.id, confirmingNoteId)
+            .catch(() => undefined)
+            .finally(() => setConfirmingNoteId(null));
+        }}
+      />
     </div>
   );
 }
