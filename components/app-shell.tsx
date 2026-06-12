@@ -618,11 +618,8 @@ export function AppShell() {
           ) : null}
           {tab === "clients" && !clientDetailId ? (
             <ClientsView
-              clients={allClients}
-              policies={allPolicies}
-              isLoading={clients.isLoading}
+              common={common}
               isCreating={createClient.isPending}
-              error={clients.error?.message ?? null}
               onOpenClient={(client) => {
                 setOpenPolicyId(null);
                 setClientDetailId(client.id);
@@ -648,12 +645,10 @@ export function AppShell() {
           ) : null}
           {tab === "policies" ? (
             <PoliciesView
-              policies={allPolicies}
+              common={common}
               clients={allClients}
               companies={allCompanies}
-              isLoading={policies.isLoading}
               isCreating={createPolicy.isPending}
-              error={policies.error?.message ?? null}
               onCreate={(values) => createPolicy.mutateAsync(values)}
               onOpenPolicy={(policy) => {
                 if (!policy.clients?.id) return;

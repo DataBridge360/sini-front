@@ -1,67 +1,85 @@
 "use client";
 
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { FileText, Mail, MapPin, Phone } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { Client, Policy } from "@/lib/api";
+import { useState } from "react";
+import { apiRequest, type ApiCommonOptions, type ClientListItem, type Paginated } from "@/lib/api";
 import { readView, writeView } from "@/lib/browser";
 import { AVATAR_COLORS, initials } from "@/lib/format";
 import type { EntityView } from "@/lib/shell-types";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { ClientCreateModal } from "@/components/clients/client-create-modal";
 import { EntityToolbar } from "@/components/ui/entity-toolbar";
-import { paginate, Pagination } from "@/components/ui/pagination";
+import { PAGE_SIZE, Pagination } from "@/components/ui/pagination";
 import { SearchableSelect } from "@/components/ui/selects";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 
+const NO_ITEMS: ClientListItem[] = [];
+const NO_LOCALITIES: string[] = [];
+
+// Listado con paginación server-side (PAGINADO.md): el navegador solo recibe
+// la página visible; búsqueda y filtros se resuelven en el backend.
 export function ClientsView({
-  clients,
-  policies,
-  isLoading,
+  common,
   isCreating,
-  error,
   onOpenClient,
   onCreate
 }: {
-  clients: Client[];
-  policies: Policy[];
-  isLoading: boolean;
+  common: ApiCommonOptions;
   isCreating: boolean;
-  error: string | null;
-  onOpenClient: (client: Client) => void;
+  onOpenClient: (client: ClientListItem) => void;
   onCreate: (body: Record<string, FormDataEntryValue>) => Promise<unknown>;
 }) {
+  const slug = common.organizationSlug ?? "";
   const [search, setSearch] = useState("");
   const [locality, setLocality] = useState("all");
   const [page, setPage] = useState(1);
   const [view, setView] = useState<EntityView>(() => readView("sp-clients-view", "list"));
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const debouncedSearch = useDebouncedValue(search.trim());
 
-  const localities = useMemo(
-    () => Array.from(new Set(clients.map((client) => client.locality).filter(Boolean) as string[])).sort(),
-    [clients]
-  );
+  // Cambiar búsqueda o filtro siempre vuelve a la primera página
+  // (reset de estado derivado durante el render, sin efecto).
+  const filtersKey = `${debouncedSearch}|${locality}`;
+  const [lastFiltersKey, setLastFiltersKey] = useState(filtersKey);
+  if (filtersKey !== lastFiltersKey) {
+    setLastFiltersKey(filtersKey);
+    setPage(1);
+  }
 
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return clients.filter((client) =>
-      (locality === "all" || client.locality === locality) &&
-      [client.full_name, client.email, client.phone, client.locality, client.dni]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term))
-    );
-  }, [clients, locality, search]);
+  const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+  if (debouncedSearch) params.set("search", debouncedSearch);
+  if (locality !== "all") params.set("locality", locality);
 
-  const paged = paginate(filtered, page);
+  const clientsQuery = useQuery({
+    queryKey: ["clients", slug, "page", { page, search: debouncedSearch, locality }],
+    // Mantiene la página anterior visible mientras llega la nueva (sin parpadeo).
+    placeholderData: keepPreviousData,
+    queryFn: () => apiRequest<Paginated<ClientListItem>>(`/clients?${params.toString()}`, common)
+  });
+
+  const localitiesQuery = useQuery({
+    queryKey: ["clients", slug, "localities"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: () => apiRequest<string[]>("/clients/localities", common)
+  });
+
+  const items = clientsQuery.data?.items ?? NO_ITEMS;
+  const total = clientsQuery.data?.total ?? 0;
+  const currentPage = clientsQuery.data?.page ?? page;
+  const pageSize = clientsQuery.data?.pageSize ?? PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = (currentPage - 1) * pageSize;
+  const localities = localitiesQuery.data ?? NO_LOCALITIES;
+  const isLoading = clientsQuery.isLoading;
 
   return (
     <div className="sp-page padded">
       <EntityToolbar
         search={search}
-        setSearch={(value) => {
-          setSearch(value);
-          setPage(1);
-        }}
-        count={filtered.length}
-        total={clients.length}
+        setSearch={setSearch}
+        count={items.length}
+        total={total}
         view={view}
         setView={(next) => {
           setView(next);
@@ -78,44 +96,53 @@ export function ClientsView({
             ...localities.map((item) => ({ value: item, label: item }))
           ]}
           placeholder="Localidad"
-          onChange={(value) => {
-            setLocality(value);
-            setPage(1);
-          }}
+          onChange={setLocality}
         />
       </EntityToolbar>
       <section className="sp-section-card wide">
-        {error ? <ErrorState text={error} /> : null}
+        {clientsQuery.error ? <ErrorState text={clientsQuery.error.message} /> : null}
         {isLoading ? <LoadingState text="Cargando asegurados" /> : null}
         {!isLoading && view === "grid" ? (
           <div className="sp-card-grid">
-            {paged.items.map((client, index) => (
-              <ClientCard key={client.id} client={client} policies={policies} color={AVATAR_COLORS[(paged.start + index) % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
+            {items.map((client, index) => (
+              <ClientCard
+                key={client.id}
+                client={client}
+                color={AVATAR_COLORS[(start + index) % AVATAR_COLORS.length] ?? "#1d4ed8"}
+                onSelect={onOpenClient}
+              />
             ))}
           </div>
         ) : null}
         {!isLoading && view === "list" ? (
           <div className="sp-list-panel embedded">
-            {paged.items.length > 0 ? (
+            {items.length > 0 ? (
               <div className="sp-list-header entity">
                 <span>Asegurado</span>
                 <span>Localidad</span>
                 <span>Pólizas</span>
               </div>
             ) : null}
-            {paged.items.map((client, index) => (
-              <ClientRow key={client.id} client={client} policies={policies} color={AVATAR_COLORS[(paged.start + index) % AVATAR_COLORS.length] ?? "#1d4ed8"} onSelect={onOpenClient} />
+            {items.map((client, index) => (
+              <ClientRow
+                key={client.id}
+                client={client}
+                color={AVATAR_COLORS[(start + index) % AVATAR_COLORS.length] ?? "#1d4ed8"}
+                onSelect={onOpenClient}
+              />
             ))}
           </div>
         ) : null}
-        {!isLoading && filtered.length === 0 ? <EmptyState title="No se encontraron asegurados" text="Probá ajustar la búsqueda o crear un nuevo asegurado." /> : null}
+        {!isLoading && items.length === 0 ? (
+          <EmptyState title="No se encontraron asegurados" text="Probá ajustar la búsqueda o crear un nuevo asegurado." />
+        ) : null}
         {!isLoading ? (
           <Pagination
-            page={paged.page}
-            totalPages={paged.totalPages}
-            start={paged.start}
-            count={paged.items.length}
-            total={paged.total}
+            page={currentPage}
+            totalPages={totalPages}
+            start={start}
+            count={items.length}
+            total={total}
             onChange={setPage}
           />
         ) : null}
@@ -130,18 +157,20 @@ export function ClientsView({
   );
 }
 
+function policyCount(client: ClientListItem) {
+  return client.policies?.[0]?.count ?? 0;
+}
+
 function ClientCard({
   client,
-  policies,
   color,
   onSelect
 }: {
-  client: Client;
-  policies: Policy[];
+  client: ClientListItem;
   color: string;
-  onSelect: (client: Client) => void;
+  onSelect: (client: ClientListItem) => void;
 }) {
-  const count = policies.filter((policy) => policy.clients?.id === client.id).length;
+  const count = policyCount(client);
   return (
     <article className="sp-entity-card is-clickable" role="button" tabIndex={0} onClick={() => onSelect(client)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(client); } }}>
       <div className="sp-entity-head">
@@ -165,16 +194,14 @@ function ClientCard({
 
 function ClientRow({
   client,
-  policies,
   color,
   onSelect
 }: {
-  client: Client;
-  policies: Policy[];
+  client: ClientListItem;
   color: string;
-  onSelect: (client: Client) => void;
+  onSelect: (client: ClientListItem) => void;
 }) {
-  const count = policies.filter((policy) => policy.clients?.id === client.id).length;
+  const count = policyCount(client);
   return (
     <div className="sp-list-row entity client is-clickable" role="button" tabIndex={0} onClick={() => onSelect(client)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(client); } }}>
       <div className="sp-avatar small" style={{ backgroundColor: color }}>{initials(client.full_name)}</div>
@@ -187,4 +214,3 @@ function ClientRow({
     </div>
   );
 }
-
