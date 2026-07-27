@@ -494,16 +494,16 @@ function RegistrationRow({
 }) {
   return (
     <tr className="border-b border-slate-100 last:border-b-0">
-      <td className="whitespace-nowrap px-2 py-1.5 text-xs text-slate-600">
+      <td className="cp-col-locked whitespace-nowrap px-2 py-1.5 text-xs text-slate-600">
         <DateCell registration={registration} onSave={onSave} />
       </td>
-      <td className="px-2 py-1.5">
-        <span className="text-[13px] font-medium text-slate-950">{registration.player_full_name}</span>
+      <td className="cp-col-locked px-2 py-1.5">
+        <span className="text-[13px] font-semibold text-slate-950">{registration.player_full_name}</span>
       </td>
-      <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs text-slate-600">
+      <td className="cp-col-locked whitespace-nowrap px-2 py-1.5 font-mono text-xs text-slate-600">
         {registration.player_dni}
       </td>
-      <td className="whitespace-nowrap px-2 py-1.5 text-xs text-slate-600">
+      <td className="cp-col-locked whitespace-nowrap px-2 py-1.5 text-xs text-slate-600">
         {registration.player_birth_date ? formatDate(registration.player_birth_date) : "—"}
       </td>
       <td className="cp-col-edit px-2 py-1.5">

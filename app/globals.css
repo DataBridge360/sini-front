@@ -4340,10 +4340,21 @@ button {
   background: var(--sp-surface-low);
 }
 
-/* Pagador, Pago y Atendió son los tres campos que se completan en la planilla.
-   Se marcan en el propio control, sin sombrear la tabla: encabezado en oscuro y
-   caja siempre visible en Pagador y Atendió. Pago no lleva caja — su chip de
-   estado (verde/ámbar) ya se ve solo y una caja encima sería ruido. */
+/* La planilla se lee en dos mitades: lo que viene de Club Plaza (fecha, jugador,
+   DNI, F. nac.) va sobre papel gris, y las tres columnas que se completan
+   (Pagador, Pago, Atendió) quedan en blanco con el control encajonado. Sin
+   hover de por medio: al entrar ya se ve dónde se escribe. */
+.cp-desktop-table td.cp-col-locked { background: var(--sp-surface-lowest); }
+
+/* El hover de fila pinta solo lo blanco; el papel gris se queda quieto. */
+.cp-desktop-table tbody tr:hover { background: var(--sp-surface-low); }
+
+/* La fecha sigue siendo editable aunque viva del lado gris: su hover marca
+   borde en vez de aclarar el fondo, que rompería el papel de la columna. */
+.sp-shell.app-redesign .cp-col-locked .cp-cell-date .sp-date-picker-trigger:hover {
+  border-color: var(--sp-border-strong);
+  background: transparent;
+}
 
 /* El <th> nativo ya llega en bold: el resto del encabezado baja a semibold
    para que la negrita de las columnas editables sea un escalón real. */
@@ -4351,49 +4362,59 @@ button {
 
 .cp-desktop-table th.cp-col-edit {
   color: var(--sp-text);
+  font-weight: 800;
+}
+
+/* Caja siempre visible. El borde va un escalón más fuerte que el del sistema
+   (slate-400): contra el papel gris de al lado, con --sp-border-strong el campo
+   no llegaba a leerse como campo. */
+.sp-shell.app-redesign .cp-col-edit .cp-cell-input,
+.cp-col-edit .cp-cell-select select {
+  min-height: 30px;
+  border-color: #94a3b8;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 700;
 }
 
-/* La caja deja de aparecer recién en hover: si el campo está vacío no hay nada
-   que mire el usuario, y era justo eso lo que había que anunciar. */
-.sp-shell.app-redesign .cp-col-edit .cp-cell-input,
-.cp-col-edit .cp-cell-select.is-set select,
-.cp-col-edit .cp-cell-select.is-empty select {
-  border-color: var(--sp-border);
-  border-radius: 8px;
-  background: var(--sp-surface);
-}
-
-.cp-col-edit .cp-cell-select.is-set select,
-.cp-col-edit .cp-cell-select.is-empty select {
-  min-height: 28px;
-  padding: 3px 22px 3px 8px;
-}
+.cp-col-edit .cp-cell-select select { padding: 4px 22px 4px 9px; }
 
 /* Lo cargado va en texto pleno y lo que falta en muted: dentro de la caja, el
-   contraste es lo que separa "ya está" de "falta completar". El gris claro de
-   antes no llegaba a 3:1 y era justo el dato a escanear. */
+   contraste es lo que separa "ya está" de "falta completar". */
 .sp-shell.app-redesign .cp-col-edit .cp-cell-input,
-.sp-shell.app-redesign .cp-registration-editors .cp-cell-input {
+.cp-col-edit .cp-cell-select.is-set select {
+  background: var(--sp-surface);
   color: var(--sp-text);
 }
 
-.sp-shell.app-redesign .cp-col-edit .cp-cell-input::placeholder,
-.sp-shell.app-redesign .cp-registration-editors .cp-cell-input::placeholder {
+.cp-col-edit .cp-cell-select.is-empty select {
+  background: var(--sp-surface);
   color: var(--sp-text-muted);
+  font-weight: 700;
 }
 
-.cp-col-edit .cp-cell-select.is-set select,
-.cp-registration-editors .cp-cell-select.is-set select { color: var(--sp-text); }
-.cp-col-edit .cp-cell-select.is-empty select,
-.cp-registration-editors .cp-cell-select.is-empty select { color: var(--sp-text-muted); }
+.sp-shell.app-redesign .cp-col-edit .cp-cell-input::placeholder {
+  color: var(--sp-text-muted);
+  font-weight: 400;
+}
 
 .sp-shell.app-redesign .cp-col-edit .cp-cell-input:hover,
-.cp-col-edit .cp-cell-select.is-set select:hover,
-.cp-col-edit .cp-cell-select.is-empty select:hover {
-  border-color: var(--sp-border-strong);
-  background: var(--sp-surface);
+.cp-col-edit .cp-cell-select select:hover {
+  border-color: var(--sp-text-faint);
+  background: var(--sp-surface-low);
 }
+
+/* Pago conserva su tinte de estado (verde cobrado / ámbar pendiente): es la
+   única columna donde el color dice algo, y se pierde si la neutralizamos. */
+.cp-col-edit .cp-cell-select.is-paid select:hover { background: var(--sp-green-soft); }
+.cp-col-edit .cp-cell-select.is-pending select:hover { background: var(--sp-amber-soft); }
+
+/* En la ficha mobile los campos ya son cajas; alcanza con el valor en texto
+   pleno y lo pendiente en muted, igual que en la tabla. */
+.sp-shell.app-redesign .cp-registration-editors .cp-cell-input { color: var(--sp-text); }
+.sp-shell.app-redesign .cp-registration-editors .cp-cell-input::placeholder { color: var(--sp-text-muted); }
+.cp-registration-editors .cp-cell-select.is-set select { color: var(--sp-text); }
+.cp-registration-editors .cp-cell-select.is-empty select { color: var(--sp-text-muted); }
 
 /* Móvil: las mismas celdas, pero como campos etiquetados dentro de la ficha. */
 .cp-registration-editors {
