@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-24T00:00:00-03:00",
+  "title": "Design System: Sinipro",
+  "extensions": {
+    "colorMeta": {
+      "org-primary": { "role": "primary", "displayName": "Acento de organización (teal por defecto)", "canonical": "#176e64", "tonalRamp": ["oklch(25% 0.05 180)", "oklch(35% 0.07 180)", "oklch(45% 0.08 180)", "oklch(55% 0.08 180)", "oklch(65% 0.07 180)", "oklch(75% 0.06 180)", "oklch(85% 0.04 180)", "oklch(95% 0.02 180)"] },
+      "shell-bg": { "role": "neutral", "displayName": "Fondo azulado de shell", "canonical": "#f7f9ff" },
+      "surface": { "role": "neutral", "displayName": "Superficie blanca", "canonical": "#ffffff" },
+      "border": { "role": "neutral", "displayName": "Borde 1px", "canonical": "#e1e7ef" },
+      "text": { "role": "neutral", "displayName": "Texto principal", "canonical": "#181c20" },
+      "text-muted": { "role": "neutral", "displayName": "Texto muted", "canonical": "#5b6575" },
+      "state-green": { "role": "tertiary", "displayName": "Al día / Pagado", "canonical": "#067647" },
+      "state-amber": { "role": "tertiary", "displayName": "Por vencer", "canonical": "#b54708" },
+      "state-red": { "role": "tertiary", "displayName": "Vencido", "canonical": "#b42318" }
+    },
+    "typographyMeta": {
+      "body": { "displayName": "Cuerpo", "purpose": "Contenido general, 13–14px." },
+      "label": { "displayName": "Label", "purpose": "Metadatos y chips, 10.5–12px muted." },
+      "display": { "displayName": "Display", "purpose": "Números de KPI del dashboard, 22–28px." }
+    },
+    "motion": [
+      { "name": "dropdown", "value": "120ms open / 90ms close", "purpose": "Apertura y cierre de dropdowns." },
+      { "name": "modal", "value": "140ms open / 100ms close", "purpose": "Apertura y cierre de modales." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón primario",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Acción primaria de página o modal; color de la organización.",
+      "html": "<button class=\"ds-btn-primary\">Guardar cambios</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 24px; border: none; border-radius: 12px; background: var(--org-primary, #176e64); color: #ffffff; font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.15s; } .ds-btn-primary:hover { background: color-mix(in srgb, var(--org-primary, #176e64) 88%, #000); } .ds-btn-primary:active { background: color-mix(in srgb, var(--org-primary, #176e64) 80%, #000); } .ds-btn-primary:focus-visible { outline: 2px solid rgba(23, 110, 100, 0.35); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botón secundario",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Acción secundaria neutra con borde.",
+      "html": "<button class=\"ds-btn-secondary\">Cancelar</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border: 1px solid #e1e7ef; border-radius: 12px; background: #ffffff; color: #181c20; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s, border-color 0.15s; } .ds-btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; } .ds-btn-secondary:focus-visible { outline: 2px solid rgba(23, 110, 100, 0.35); outline-offset: 2px; }"
+    },
+    {
+      "name": "Chip de acción tintado",
+      "kind": "chip",
+      "description": "Acción suave dentro de cards de avisos (confirmar, avisar).",
+      "html": "<button class=\"ds-chip-action\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>Cobrado</button>",
+      "css": ".ds-chip-action { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: none; border-radius: 8px; background: #ecfdf3; color: #047857; font-size: 10.5px; font-weight: 600; cursor: pointer; transition: background 0.15s; } .ds-chip-action:hover { background: #d1fae5; } .ds-chip-action:focus-visible { outline: 2px solid rgba(23, 110, 100, 0.35); outline-offset: 1px; }"
+    },
+    {
+      "name": "Badge de estado",
+      "kind": "chip",
+      "description": "Estado de cobranza en pill: verde al día, ámbar por vencer, rojo vencido.",
+      "html": "<span class=\"ds-badge ds-badge-amber\">Por vencer</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; } .ds-badge-amber { background: #fffaeb; color: #b54708; }"
+    },
+    {
+      "name": "Card de entidad",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Card clickeable de aviso/asegurado: blanca, borde 1px, sin sombra.",
+      "html": "<div class=\"ds-card\" tabindex=\"0\"><div class=\"ds-card-head\"><span class=\"ds-card-title\">María González</span><span class=\"ds-badge-inline\">Al día</span></div><p class=\"ds-card-meta\">DNI: 28.456.789 · La Caja · Póliza 00412</p><div class=\"ds-card-inset\"><span>Rama: Automotor</span><span>Vencimiento: 05/08</span></div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #e1e7ef; border-radius: 12px; padding: 12px; cursor: pointer; transition: border-color 0.15s, background 0.15s; font-family: inherit; } .ds-card:hover { border-color: #cbd5e1; background: rgba(248, 250, 252, 0.6); } .ds-card:focus-visible { outline: 2px solid rgba(23, 110, 100, 0.2); outline-offset: 2px; } .ds-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .ds-card-title { font-size: 14.5px; font-weight: 500; color: #181c20; } .ds-badge-inline { padding: 2px 9px; border-radius: 9999px; background: #ecfdf3; color: #067647; font-size: 11px; font-weight: 600; } .ds-card-meta { margin: 6px 0 0; font-size: 12px; color: #5b6575; } .ds-card-inset { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 10px 12px; background: #f8fafc; border-radius: 8px; font-size: 12px; color: #5b6575; }"
+    },
+    {
+      "name": "Input de búsqueda",
+      "kind": "input",
+      "description": "Search con icono a la izquierda, 36px de alto.",
+      "html": "<div class=\"ds-search\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input type=\"text\" placeholder=\"Buscar asegurado…\" /></div>",
+      "css": ".ds-search { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; background: #ffffff; border: 1px solid #e1e7ef; border-radius: 8px; color: #8a94a6; transition: border-color 0.15s, box-shadow 0.15s; } .ds-search:focus-within { border-color: #cbd5e1; box-shadow: 0 0 0 2px rgba(23, 110, 100, 0.12); } .ds-search input { border: none; outline: none; background: transparent; font-size: 13px; color: #181c20; font-family: inherit; width: 180px; } .ds-search input::placeholder { color: #8a94a6; }"
+    },
+    {
+      "name": "Ítem de navegación (sidebar)",
+      "kind": "nav",
+      "description": "Ítem activo del sidebar claro: card blanca bordeada, nunca fill de color.",
+      "html": "<nav class=\"ds-sidenav\"><p class=\"ds-sidenav-label\">Principal</p><a class=\"ds-sidenav-item is-active\" href=\"#\">Avisos</a><a class=\"ds-sidenav-item\" href=\"#\">Pólizas</a></nav>",
+      "css": ".ds-sidenav { display: flex; flex-direction: column; gap: 4px; width: 200px; padding: 12px; background: #f1f4fa; border-radius: 0 12px 12px 0; } .ds-sidenav-label { margin: 0 0 4px; padding: 0 10px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8a94a6; } .ds-sidenav-item { display: block; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; font-size: 13px; color: #434656; text-decoration: none; transition: background 0.15s; } .ds-sidenav-item:hover { background: rgba(255, 255, 255, 0.7); } .ds-sidenav-item.is-active { background: #ffffff; border-color: #cbd5e1; color: #181c20; font-weight: 500; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "El escritorio ordenado del productor",
+    "overview": "Sinipro es un CRM interno con estética de SaaS minimalista (Linear, Notion, Vercel). Superficies blancas sobre un fondo azulado casi imperceptible, bordes de 1px, radios contenidos y cero sombras. La jerarquía se construye con tamaño y peso tipográfico; el color existe solo para comunicar estado de cobranza y para el acento de la organización.",
+    "keyCharacteristics": [
+      "Plano y sin sombras; profundidad por bordes y tonos de superficie.",
+      "Color = estado semántico o acento de organización, nunca decoración.",
+      "Compacto y escaneable; sentence case en todo el copy.",
+      "Acento white-label: --org-primary se define por organización en runtime."
+    ],
+    "rules": [
+      { "name": "The Semantic-Color Rule", "body": "Un elemento solo lleva color si comunica estado o es la acción primaria. Todo lo demás es neutro.", "section": "colors" },
+      { "name": "The Org-Accent Rule", "body": "El hue de marca viene de var(--org-primary); ningún componente fija un color de marca propio.", "section": "colors" },
+      { "name": "The Small-Type Rule", "body": "El cuerpo nunca supera 14px; lo grande se reserva para números de KPI.", "section": "typography" },
+      { "name": "The No-Shadow Rule", "body": "Ninguna superficie proyecta sombra; si un elemento necesita separarse, usa borde o un tono de superficie más bajo.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do usar borde 1px + escalón de superficie para separar; profundidad sin sombras.",
+      "Do derivar todo color de acción de var(--org-primary) y sus variantes soft/muted.",
+      "Do mantener el cuerpo en 13–14px y metadatos en 10.5–12px muted.",
+      "Do usar los tintes soft (emerald-50/blue-50/slate-50 + texto 700) para acciones dentro de cards.",
+      "Do escribir todo en español y sentence case, con la terminología del dominio."
+    ],
+    "donts": [
+      "Don't agregar box-shadows, gradientes ni heroes; es una herramienta interna.",
+      "Don't usar color como decoración: solo estado semántico o acción primaria.",
+      "Don't hardcodear el color de marca; viene de la organización en runtime.",
+      "Don't inventar datos, métricas o campos en las vistas; solo datos reales del backend.",
+      "Don't editar los bloques @layer tempranos de globals.css; el bloque bare .sp-shell.app-redesign es el autoritativo."
+    ]
+  }
+}

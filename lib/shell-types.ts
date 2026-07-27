@@ -2,7 +2,30 @@
 
 import type { Client, InsuranceCompany, OrganizationSettings } from "@/lib/api";
 
-export type Tab = "dashboard" | "notices" | "tasks" | "clients" | "policies" | "companies" | "team" | "settings" | "profile";
+export type Tab = "dashboard" | "notices" | "tasks" | "clients" | "policies" | "companies" | "clubplaza" | "team" | "settings" | "profile";
+
+export const TAB_PATHS = {
+  dashboard: "/dashboard",
+  notices: "/avisos",
+  tasks: "/tareas",
+  clients: "/asegurados",
+  policies: "/polizas",
+  companies: "/companias",
+  clubplaza: "/clubplaza",
+  team: "/equipo",
+  settings: "/configuracion",
+  profile: "/perfil"
+} as const satisfies Record<Tab, `/${string}`>;
+
+const TAB_BY_PATH = new Map<string, Tab>(
+  Object.entries(TAB_PATHS).map(([tab, path]) => [path, tab as Tab])
+);
+
+export function getTabFromPathname(pathname: string): Tab | null {
+  const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (normalizedPath === "/") return "dashboard";
+  return TAB_BY_PATH.get(normalizedPath) ?? null;
+}
 
 export type NoticeNoteApi = {
   currentUserId: string;
