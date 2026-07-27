@@ -343,12 +343,10 @@ export function ClubplazaView({
           Pendientes
         </button>
         <div className="cp-command-actions">
-          {canManage ? (
-            <button className="sp-secondary-action" type="button" onClick={() => setIsWizardOpen(true)}>
-              <Upload size={14} />
-              <span>Carga masiva</span>
-            </button>
-          ) : null}
+          <button className="sp-secondary-action" type="button" onClick={() => setIsWizardOpen(true)}>
+            <Upload size={14} />
+            <span>Carga masiva</span>
+          </button>
           <button className="sp-primary-action" type="button" onClick={() => setIsRegistrationOpen(true)}>
             <Plus size={14} />
             <span>Registrar jugador</span>
@@ -392,9 +390,9 @@ export function ClubplazaView({
                     <th className="px-2 py-2">Jugador</th>
                     <th className="px-2 py-2">DNI</th>
                     <th className="px-2 py-2">F. nac.</th>
-                    <th className="px-2 py-2">Pagador</th>
-                    <th className="px-2 py-2">Pago</th>
-                    <th className="px-2 py-2">Atendió</th>
+                    <th className="cp-col-edit px-2 py-2">Pagador</th>
+                    <th className="cp-col-edit px-2 py-2">Pago</th>
+                    <th className="cp-col-edit px-2 py-2">Atendió</th>
                     <th className="px-2 py-2" aria-label="Acciones" />
                   </tr>
                 </thead>
@@ -468,14 +466,14 @@ export function ClubplazaView({
         }}
       />
 
-      {canManage ? (
-        <BulkImportWizard
-          isOpen={isWizardOpen}
-          onClose={() => setIsWizardOpen(false)}
-          onImportComplete={handleImportComplete}
-          notify={notify}
-        />
-      ) : null}
+      {/* La carga masiva es para todos los roles: el proxy solo pide sesión
+          activa de SiniPro, no un rol en particular. */}
+      <BulkImportWizard
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+        onImportComplete={handleImportComplete}
+        notify={notify}
+      />
     </div>
 
   );
@@ -508,13 +506,13 @@ function RegistrationRow({
       <td className="whitespace-nowrap px-2 py-1.5 text-xs text-slate-600">
         {registration.player_birth_date ? formatDate(registration.player_birth_date) : "—"}
       </td>
-      <td className="px-2 py-1.5">
+      <td className="cp-col-edit px-2 py-1.5">
         <PayerCell registration={registration} onSave={onSave} />
       </td>
-      <td className="whitespace-nowrap px-2 py-1.5">
+      <td className="cp-col-edit whitespace-nowrap px-2 py-1.5">
         <PaymentCell registration={registration} onSave={onSave} />
       </td>
-      <td className="whitespace-nowrap px-2 py-1.5">
+      <td className="cp-col-edit whitespace-nowrap px-2 py-1.5">
         <AttendedCell registration={registration} members={members} onSave={onSave} />
       </td>
       <td className="whitespace-nowrap px-2 py-1.5 text-right">
@@ -558,9 +556,9 @@ function RegistrationMobileCard({
       </div>
       <div className="cp-registration-editors">
         <label><span>Fecha</span><DateCell registration={registration} onSave={onSave} /></label>
-        <label><span>Pago</span><PaymentCell registration={registration} onSave={onSave} /></label>
-        <label><span>Pagador</span><PayerCell registration={registration} onSave={onSave} /></label>
-        <label><span>Atendió</span><AttendedCell registration={registration} members={members} onSave={onSave} /></label>
+        <label className="cp-field-edit"><span>Pago</span><PaymentCell registration={registration} onSave={onSave} /></label>
+        <label className="cp-field-edit"><span>Pagador</span><PayerCell registration={registration} onSave={onSave} /></label>
+        <label className="cp-field-edit"><span>Atendió</span><AttendedCell registration={registration} members={members} onSave={onSave} /></label>
       </div>
       {canDelete ? (
         <div className="cp-registration-actions">
