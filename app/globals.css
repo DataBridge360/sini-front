@@ -1172,8 +1172,10 @@ button {
     @apply relative min-w-[220px];
   }
 
+  /* El alto lo define el control, nunca el input de adentro: con `h-9` fijo,
+     cualquier alto de campo aplicado al input lo desborda y lo recorta. */
   .sp-combobox-control {
-    @apply flex h-9 items-stretch overflow-hidden rounded-lg border bg-white;
+    @apply flex min-h-9 items-stretch overflow-hidden rounded-lg border bg-white;
     border-color: var(--sp-border-strong);
   }
 
@@ -2314,12 +2316,6 @@ button {
   .sp-list-row.entity.client {
     display: grid;
     grid-template-columns: 36px minmax(220px, 1fr) 180px 104px;
-    align-items: center;
-  }
-
-  .sp-list-row.entity.policy {
-    display: grid;
-    grid-template-columns: 36px minmax(220px, 1fr) 132px 110px 138px;
     align-items: center;
   }
 
@@ -4073,6 +4069,342 @@ button {
   }
 }
 
+/* Club Plaza: planilla operativa, con una lectura de registro que cambia de
+   tabla en escritorio a fichas secuenciales en móvil. */
+.sp-shell.app-redesign .cp-page {
+  display: grid;
+  gap: 16px;
+  max-width: 1280px;
+}
+
+.cp-page-heading,
+.cp-command-bar,
+.cp-command-actions,
+.cp-filter-fields,
+.cp-registration-main,
+.cp-registration-actions {
+  display: flex;
+  align-items: center;
+}
+
+.cp-page-heading {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cp-page-heading h2 {
+  margin: 0;
+  color: var(--sp-text);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.cp-page-heading p {
+  margin: 4px 0 0;
+  color: var(--sp-text-muted);
+  font-size: 13px;
+}
+
+.cp-record-count {
+  color: var(--sp-text-faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cp-command-bar {
+  gap: 8px;
+}
+
+.sp-shell.app-redesign .cp-search {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.sp-shell.app-redesign .cp-search input,
+.sp-shell.app-redesign .cp-pending-filter {
+  min-height: 40px;
+}
+
+.cp-pending-filter {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-width: 1px;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.cp-command-actions {
+  margin-left: auto;
+  gap: 8px;
+}
+
+.sp-shell.app-redesign .cp-command-actions .sp-primary-action,
+.sp-shell.app-redesign .cp-command-actions .sp-secondary-action {
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.cp-filters {
+  border-top: 1px solid var(--sp-border);
+  border-bottom: 1px solid var(--sp-border);
+}
+
+.cp-filters summary {
+  display: flex;
+  min-height: 44px;
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+  color: var(--sp-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.cp-filters summary::-webkit-details-marker { display: none; }
+.cp-filters summary::before { content: "+"; color: var(--sp-text-faint); font-size: 16px; font-weight: 400; }
+.cp-filters[open] summary::before { content: "−"; }
+.cp-filters summary b { color: var(--org-primary); font-size: 11px; }
+.cp-filters summary em { color: var(--sp-text-faint); font-size: 11px; font-style: normal; font-weight: 400; }
+
+/* Grid de columnas iguales alineadas al pie. Todos los filtros llevan rótulo,
+   así que comparten estructura y comparten línea base. Antes era el flex con
+   `align-items: center` del grupo de arriba: los controles sin rótulo quedaban
+   centrados contra los que sí lo tenían, y `min-width` del combobox rompía el
+   wrap en una segunda fila dentada. */
+.cp-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  align-items: end;
+  gap: 10px 8px;
+  padding: 0 0 14px;
+}
+
+.cp-filter-fields > * {
+  min-width: 0;
+}
+
+.cp-filter-fields .sp-combobox {
+  min-width: 0;
+}
+
+.cp-filter-fields .sp-combobox-control {
+  width: 100%;
+}
+
+.cp-filter-fields .cp-date-field > input,
+.cp-filter-fields .cp-date-field > select {
+  width: 100%;
+}
+
+.cp-filter-fields .cp-clear-filters {
+  justify-self: start;
+}
+
+.cp-date-field {
+  display: grid;
+  gap: 4px;
+  color: var(--sp-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* El input va acotado a `.cp-date-field >` a propósito: sin eso también
+   alcanzaría al input interno del combobox, que no debe llevar alto propio. */
+.sp-shell.app-redesign .cp-filter-fields .sp-date-picker-trigger,
+.sp-shell.app-redesign .cp-filter-fields select,
+.sp-shell.app-redesign .cp-filter-fields .cp-date-field > input,
+.sp-shell.app-redesign .cp-filter-fields .sp-combobox-control {
+  min-height: 36px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.cp-clear-filters,
+.cp-delete-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cp-clear-filters { min-height: 36px; padding: 0 8px; color: var(--sp-text-muted); }
+.cp-clear-filters:hover { background: var(--sp-surface-low); color: var(--sp-text); }
+.cp-mobile-list { display: none; }
+
+.cp-registration-card {
+  border-bottom: 1px solid var(--sp-border);
+  padding: 14px 0;
+}
+
+.cp-registration-card:first-child { padding-top: 0; }
+.cp-registration-card:last-child { border-bottom: 0; padding-bottom: 0; }
+.cp-registration-main { justify-content: space-between; gap: 12px; }
+.cp-registration-main h3 { margin: 0; color: var(--sp-text); font-size: 14px; font-weight: 600; }
+.cp-registration-main p { margin: 3px 0 0; color: var(--sp-text-muted); font-size: 12px; }
+.cp-payment { flex: 0 0 auto; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 600; }
+.cp-payment.paid { background: var(--sp-green-soft); color: var(--sp-green); }
+.cp-payment.pending { background: var(--sp-amber-soft); color: var(--sp-amber); }
+.cp-registration-actions { justify-content: flex-end; }
+.cp-delete-action { width: 40px; height: 40px; color: var(--sp-text-muted); }
+.cp-delete-action:hover { background: var(--sp-red-soft); color: var(--sp-red); }
+
+/* Celdas editables de la planilla: se leen como texto y recién al pasar por
+   encima muestran que son un control. Sin esto la tabla parecería un formulario
+   de 140 campos en vez de una planilla. */
+.cp-cell-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.cp-cell-select select {
+  min-width: 0;
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  padding: 3px 20px 3px 8px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.cp-cell-select svg {
+  position: absolute;
+  right: 5px;
+  color: currentColor;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cp-cell-select.is-paid select { background: var(--sp-green-soft); color: var(--sp-green); }
+.cp-cell-select.is-pending select { background: var(--sp-amber-soft); color: var(--sp-amber); }
+.cp-cell-select.is-set select { color: var(--sp-text-muted); font-weight: 400; font-size: 12px; }
+.cp-cell-select.is-empty select { color: var(--sp-text-faint); font-weight: 400; font-size: 12px; }
+.cp-cell-select.is-set select:hover,
+.cp-cell-select.is-empty select:hover { border-color: var(--sp-border); background: var(--sp-surface-low); }
+.cp-cell-select select:focus-visible {
+  border-color: var(--org-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--org-primary-soft);
+}
+
+.sp-shell.app-redesign .cp-cell-input {
+  width: 100%;
+  min-width: 96px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 3px 6px;
+  color: var(--sp-text-muted);
+  font-size: 12px;
+}
+
+.sp-shell.app-redesign .cp-cell-input::placeholder { color: var(--sp-text-faint); }
+.sp-shell.app-redesign .cp-cell-input:hover { border-color: var(--sp-border); background: var(--sp-surface-low); }
+.sp-shell.app-redesign .cp-cell-input:focus {
+  border-color: var(--org-primary);
+  outline: none;
+  background: #fff;
+  color: var(--sp-text);
+  box-shadow: 0 0 0 2px var(--org-primary-soft);
+}
+
+.sp-shell.app-redesign .cp-cell-date .sp-date-picker-trigger {
+  min-height: 28px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0 6px;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.sp-shell.app-redesign .cp-cell-date .sp-date-picker-trigger svg:first-child { display: none; }
+.sp-shell.app-redesign .cp-cell-date .sp-date-picker-trigger span { color: var(--sp-text-muted); font-size: 12px; }
+.sp-shell.app-redesign .cp-cell-date .sp-date-picker-trigger:hover {
+  border-color: var(--sp-border);
+  background: var(--sp-surface-low);
+}
+
+/* Móvil: las mismas celdas, pero como campos etiquetados dentro de la ficha. */
+.cp-registration-editors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.cp-registration-editors label {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+/* :first-child para no pisar el <span> que envuelve al select de la celda. */
+.cp-registration-editors label > span:first-child {
+  color: var(--sp-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.cp-registration-editors .cp-cell-select select,
+.sp-shell.app-redesign .cp-registration-editors .cp-cell-input,
+.sp-shell.app-redesign .cp-registration-editors .sp-date-picker-trigger {
+  width: 100%;
+  min-height: 40px;
+  border-color: var(--sp-border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.cp-registration-editors .cp-cell-select { display: flex; }
+.cp-registration-editors .cp-cell-select select { border-radius: 8px; padding-left: 10px; }
+
+@media (max-width: 760px) {
+  .sp-shell.app-redesign .cp-page { gap: 14px; }
+  .cp-command-bar { flex-wrap: wrap; }
+  .sp-shell.app-redesign .cp-search { flex-basis: calc(100% - 108px); }
+  .sp-shell.app-redesign .cp-search input,
+  .cp-pending-filter { min-height: 44px; }
+  .cp-command-actions { width: 100%; margin-left: 0; }
+  .sp-shell.app-redesign .cp-command-actions .sp-primary-action,
+  .sp-shell.app-redesign .cp-command-actions .sp-secondary-action { flex: 1; min-height: 44px; justify-content: center; }
+  .sp-shell.app-redesign .cp-filter-fields .sp-date-picker-trigger,
+  .sp-shell.app-redesign .cp-filter-fields select,
+  .sp-shell.app-redesign .cp-filter-fields .cp-date-field > input,
+  .sp-shell.app-redesign .cp-filter-fields .sp-combobox-control,
+  .cp-clear-filters { min-height: 44px; }
+  .cp-desktop-table { display: none; }
+  .cp-mobile-list { display: block; }
+  .sp-shell.app-redesign .cp-page .sp-section-card { padding: 14px; }
+}
+
+@media (max-width: 480px) {
+  .cp-page-heading { align-items: flex-start; }
+  .cp-record-count { padding-top: 3px; }
+  .sp-shell.app-redesign .cp-search { flex-basis: 100%; }
+  .cp-pending-filter { flex: 1; }
+  .cp-filter-fields { display: grid; grid-template-columns: 1fr 1fr; }
+  .cp-filter-fields > * { min-width: 0; }
+  .cp-filter-fields .sp-combobox { min-width: 0; }
+  .cp-filter-fields .sp-combobox-control { width: 100%; }
+  .cp-registration-editors { grid-template-columns: 1fr; }
+}
+
 .sp-shell.app-redesign {
   grid-template-columns: 256px minmax(0, 1fr);
   background: #f7f9ff;
@@ -4120,7 +4452,8 @@ button {
 }
 
 .sp-shell.app-redesign .sp-logo.only-logo {
-  @apply mb-6 block px-3 py-4;
+  @apply mb-3 block px-2 pb-3.5 pt-2;
+  border-bottom: 1px solid #e2e7f0;
 }
 
 .sp-shell.app-redesign .sp-logo.only-logo .sp-logo-mark {
@@ -4133,7 +4466,7 @@ button {
 .sp-shell.app-redesign .sp-logo.only-logo .sp-logo-mark.has-image {
   @apply justify-center;
   width: 100%;
-  height: 108px;
+  height: 128px;
   background: transparent;
   overflow: visible;
 }
@@ -4160,7 +4493,7 @@ button {
 }
 
 .sp-shell.app-redesign .sp-nav {
-  @apply flex flex-1 flex-col gap-2 space-y-0 overflow-y-auto px-0 pb-0;
+  @apply flex flex-1 flex-col gap-1 space-y-0 overflow-y-auto px-0 pb-0;
 }
 
 .sp-shell.app-redesign .sp-nav p {
@@ -4186,6 +4519,111 @@ button {
 .sp-shell.app-redesign .sp-nav button b {
   background: #fd9e7b;
   color: #380d00;
+}
+
+/* Grupo "Configuración": anclado al pie del sidebar, separado por un hairline.
+   Abre hacia arriba como panel flotante (Más configuraciones / Equipo /
+   Compañías) y se cierra al elegir, al tocar fuera o con Escape. */
+.sp-shell.app-redesign .sp-nav-group {
+  @apply relative mt-auto pt-2.5;
+  border-top: 1px solid #e2e7f0;
+}
+
+.sp-shell.app-redesign .sp-nav-group-trigger {
+  @apply flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-xl px-4 py-3 text-base font-semibold transition-all;
+  color: #434656;
+}
+
+.sp-shell.app-redesign .sp-nav-group-trigger > span {
+  @apply min-w-0 flex-1 truncate text-left;
+}
+
+.sp-shell.app-redesign .sp-nav-group-trigger:hover {
+  background: #e5e8ee;
+  color: #181c20;
+}
+
+.sp-shell.app-redesign .sp-nav-group-trigger:focus-visible {
+  outline: 2px solid var(--org-primary);
+  outline-offset: 2px;
+}
+
+.sp-shell.app-redesign .sp-nav-group-trigger[aria-expanded="true"]:not(.active) {
+  background: #e9edf4;
+  color: #181c20;
+}
+
+/* El acento de organización es claro en muchas marcas: se oscurece para que el
+   texto sobre el estado activo mantenga contraste AA. */
+.sp-shell.app-redesign .sp-nav button.active,
+.sp-shell.app-redesign .sp-nav-group-trigger.active {
+  background: color-mix(in srgb, var(--org-primary) 72%, #0b1220);
+  color: var(--org-on-primary);
+  box-shadow: none;
+}
+
+.sp-shell.app-redesign .sp-nav button.active:hover,
+.sp-shell.app-redesign .sp-nav-group-trigger.active:hover {
+  background: color-mix(in srgb, var(--org-primary) 66%, #0b1220);
+  color: var(--org-on-primary);
+}
+
+.sp-shell.app-redesign .sp-nav button.active b {
+  background: #ffffff;
+  color: #101828;
+}
+
+.sp-nav-group-caret {
+  @apply shrink-0;
+  color: #8a94a6;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sp-shell.app-redesign .sp-nav-group-trigger[aria-expanded="true"] .sp-nav-group-caret {
+  transform: rotate(180deg);
+}
+
+.sp-shell.app-redesign .sp-nav-sub {
+  @apply absolute inset-x-0 bottom-full z-50 mb-2 flex flex-col gap-0.5 rounded-xl p-1.5;
+  border: 1px solid #e1e7ef;
+  background: #ffffff;
+  animation: sp-nav-sub-in 170ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes sp-nav-sub-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sp-shell.app-redesign .sp-nav-sub button {
+  @apply flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-semibold transition-all;
+  color: #5b6575;
+}
+
+.sp-shell.app-redesign .sp-nav-sub button > span {
+  @apply min-w-0 truncate;
+}
+
+.sp-shell.app-redesign .sp-nav-sub button:hover {
+  background: #e5e8ee;
+  color: #181c20;
+}
+
+.sp-shell.app-redesign .sp-nav-sub button:focus-visible {
+  outline: 2px solid var(--org-primary);
+  outline-offset: 2px;
+}
+
+.sp-shell.app-redesign .sp-nav-sub button.active {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: color-mix(in srgb, var(--org-primary) 62%, #101828);
 }
 
 .sp-shell.app-redesign .sp-main {
@@ -4458,11 +4896,13 @@ button {
 
 /* ── Asegurado clickeable + detalle de pólizas ── */
 .sp-entity-card.is-clickable,
-.sp-list-row.is-clickable {
+.sp-list-row.is-clickable,
+.sp-policy-row.is-clickable {
   @apply cursor-pointer;
 }
 .sp-entity-card.is-clickable:focus-visible,
-.sp-list-row.is-clickable:focus-visible {
+.sp-list-row.is-clickable:focus-visible,
+.sp-policy-row.is-clickable:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--org-primary) 34%, transparent);
   outline-offset: 2px;
 }
@@ -4895,6 +5335,28 @@ a.sp-client-field-value:hover {
   border-color: #e0e0de;
 }
 
+/* El campo es el control, no el input que lleva adentro. El input está en la
+   lista de campos de arriba, así que heredaba `min-h-12` (48px) dentro de un
+   control de 36px con overflow oculto: se recortaba y el texto quedaba ~6px
+   por debajo del centro, mientras el chevron sí quedaba centrado. El control
+   toma el alto de campo y el input solo lo rellena. */
+.sp-shell.app-redesign .sp-combobox-control {
+  min-height: 48px;
+}
+
+.sp-shell.app-redesign .sp-combobox-control input {
+  min-height: 0;
+  height: auto;
+  align-self: stretch;
+  border-radius: 0;
+  background: transparent;
+}
+
+.sp-shell.app-redesign .sp-combobox-control button {
+  height: auto;
+  align-self: stretch;
+}
+
 .sp-shell.app-redesign .sp-view-toggle {
   @apply rounded-xl;
   background: #ebeef4;
@@ -5200,6 +5662,30 @@ a.sp-client-field-value:hover {
     @apply min-h-14 min-w-[74px] flex-col justify-center gap-1 px-2 py-1 text-center text-[10px];
   }
 
+  /* En la barra inferior el grupo se vuelve una celda más; el submenú sale
+     hacia arriba como panel en vez de empujar la fila. */
+  .sp-shell.app-redesign .sp-nav-group {
+    @apply relative mt-0 shrink-0 px-2 py-2 pt-2;
+    border-top: 0;
+    border-left: 1px solid #dfe3e8;
+  }
+
+  .sp-shell.app-redesign .sp-nav-group-trigger {
+    @apply min-h-14 w-auto min-w-[74px] flex-col justify-center gap-1 px-2 py-1 text-center text-[10px];
+  }
+
+  .sp-shell.app-redesign .sp-nav-group-trigger > span {
+    @apply flex-none text-center;
+  }
+
+  .sp-nav-group-caret {
+    @apply hidden;
+  }
+
+  .sp-shell.app-redesign .sp-nav-sub {
+    @apply inset-x-auto right-2 mb-2.5 w-56;
+  }
+
   .sp-shell.app-redesign .sp-workspace {
     @apply px-4 py-10;
   }
@@ -5367,3 +5853,268 @@ a.sp-client-field-value:hover {
     scroll-snap-align: start;
   }
 }
+
+/* ============================================================
+   Dropzone de archivo: arrastrar y soltar + selector nativo.
+   Usada en el paso 1 del wizard de carga masiva de Club Plaza.
+   Reglas bare (fuera de @layer) para ganarle al reset de .sp-field.
+   ============================================================ */
+
+.sp-dropzone {
+  position: relative;
+}
+
+/* Input real: invisible pero enfocable; el <label> lo dispara al hacer clic. */
+.sp-dropzone .sp-dropzone-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sp-dropzone .sp-dropzone-area {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 18px 16px;
+  text-align: center;
+  border: 1px dashed var(--sp-border-strong);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  cursor: pointer;
+  transition:
+    border-color 0.12s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.12s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sp-dropzone .sp-dropzone-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text-muted);
+  transition:
+    background-color 0.12s ease-out,
+    color 0.12s ease-out;
+}
+
+.sp-dropzone .sp-dropzone-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.sp-dropzone .sp-dropzone-hint {
+  font-size: 11px;
+  color: var(--sp-text-muted);
+}
+
+.sp-dropzone .sp-dropzone-action {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  margin-top: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--sp-border-strong);
+  border-radius: 8px;
+  background: var(--sp-surface);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sp-text);
+  transition:
+    background-color 0.12s ease-out,
+    border-color 0.12s ease-out;
+}
+
+.sp-dropzone .sp-dropzone-formats {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--sp-text-muted);
+}
+
+.sp-dropzone .sp-dropzone-area:hover {
+  border-color: var(--sp-text-faint);
+}
+
+.sp-dropzone .sp-dropzone-area:hover .sp-dropzone-action {
+  background: var(--sp-surface-low);
+}
+
+/* Estado de arrastre: el acento de la organización comunica "soltá acá". */
+.sp-dropzone[data-drag="on"] .sp-dropzone-area {
+  border-style: solid;
+  border-color: var(--org-primary);
+  background: var(--org-primary-soft);
+}
+
+.sp-dropzone[data-drag="on"] .sp-dropzone-icon {
+  background: var(--org-primary-muted);
+  color: var(--sp-text);
+}
+
+.sp-dropzone:has(.sp-dropzone-input:focus-visible) .sp-dropzone-area {
+  border-color: var(--org-primary);
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 1px;
+}
+
+.sp-dropzone:has(.sp-dropzone-input:disabled) .sp-dropzone-area {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ── Pólizas: fila de lista ──
+   Identidad a la izquierda (asegurado + compañía · N° · rama · patente en una
+   sola línea muted), fecha de primer pago en el riel derecho. Fluida: la
+   columna de identidad se achica con ellipsis, el riel no se mueve. */
+.sp-policy-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--sp-surface);
+  border-bottom: 1px solid var(--sp-border);
+  transition: background 0.12s ease;
+}
+
+.sp-policy-row:last-child {
+  border-bottom: 0;
+}
+
+.sp-policy-row:hover {
+  background: var(--sp-surface-hover);
+}
+
+.sp-policy-row-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+}
+
+.sp-policy-row-id {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sp-policy-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-policy-row-sub {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--sp-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-policy-row-date {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sp-text-muted);
+  white-space: nowrap;
+}
+
+.sp-policy-row-chev {
+  flex: 0 0 auto;
+  color: var(--sp-border-strong);
+}
+
+/* ── ClubPlaza · importación masiva: archivo elegido ──
+   Reemplaza al dropzone en el paso 1. El nombre y las dos acciones viven en el
+   mismo recuadro que recibió el archivo, en vez de en un chip suelto con la
+   acción principal al pie del modal. */
+.cp-import-file {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 22px 20px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface-low);
+  text-align: center;
+}
+
+.cp-import-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+}
+
+.cp-import-file-name {
+  max-width: 100%;
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp-import-file-meta {
+  font-size: 12px;
+  color: var(--sp-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-import-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* "Elegir otro archivo" es un <label> con el input de archivo encima: abre el
+   selector de un clic, sin pasar por limpiar la selección primero. */
+.cp-import-replace {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.cp-import-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.cp-import-replace:has(.cp-import-file-input:focus-visible) {
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 1px;
+}
+

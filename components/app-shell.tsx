@@ -3,10 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import {
   Building2,
   CalendarDays,
   ChevronDown,
+  FileSpreadsheet,
   FileText,
   LayoutDashboard,
   ListTodo,
@@ -45,6 +47,8 @@ import {
   type NoticeNoteApi,
   type PolicyActions,
   type PolicyFormValues,
+  getTabFromPathname,
+  TAB_PATHS,
   type Tab,
   type UpdateOrganizationPayload,
   type UploadLogoPayload,
@@ -110,17 +114,44 @@ const ProfileView = dynamic(() => import("@/components/views/profile-view").then
   ssr: false,
   loading: viewLoading
 });
+const ClubplazaView = dynamic(() => import("@/components/views/clubplaza-view").then((m) => m.ClubplazaView), {
+  ssr: false,
+  loading: viewLoading
+});
 
 export function AppShell() {
   const queryClient = useQueryClient();
+  const pathname = usePathname();
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [slug, setSlug] = useState("");
   const [hostSlug, setHostSlug] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setActiveTab] = useState<Tab>(() => getTabFromPathname(pathname) ?? "dashboard");
   const [clientDetailId, setClientDetailId] = useState<string | null>(null);
   const [openPolicyId, setOpenPolicyId] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const setTab = useCallback((nextTab: Tab) => {
+    setActiveTab(nextTab);
+
+    const nextPath = TAB_PATHS[nextTab];
+    if (window.location.pathname === nextPath) return;
+
+    window.history.pushState(
+      null,
+      "",
+      `${nextPath}${window.location.search}${window.location.hash}`
+    );
+  }, []);
+
+  // Navegación del navegador (atrás/adelante): sincroniza el tab con la URL.
+  // Ajuste de estado durante el render (patrón de react.dev) en vez de effect.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    const routedTab = getTabFromPathname(pathname);
+    if (routedTab) setActiveTab(routedTab);
+  }
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -202,6 +233,19 @@ export function AppShell() {
   const canManageOrganization = Boolean(
     auth && (selectedOrganization?.role === "productor" || auth.user.platformRole === "platform_admin")
   );
+
+  // Un rol sin permisos no puede quedar parado en team/settings: el estado se
+  // ajusta durante el render y el effect solo corrige la URL (sin setState).
+  if (auth && !canManageOrganization && (tab === "team" || tab === "settings")) {
+    setActiveTab("dashboard");
+  }
+  useEffect(() => {
+    if (!auth || canManageOrganization) return;
+    const routedTab = getTabFromPathname(window.location.pathname);
+    if (routedTab === "team" || routedTab === "settings") {
+      window.history.replaceState(null, "", TAB_PATHS.dashboard);
+    }
+  }, [auth, canManageOrganization]);
 
   const organizationSettings = useQuery({
     queryKey: ["organization-settings", slug],
@@ -673,6 +717,14 @@ export function AppShell() {
               }}
             />
           ) : null}
+          {tab === "clubplaza" ? (
+            <ClubplazaView
+              common={common}
+              currentUserId={auth.user.id}
+              canManage={canManageOrganization}
+              notify={notify}
+            />
+          ) : null}
           {tab === "team" && canManageOrganization ? (
             <TeamView
               currentUserId={auth.user.id}
@@ -762,18 +814,53 @@ function Sidebar({
   organizationName: string;
   logoUrl: string | null;
 }) {
+  // Navegación principal: Compañías, Equipo y Configuración viven en el grupo
+  // "Configuración" anclado al pie, no en la lista principal.
   const nav: Array<{ key: Tab; name: string; icon: typeof LayoutDashboard; count?: number }> = [
     { key: "dashboard" as const, name: "Dashboard", icon: LayoutDashboard },
     { key: "notices" as const, name: "Avisos", icon: CalendarDays, count: urgentCount },
     { key: "tasks" as const, name: "Tareas", icon: ListTodo },
     { key: "policies" as const, name: "Pólizas", icon: FileText },
     { key: "clients" as const, name: "Asegurados", icon: Users },
+    // Planilla de Club Plaza: la usan productores y asesores por igual.
+    { key: "clubplaza" as const, name: "Club Plaza", icon: FileSpreadsheet }
+  ];
+
+  // Compañías queda disponible para todo el equipo; el resto pide rol productor.
+  const settingsNav: Array<{ key: Tab; name: string; icon: typeof LayoutDashboard }> = [
+    ...(canManageOrganization
+      ? [
+          { key: "settings" as const, name: "Más configuraciones", icon: Settings },
+          { key: "team" as const, name: "Equipo", icon: Users }
+        ]
+      : []),
     { key: "companies" as const, name: "Compañías", icon: Building2 }
   ];
-  if (canManageOrganization) {
-    nav.push({ key: "team", name: "Equipo", icon: Users });
-    nav.push({ key: "settings", name: "Configuración", icon: Settings });
-  }
+  const isSettingsTab = settingsNav.some((item) => item.key === tab);
+
+  // El grupo se abre hacia arriba como panel flotante: se cierra al elegir una
+  // opción, al tocar fuera o con Escape.
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsGroupRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isSettingsOpen) return;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (settingsGroupRef.current?.contains(event.target as Node)) return;
+      setIsSettingsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsSettingsOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isSettingsOpen]);
 
   return (
     <aside className="sp-sidebar">
@@ -811,6 +898,41 @@ function Sidebar({
           );
         })}
       </nav>
+      <div className="sp-nav-group" ref={settingsGroupRef}>
+        {isSettingsOpen ? (
+          <div className="sp-nav-sub" role="menu" aria-label="Configuración">
+            {settingsNav.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.key}
+                  className={tab === item.key ? "active" : ""}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setTab(item.key);
+                    setIsSettingsOpen(false);
+                  }}
+                >
+                  <Icon size={18} />
+                  <span>{item.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <button
+          className={isSettingsTab ? "sp-nav-group-trigger active" : "sp-nav-group-trigger"}
+          type="button"
+          aria-expanded={isSettingsOpen}
+          aria-haspopup="menu"
+          onClick={() => setIsSettingsOpen((open) => !open)}
+        >
+          <Settings size={22} />
+          <span>Configuración</span>
+          <ChevronDown className="sp-nav-group-caret" size={16} aria-hidden="true" />
+        </button>
+      </div>
     </aside>
   );
 }
@@ -925,6 +1047,7 @@ function titleForTab(tab: Tab) {
     clients: "Asegurados",
     policies: "Pólizas",
     companies: "Compañías",
+    clubplaza: "Club Plaza",
     team: "Equipo",
     settings: "Configuración",
     profile: "Perfil"
@@ -940,10 +1063,10 @@ function subtitleForTab(tab: Tab) {
     clients: "Tu cartera de asegurados y sus datos de contacto",
     policies: "Pólizas activas de la organización",
     companies: "Compañías aseguradoras con las que trabajás",
+    clubplaza: "Carga masiva de jugadores hacia Club Plaza",
     team: "Personas con acceso a esta organización",
     settings: "Marca, colores y datos de tu organización",
     profile: "Tus datos personales y contraseña"
   };
   return labels[tab];
 }
-

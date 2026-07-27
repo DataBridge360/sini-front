@@ -208,7 +208,7 @@ function PolicyCard({ policy, onOpen }: { policy: Policy; onOpen: (policy: Polic
 function PolicyRow({ policy, onOpen }: { policy: Policy; onOpen: (policy: Policy) => void }) {
   return (
     <div
-      className="sp-list-row entity policy is-clickable"
+      className="sp-policy-row is-clickable"
       role="button"
       tabIndex={0}
       onClick={() => onOpen(policy)}
@@ -219,15 +219,23 @@ function PolicyRow({ policy, onOpen }: { policy: Policy; onOpen: (policy: Policy
         }
       }}
     >
-      <div className="sp-icon-box small"><ShieldCheck size={15} /></div>
-      <div className="sp-list-main">
-        <strong>{policy.clients?.full_name ?? "Sin cliente"}</strong>
-        <span>{policy.insurance_companies?.name ?? "Sin compañía"} · #{policy.policy_number}</span>
-      </div>
-      <span className="sp-branch-tag">{policy.branch}</span>
-      <span>{policy.vehicle_plate ?? "-"}</span>
-      <span>{formatDate(policy.first_payment_date)}</span>
-      <ChevronRight className="ml-auto shrink-0 text-slate-300" size={16} />
+      <span className="sp-policy-row-icon"><ShieldCheck size={16} /></span>
+      <span className="sp-policy-row-id">
+        <strong className="sp-policy-row-name">{policy.clients?.full_name ?? "Sin cliente"}</strong>
+        <span className="sp-policy-row-sub">
+          {[
+            policy.insurance_companies?.name ?? "Sin compañía",
+            `#${policy.policy_number}`,
+            policy.branch,
+            policy.vehicle_plate
+          ].filter(Boolean).join(" · ")}
+        </span>
+      </span>
+      <span className="sp-policy-row-date">
+        <CalendarDays size={13} />
+        {formatDate(policy.first_payment_date)}
+      </span>
+      <ChevronRight className="sp-policy-row-chev" size={16} />
     </div>
   );
 }
