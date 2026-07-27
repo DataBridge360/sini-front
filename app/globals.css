@@ -4340,6 +4340,61 @@ button {
   background: var(--sp-surface-low);
 }
 
+/* Pagador, Pago y Atendió son los tres campos que se completan en la planilla.
+   Se marcan en el propio control, sin sombrear la tabla: encabezado en oscuro y
+   caja siempre visible en Pagador y Atendió. Pago no lleva caja — su chip de
+   estado (verde/ámbar) ya se ve solo y una caja encima sería ruido. */
+
+/* El <th> nativo ya llega en bold: el resto del encabezado baja a semibold
+   para que la negrita de las columnas editables sea un escalón real. */
+.cp-desktop-table thead th { font-weight: 600; }
+
+.cp-desktop-table th.cp-col-edit {
+  color: var(--sp-text);
+  font-weight: 700;
+}
+
+/* La caja deja de aparecer recién en hover: si el campo está vacío no hay nada
+   que mire el usuario, y era justo eso lo que había que anunciar. */
+.sp-shell.app-redesign .cp-col-edit .cp-cell-input,
+.cp-col-edit .cp-cell-select.is-set select,
+.cp-col-edit .cp-cell-select.is-empty select {
+  border-color: var(--sp-border);
+  border-radius: 8px;
+  background: var(--sp-surface);
+}
+
+.cp-col-edit .cp-cell-select.is-set select,
+.cp-col-edit .cp-cell-select.is-empty select {
+  min-height: 28px;
+  padding: 3px 22px 3px 8px;
+}
+
+/* Lo cargado va en texto pleno y lo que falta en muted: dentro de la caja, el
+   contraste es lo que separa "ya está" de "falta completar". El gris claro de
+   antes no llegaba a 3:1 y era justo el dato a escanear. */
+.sp-shell.app-redesign .cp-col-edit .cp-cell-input,
+.sp-shell.app-redesign .cp-registration-editors .cp-cell-input {
+  color: var(--sp-text);
+}
+
+.sp-shell.app-redesign .cp-col-edit .cp-cell-input::placeholder,
+.sp-shell.app-redesign .cp-registration-editors .cp-cell-input::placeholder {
+  color: var(--sp-text-muted);
+}
+
+.cp-col-edit .cp-cell-select.is-set select,
+.cp-registration-editors .cp-cell-select.is-set select { color: var(--sp-text); }
+.cp-col-edit .cp-cell-select.is-empty select,
+.cp-registration-editors .cp-cell-select.is-empty select { color: var(--sp-text-muted); }
+
+.sp-shell.app-redesign .cp-col-edit .cp-cell-input:hover,
+.cp-col-edit .cp-cell-select.is-set select:hover,
+.cp-col-edit .cp-cell-select.is-empty select:hover {
+  border-color: var(--sp-border-strong);
+  background: var(--sp-surface);
+}
+
 /* Móvil: las mismas celdas, pero como campos etiquetados dentro de la ficha. */
 .cp-registration-editors {
   display: grid;
@@ -4359,6 +4414,13 @@ button {
   color: var(--sp-text-faint);
   font-size: 10px;
   font-weight: 600;
+}
+
+/* Mismo mensaje que en la tabla, ahora en la ficha: la etiqueta de los tres
+   campos que se completan va en oscuro. */
+.cp-registration-editors label.cp-field-edit > span:first-child {
+  color: var(--sp-text);
+  font-weight: 700;
 }
 
 .cp-registration-editors .cp-cell-select select,
