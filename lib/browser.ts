@@ -1,5 +1,28 @@
 // Helpers que tocan APIs del navegador (storage, estilos computados, archivos).
 
+import { useSyncExternalStore } from "react";
+
+// Breakpoint reactivo para elegir ENTRE DOS ÁRBOLES distintos (no para estilos:
+// eso va en CSS). Se usa en Tareas, donde desktop monta un kanban con drag & drop
+// y mobile una lista por pestañas — renderizar ambos y esconder uno con CSS
+// duplicaría las tarjetas en el DOM y montaría el D&D en el celular.
+//
+// useSyncExternalStore mantiene SSR y cliente coherentes: en el servidor devuelve
+// false (mobile-first) y se corrige en el primer efecto del cliente.
+export function useIsWideScreen(minWidthPx: number) {
+  const query = `(min-width: ${minWidthPx}px)`;
+
+  return useSyncExternalStore(
+    (onChange) => {
+      const list = window.matchMedia(query);
+      list.addEventListener("change", onChange);
+      return () => list.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(query).matches,
+    () => false
+  );
+}
+
 export function readView<T extends string>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   return (window.localStorage.getItem(key) as T | null) ?? fallback;

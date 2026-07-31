@@ -16,6 +16,7 @@ import { capitalizeFirst, formatDate, getDaysUntilDue } from "@/lib/format";
 import type { PolicyFormValues, Tab } from "@/lib/shell-types";
 import { ClientCreateModal } from "@/components/clients/client-create-modal";
 import { TaskCalendar } from "@/components/dashboard/task-calendar";
+import { TaskStatsCard } from "@/components/dashboard/task-stats-card";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 
@@ -24,6 +25,8 @@ const NO_TASKS: Task[] = [];
 export function DashboardView({
   userName,
   common,
+  currentUserId,
+  canModerate,
   notices,
   clients,
   companies,
@@ -32,11 +35,15 @@ export function DashboardView({
   isCreatingPolicy,
   error,
   setTab,
+  onOpenTasks,
   onCreateClient,
   onCreatePolicy
 }: {
   userName: string;
   common: ApiCommonOptions;
+  currentUserId: string;
+  // Productor: puede mirar la carga de cualquier persona del equipo.
+  canModerate: boolean;
   notices: Notice[];
   clients: Client[];
   companies: InsuranceCompany[];
@@ -45,6 +52,7 @@ export function DashboardView({
   isCreatingPolicy: boolean;
   error: string | null;
   setTab: (tab: Tab) => void;
+  onOpenTasks: (archived: boolean) => void;
   onCreateClient: (body: Record<string, FormDataEntryValue>) => Promise<unknown>;
   onCreatePolicy: (values: PolicyFormValues) => Promise<unknown>;
 }) {
@@ -94,12 +102,14 @@ export function DashboardView({
     {
       label: "Tareas",
       icon: ListTodo,
-      onClick: () => setTab("tasks")
+      onClick: () => onOpenTasks(false)
     }
   ];
 
   return (
-    <div className="sp-page padded grid gap-5 p-6">
+    // Sin padding propio: el margen lateral y el aire contra el header ya los
+    // pone .sp-workspace. Sumarle p-6 encima era lo que abría el hueco.
+    <div className="sp-page padded grid gap-4 px-0 pb-8 md:gap-5">
       {error ? <ErrorState text={error} /> : null}
       {isLoading ? <LoadingState text="Cargando resumen operativo" /> : null}
 
@@ -182,7 +192,18 @@ export function DashboardView({
           </article>
         </div>
 
-        <TaskCalendar tasks={tasks} onOpenTasks={() => setTab("tasks")} />
+        {/* Columna de tareas: primero cuánto hay, después cuándo vence. Los
+            recuentos salen de /tasks/stats (COUNT server-side) y el calendario
+            de las activas que ya están en memoria. */}
+        <div className="flex min-w-0 flex-col gap-5">
+          <TaskStatsCard
+            common={common}
+            currentUserId={currentUserId}
+            canModerate={canModerate}
+            onOpenTasks={onOpenTasks}
+          />
+          <TaskCalendar tasks={tasks} onOpenTasks={() => onOpenTasks(false)} />
+        </div>
       </section>
 
       {/* Últimos pagos: lista estilo movimientos de billetera */}

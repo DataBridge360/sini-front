@@ -3,6 +3,7 @@
 import { Save } from "lucide-react";
 import { useState } from "react";
 import { intervalLabel, type Client, type InsuranceCompany, type Policy } from "@/lib/api";
+import { formatDate } from "@/lib/format";
 import { BRANCHES, type PolicyFormValues } from "@/lib/shell-types";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Modal } from "@/components/ui/modal";
@@ -38,6 +39,9 @@ export function PolicyFormModal({
   const [date, setDate] = useState(policy?.first_payment_date ?? "");
   const [error, setError] = useState<string | null>(null);
   const branches = Array.from(new Set([...BRANCHES, ...(branch ? [branch] : [])]));
+  // Editar el vencimiento arrastra el aviso activo que tenía la fecha vieja
+  // (trigger trg_sync_policy_notice_due_date), así que se avisa antes de guardar.
+  const dateChanged = Boolean(policy && date && date !== policy.first_payment_date);
 
   return (
     <Modal title={title} isOpen={isOpen} onClose={onClose}>
@@ -115,6 +119,13 @@ export function PolicyFormModal({
         <label className="sp-field">
           <span>Primer vencimiento</span>
           <DatePicker value={date} onChange={setDate} ariaLabel="Primer vencimiento" />
+          {policy ? (
+            <span className="mt-1 text-[11px] leading-snug text-slate-500">
+              {dateChanged
+                ? `El aviso pendiente con vencimiento ${formatDate(policy.first_payment_date)} pasa a ${formatDate(date)}. Los pagos ya registrados no se tocan.`
+                : "Si cambiás esta fecha, el aviso pendiente que la tenía se mueve con ella."}
+            </span>
+          ) : null}
         </label>
         {error ? <div className="sp-pay-error">{error}</div> : null}
         <div className="sp-modal-actions">

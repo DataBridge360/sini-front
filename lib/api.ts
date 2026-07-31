@@ -134,19 +134,15 @@ export type Notice = {
   } | null;
 };
 
-export type TaskStatus = "pendiente" | "en_proceso" | "finalizado";
+// 'finalizado' == archivada: sale del tablero y solo se ve en Archivadas.
+export type TaskStatus = "pendiente" | "en_proceso" | "revision" | "finalizado";
 export type TaskPriority = "alta" | "media" | "baja";
-
-export type TaskMessage = {
-  id: string;
-  message: string;
-  created_at: string;
-  user_id: string;
-  user: UserRef | null;
-};
 
 export type TaskAttachment = {
   id: string;
+  // null en los adjuntos subidos antes de que colgaran de una actividad: se
+  // muestran como "Archivos de la tarea".
+  message_id: string | null;
   file_name: string;
   mime_type: string;
   file_size_bytes: number;
@@ -158,20 +154,31 @@ export type TaskAttachment = {
   url: string | null;
 };
 
-export type Task = {
+export type TaskMessage = {
+  id: string;
+  // null cuando la actividad es solo archivos.
+  message: string | null;
+  created_at: string;
+  user_id: string;
+  user: UserRef | null;
+  attachments: TaskAttachment[];
+};
+
+type TaskBase = {
   id: string;
   title: string;
-  // Documento TipTap en JSON.
-  description: unknown;
   status: TaskStatus;
   priority: TaskPriority;
   due_date: string | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
   assigned_to_user_id: string | null;
   created_by_user_id: string;
+  approved_by_user_id: string | null;
   assigned_to: UserRef | null;
   created_by: UserRef | null;
+  approved_by: UserRef | null;
   clients?: { id: string; full_name: string } | null;
   policies?: {
     id: string;
@@ -180,8 +187,34 @@ export type Task = {
     vehicle_plate: string | null;
     clients?: { id: string; full_name: string } | null;
   } | null;
+};
+
+// Fila del tablero y de Archivadas: sin descripción ni adjuntos embebidos, solo
+// contadores. El detalle se pide aparte con GET /tasks/:id.
+export type TaskListItem = TaskBase & {
+  messages_count: number;
+  attachments_count: number;
+};
+
+export type TaskDetail = TaskBase & {
+  // Documento TipTap en JSON.
+  description: unknown;
   messages: TaskMessage[];
+  // Solo los adjuntos sin actividad asociada (legacy).
   attachments: TaskAttachment[];
+};
+
+export type Task = TaskListItem;
+
+// GET /tasks/stats: recuento por etapa, calculado con COUNT en el servidor.
+// Nunca se derivan estos números del listado — 'finalizado' crece sin techo.
+export type TaskStats = {
+  pendiente: number;
+  en_proceso: number;
+  revision: number;
+  finalizado: number;
+  // pendiente + en_proceso + revision: lo que sigue vivo en el tablero.
+  activas: number;
 };
 
 export type OrganizationMember = { id: string; full_name: string };
@@ -189,7 +222,8 @@ export type OrganizationMember = { id: string; full_name: string };
 export type TaskFormPayload = {
   title: string;
   description: unknown;
-  status: TaskStatus;
+  // Una tarea no nace en revisión ni archivada.
+  status: "pendiente" | "en_proceso";
   priority: TaskPriority;
   dueDate: string | null;
   assignedToUserId: string | null;
@@ -302,6 +336,62 @@ export async function apiUpload<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+// Subida multipart con progreso real. fetch() no expone el progreso de subida,
+// así que acá va XHR: sin esto una actividad con 5 fotos es una ruedita sin
+// información durante 20 segundos.
+//
+// `build` es una factory porque el FormData se consume al enviarse y hay que
+// rearmarlo si el 401 obliga a reintentar con el token renovado.
+export async function apiUploadForm<T>(
+  path: string,
+  build: () => FormData,
+  options: ApiCommonOptions & { onProgress?: (fraction: number) => void } = {}
+): Promise<T> {
+  const send = (token = options.token) =>
+    new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", `${API_URL}${path}`);
+      if (token) {
+        request.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+      if (options.organizationSlug) {
+        request.setRequestHeader("X-Organization-Slug", options.organizationSlug);
+      }
+
+      if (options.onProgress) {
+        request.upload.addEventListener("progress", (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            options.onProgress?.(event.loaded / event.total);
+          }
+        });
+      }
+
+      request.addEventListener("load", () =>
+        resolve({ status: request.status, body: request.responseText })
+      );
+      request.addEventListener("error", () => reject(new Error("No se pudo conectar con el servidor")));
+      request.addEventListener("abort", () => reject(new Error("Subida cancelada")));
+      request.send(build());
+    });
+
+  let response = await send();
+  if (response.status === 401 && options.token) {
+    const refreshed = await refreshStoredAuth();
+    if (refreshed?.accessToken) {
+      response = await send(refreshed.accessToken);
+    }
+  }
+
+  const payload = response.body ? (JSON.parse(response.body) as unknown) : null;
+
+  if (response.status < 200 || response.status >= 300) {
+    const message = (payload as { message?: unknown } | null)?.message;
+    throw new Error(typeof message === "string" ? message : "No se pudo enviar la actividad");
+  }
+
+  return payload as T;
 }
 
 const AUTH_STORAGE_KEY = "sinipro2.auth";
