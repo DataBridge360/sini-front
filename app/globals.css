@@ -4815,8 +4815,25 @@ button {
   box-shadow: 0 4px 12px rgba(0, 64, 223, 0.04);
 }
 
+/* El aire vertical del área de trabajo lo pone SOLO esta regla: antes se sumaba
+   al padding propio de cada página (`.sp-page.padded` = 32px, dashboard 24px) y
+   el primer contenido útil arrancaba a ~96px del header. En una herramienta
+   operativa el alto es el recurso escaso. */
 .sp-shell.app-redesign .sp-workspace {
-  @apply flex-1 px-4 py-10 md:px-16 md:py-16;
+  @apply flex-1 px-4 pb-10 pt-4 md:px-16 md:pb-14 md:pt-6;
+}
+
+/* Los laterales y el pie siguen viniendo de la página; el tope, no. */
+.sp-shell.app-redesign .sp-page.padded {
+  @apply pt-0;
+}
+
+/* Las páginas `flush` (tablero de Tareas, Avisos) se dimensionan solas contra el
+   alto de la ventana y traen su propio padding interno: el aire del workspace
+   solo les agregaría scroll donde no hay nada que ver. */
+.sp-shell.app-redesign .sp-workspace:has(.sp-page.flush) {
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .sp-shell.app-redesign .sp-primary-action {
@@ -5732,8 +5749,27 @@ a.sp-client-field-value:hover {
     box-shadow: 0 -12px 28px rgba(24, 28, 32, 0.08);
   }
 
+  /* Cinco celdas de ancho parejo: cuatro destinos y "Más". Antes eran siete
+     con scroll horizontal, y una barra que se desliza no avisa que esconde
+     algo: la mitad de las secciones quedaban fuera de vista sin ninguna señal.
+     El reparto 4+3 lo hace el componente (ver `primaryNav` en app-shell). */
+  .sp-shell.app-redesign .sp-sidebar {
+    display: flex;
+    /* Explícito: la regla base de la barra lateral es `flex-col`, y sin esto
+       el grupo "Más" cae debajo de los destinos en vez de ser una celda más. */
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+  }
+
   .sp-shell.app-redesign .sp-nav {
-    @apply flex-row gap-1 overflow-x-auto px-2 py-2;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: 1 1 auto;
+    gap: 0;
+    padding: 4px 0 0;
+    /* Sin scroll: si algo no entra, va a "Más". */
+    overflow: visible;
   }
 
   .sp-shell.app-redesign .sp-logo,
@@ -5742,19 +5778,32 @@ a.sp-client-field-value:hover {
   }
 
   .sp-shell.app-redesign .sp-nav button {
-    @apply min-h-14 min-w-[74px] flex-col justify-center gap-1 px-2 py-1 text-center text-[10px];
+    @apply relative min-h-[52px] flex-col items-center justify-center gap-[3px] px-0.5 py-1 text-center text-[10px];
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  /* El contador no puede empujar la celda: se ancla sobre el ícono. */
+  .sp-shell.app-redesign .sp-nav button b {
+    position: absolute;
+    top: 2px;
+    right: 50%;
+    margin-right: -20px;
   }
 
   /* En la barra inferior el grupo se vuelve una celda más; el submenú sale
      hacia arriba como panel en vez de empujar la fila. */
   .sp-shell.app-redesign .sp-nav-group {
-    @apply relative mt-0 shrink-0 px-2 py-2 pt-2;
+    @apply relative mt-0 shrink-0 p-0 pt-1;
+    width: 21%;
     border-top: 0;
     border-left: 1px solid #dfe3e8;
   }
 
   .sp-shell.app-redesign .sp-nav-group-trigger {
-    @apply min-h-14 w-auto min-w-[74px] flex-col justify-center gap-1 px-2 py-1 text-center text-[10px];
+    @apply min-h-[52px] w-full flex-col items-center justify-center gap-[3px] px-0.5 py-1 text-center text-[10px];
+    min-width: 0;
+    line-height: 1.2;
   }
 
   .sp-shell.app-redesign .sp-nav-group-trigger > span {
@@ -5770,7 +5819,7 @@ a.sp-client-field-value:hover {
   }
 
   .sp-shell.app-redesign .sp-workspace {
-    @apply px-4 py-10;
+    @apply px-4 pb-10 pt-4;
   }
 }
 
@@ -5792,7 +5841,10 @@ a.sp-client-field-value:hover {
 }
 
 /* ============================================================
-   Módulo Tareas: kanban de 4 columnas + editor rico (TipTap)
+   Módulo Tareas: kanban de 3 columnas + editor rico (TipTap)
+   El kanban solo se monta en escritorio (ver useIsWideScreen en
+   components/views/tasks-view.tsx); en mobile se navega por pestañas,
+   con los estilos del bloque "Tareas v2" al final de este archivo.
    ============================================================ */
 
 @layer components {
@@ -5921,19 +5973,6 @@ a.sp-client-field-value:hover {
   .sp-rich-text .tiptap p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     @apply pointer-events-none float-left h-0 text-slate-400;
-  }
-}
-
-/* Mobile: cada columna ocupa casi toda la pantalla y se navega deslizando,
-   con un borde de la siguiente visible como pista de que hay más. */
-@media (max-width: 640px) {
-  .sp-kanban.sp-kanban-flow {
-    scroll-snap-type: x mandatory;
-  }
-
-  .sp-kanban.sp-kanban-flow .sp-kanban-column {
-    @apply w-[84vw] min-w-[84vw];
-    scroll-snap-align: start;
   }
 }
 
@@ -6201,3 +6240,2499 @@ a.sp-client-field-value:hover {
   outline-offset: 1px;
 }
 
+
+/* ============================================================
+   Tareas v2 — flujo con revisión, archivado y actividad con adjuntos.
+
+   Reglas bare (fuera de @layer) a propósito: en Tailwind v4 lo que está
+   dentro de @layer components pierde contra las reglas sin capa, y este
+   archivo tiene bloques @layer previos que estilan las mismas clases.
+   Ver la nota "No editar los @layer tempranos" en DESIGN.md.
+
+   Mobile-first: los controles del módulo llegan a 48px de alto bajo 760px
+   (el resto del shell usa 36–40px, por debajo del mínimo táctil cómodo).
+   ============================================================ */
+
+.sp-task-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---------- Barra de comando: búsqueda, filtros y acciones ---------- */
+
+.sp-task-command-area {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 20px 0;
+}
+
+.sp-task-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-shell.app-redesign .sp-search.sp-task-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+}
+
+.sp-task-search-clear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  color: var(--sp-text-faint);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-search-clear:hover {
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text);
+}
+
+/* Botón de filtros: abre el panel. El badge dice cuántos hay puestos sin
+   necesidad de abrirlo. */
+.sp-task-filter-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  color: var(--sp-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+.sp-task-filter-button:hover {
+  border-color: var(--sp-border-strong);
+  color: var(--sp-text);
+}
+
+/* Activo = superficie + borde de acento, nunca un relleno saturado. */
+.sp-task-filter-button[aria-pressed="true"] {
+  border-color: var(--org-primary);
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+}
+
+.sp-task-filter-button b {
+  display: grid;
+  place-items: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background: var(--org-primary);
+  color: var(--org-on-primary, #fff);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* Resumen de lo aplicado: solo aparece lo que está puesto, y cada uno se saca
+   por separado. */
+.sp-task-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sp-task-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 6px 0 10px;
+  border-radius: 9999px;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sp-task-active-chip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+
+.sp-task-active-chip button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  color: inherit;
+  opacity: 0.7;
+  transition: background-color 120ms ease, opacity 120ms ease;
+}
+
+.sp-task-active-chip button:hover {
+  background: color-mix(in srgb, var(--org-primary) 16%, transparent);
+  opacity: 1;
+}
+
+.sp-task-edit-filters {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  color: var(--sp-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 120ms ease;
+}
+
+.sp-task-edit-filters:hover {
+  color: var(--sp-text);
+}
+
+/* Panel de filtros (dentro del modal) */
+.sp-filter-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sp-filter-sheet section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-filter-sheet-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--sp-text-faint);
+}
+
+.sp-filter-people {
+  display: flex;
+  max-height: 232px;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.sp-filter-person {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--sp-text-muted);
+  font-size: 13px;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-filter-person:hover {
+  background: var(--sp-surface-low);
+  color: var(--sp-text);
+}
+
+.sp-filter-person[aria-pressed="true"] {
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+  font-weight: 600;
+}
+
+.sp-filter-sheet-actions {
+  margin-top: 2px;
+}
+
+/* Chips de selección: más rápidos que un <select> cuando hay 3 opciones. */
+.sp-task-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sp-task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--sp-border);
+  border-radius: 8px;
+  background: var(--sp-surface);
+  color: var(--sp-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+.sp-task-chip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+
+.sp-task-chip:hover:not(:disabled) {
+  border-color: var(--sp-border-strong);
+  color: var(--sp-text);
+}
+
+.sp-task-chip[aria-pressed="true"] {
+  border-color: var(--org-primary);
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+}
+
+.sp-task-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sp-task-resultbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--sp-text-faint);
+}
+
+.sp-task-archived-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--sp-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-archived-link:hover {
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text);
+}
+
+/* ---------- Pestañas de estado (mobile) ---------- */
+
+.sp-task-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 20px 0;
+}
+
+.sp-task-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--sp-text-muted);
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-tab[aria-selected="true"] {
+  border-color: var(--sp-border-strong);
+  background: var(--sp-surface);
+  color: var(--sp-text);
+}
+
+.sp-task-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sp-task-tab-label i {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+
+/* Punto de atención: hay algo esperando la aprobación de quien mira. */
+.sp-task-tab-label em {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: #6941c6;
+}
+
+.sp-task-tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sp-text-faint);
+}
+
+.sp-task-tab[aria-selected="true"] .sp-task-tab-count {
+  color: var(--org-primary);
+}
+
+/* ---------- Tarjeta ---------- */
+
+/* La lista de un estado es una bandeja hundida: el escalón de superficie
+   (surface -> surface-lowest) delimita la zona con scroll sin sombras, y las
+   tarjetas siguen flotando en blanco adentro. */
+.sp-task-list {
+  display: block;
+  margin-top: 14px;
+  padding: 8px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface-lowest);
+  overflow: hidden;
+}
+
+.sp-task-list-scroll {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  max-height: 62dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  /* Reserva el canal de la barra en los dos lados: el contenido no se corre
+     cuando la lista pasa a ser scrolleable. */
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sp-border-strong) transparent;
+}
+
+/* Adentro de la bandeja el borde de la tarjeta es redundante: el escalón de
+   superficie ya la separa, y sacarlo es lo que hace legible el hundido.
+   El borde vuelve en hover, como señal de que la fila es clickeable. */
+.sp-task-list-scroll > .sp-task-card {
+  border-color: transparent;
+}
+
+/* La barra vive dentro de la bandeja: fina y del gris de borde fuerte, para
+   que sea la única señal de que ahí se scrollea. */
+.sp-task-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sp-task-list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sp-task-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: var(--sp-border-strong);
+}
+
+/* La separación la da el gap del grid; el margen entre tarjetas duplicaría. */
+.sp-task-list-scroll > .sp-task-card + .sp-task-card {
+  margin-top: 0;
+}
+
+.sp-task-card {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.sp-task-card:hover {
+  border-color: var(--sp-border-strong);
+  background: color-mix(in srgb, var(--sp-surface-low) 60%, var(--sp-surface));
+}
+
+.sp-task-card:focus-visible {
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 2px;
+}
+
+.sp-task-card + .sp-task-card {
+  margin-top: 10px;
+}
+
+.sp-kanban-scroll .sp-task-card + .sp-task-card {
+  margin-top: 0;
+}
+
+.sp-task-card-draggable {
+  cursor: grab;
+}
+
+.sp-task-card-draggable:active {
+  cursor: grabbing;
+}
+
+/* Un asesor no puede mover una tarea en revisión: el cursor lo dice antes
+   de que lo intente. */
+.sp-task-card-locked {
+  cursor: default;
+}
+
+.sp-task-card-dragging {
+  cursor: grabbing;
+  transform: rotate(2deg);
+  border-color: var(--sp-border-strong);
+  box-shadow: 0 12px 28px rgb(24 28 32 / 0.14);
+}
+
+.sp-task-column[data-drop="on"] {
+  box-shadow: inset 0 0 0 2px var(--org-primary);
+}
+
+.sp-task-column {
+  transition: opacity 120ms ease;
+}
+
+.sp-task-empty {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  /* Mismo despegue de las pestañas que la lista con tarjetas. */
+  margin-top: 14px;
+  padding: 32px 20px;
+  border: 1px dashed var(--sp-border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.sp-task-empty strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.sp-task-empty span {
+  font-size: 12.5px;
+  color: var(--sp-text-muted);
+}
+
+/* ---------- Detalle ---------- */
+
+.sp-task-detail-head {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+}
+
+.sp-task-title-input {
+  min-width: 0;
+  flex: 1;
+  height: 38px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--sp-text);
+  outline: none;
+  transition: background-color 120ms ease;
+}
+
+.sp-task-title-input:hover,
+.sp-task-title-input:focus {
+  background: var(--sp-surface-low);
+}
+
+.sp-task-detail-delete {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--sp-text-faint);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-detail-delete:hover {
+  background: var(--sp-red-soft);
+  color: var(--sp-red);
+}
+
+.sp-task-detail-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sp-task-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--sp-border);
+}
+
+.sp-task-detail-actions .sp-status-control {
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+/* Sub-pestañas Detalle / Actividad: solo tienen sentido cuando las dos
+   columnas no entran (ver el media query de 900px). */
+.sp-task-panes {
+  display: none;
+  margin-left: auto;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--sp-surface-lowest);
+}
+
+.sp-task-panes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--sp-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-panes button[aria-selected="true"] {
+  background: var(--sp-surface);
+  color: var(--sp-text);
+  box-shadow: 0 1px 2px rgb(24 28 32 / 0.06);
+}
+
+.sp-task-panes b {
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.sp-task-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--sp-border);
+  background: var(--sp-amber-soft);
+  color: var(--sp-amber);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.sp-task-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  min-height: 0;
+  flex: 1;
+}
+
+.sp-task-detail-main {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.sp-task-detail-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 24px 0;
+  color: var(--sp-text-faint);
+  font-size: 12.5px;
+}
+
+.sp-task-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  padding: 16px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface-low);
+}
+
+.sp-task-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sp-task-field-wide {
+  grid-column: 1 / -1;
+}
+
+.sp-task-description {
+  margin-top: 20px;
+}
+
+.sp-task-legacy-files {
+  margin-top: 20px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sp-task-legacy-files > summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--sp-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sp-task-legacy-files > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sp-task-legacy-files > p {
+  margin: 0;
+  padding: 0 14px;
+  font-size: 11.5px;
+  color: var(--sp-text-faint);
+}
+
+.sp-task-legacy-files .sp-attachments {
+  padding: 12px 14px 14px;
+}
+
+.sp-task-detail-meta {
+  margin: 20px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--sp-border);
+  font-size: 11.5px;
+  color: var(--sp-text-faint);
+}
+
+.sp-task-detail-meta strong {
+  font-weight: 600;
+  color: var(--sp-text-muted);
+}
+
+/* ---------- Actividad ---------- */
+
+.sp-task-detail-side {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-left: 1px solid var(--sp-border);
+  background: var(--sp-surface-low);
+}
+
+/* Doblemente calificado a propósito: `.sp-modal header` (clase + tipo) le gana a
+   una clase sola y aplica space-between, que manda el ícono y el título a
+   extremos opuestos del panel. */
+.sp-modal .sp-task-detail-side-head,
+.sp-task-detail-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--sp-border);
+  color: var(--sp-text-muted);
+}
+
+.sp-task-detail-side-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.sp-task-detail-side-head span {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--sp-surface-lowest);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sp-activity-list {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.sp-activity-empty {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  margin: auto 0;
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--sp-text-faint);
+}
+
+.sp-activity-empty strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sp-text-muted);
+}
+
+.sp-activity-empty span {
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 34ch;
+}
+
+.sp-activity-item {
+  display: flex;
+  max-width: 92%;
+  flex-direction: column;
+  gap: 4px;
+  align-self: flex-start;
+}
+
+.sp-activity-item[data-own] {
+  align-self: flex-end;
+}
+
+.sp-activity-item > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--sp-text-faint);
+}
+
+.sp-activity-item[data-own] > header {
+  justify-content: flex-end;
+}
+
+.sp-activity-item > header strong {
+  font-weight: 600;
+  color: var(--sp-text-muted);
+}
+
+.sp-activity-item > header button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  color: var(--sp-text-faint);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.sp-activity-item:hover > header button,
+.sp-activity-item > header button:focus-visible {
+  opacity: 1;
+}
+
+.sp-activity-item > header button:hover {
+  color: var(--sp-red);
+}
+
+.sp-activity-bubble {
+  padding: 9px 12px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  border-bottom-left-radius: 3px;
+  background: var(--sp-surface);
+  color: var(--sp-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sp-activity-item[data-own] .sp-activity-bubble {
+  border-color: transparent;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 3px;
+  background: var(--org-primary);
+  color: var(--org-on-primary, #fff);
+}
+
+.sp-activity-bubble p {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Adjuntos ---------- */
+
+.sp-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sp-activity-bubble .sp-attachments:not(:first-child) {
+  margin-top: 8px;
+}
+
+.sp-attachment-grid {
+  display: grid;
+  gap: 4px;
+}
+
+.sp-attachment-grid[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sp-attachment-grid:not([data-count="1"]) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sp-attachment-thumb {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--sp-border);
+  border-radius: 8px;
+  background: var(--sp-surface-lowest);
+}
+
+.sp-attachment-grid[data-count="1"] .sp-attachment-thumb img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+}
+
+.sp-attachment-grid:not([data-count="1"]) .sp-attachment-thumb img {
+  aspect-ratio: 1;
+  width: 100%;
+  object-fit: cover;
+}
+
+.sp-attachment-remove {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: rgb(15 23 42 / 0.62);
+  color: #fff;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease, background-color 120ms ease;
+}
+
+.sp-attachment-thumb:hover .sp-attachment-remove,
+.sp-attachment-remove:focus-visible {
+  opacity: 1;
+}
+
+.sp-attachment-remove:hover {
+  background: var(--sp-red);
+}
+
+/* Documento: fila, no tarjeta. Lo que importa es el nombre y el peso, y una
+   grilla cuadrada se los come. */
+.sp-attachment-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 7px 10px;
+  border: 1px solid var(--sp-border);
+  border-radius: 8px;
+  background: var(--sp-surface);
+}
+
+.sp-attachments[data-variant="own"] .sp-attachment-doc,
+.sp-attachments[data-variant="own"] .sp-attachment-thumb {
+  border-color: rgb(255 255 255 / 0.22);
+  background: rgb(255 255 255 / 0.14);
+}
+
+.sp-attachment-doc-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+
+.sp-attachment-doc-meta {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.sp-attachment-doc-meta strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.sp-attachment-doc-meta > span {
+  font-size: 11px;
+  color: var(--sp-text-faint);
+}
+
+.sp-attachments[data-variant="own"] .sp-attachment-doc-meta strong {
+  color: var(--org-on-primary, #fff);
+}
+
+.sp-attachments[data-variant="own"] .sp-attachment-doc-meta > span {
+  color: rgb(255 255 255 / 0.72);
+}
+
+.sp-attachment-doc-action {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--sp-text-faint);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-attachment-doc-action:hover {
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text);
+}
+
+.sp-attachment-doc-action.danger:hover {
+  background: var(--sp-red-soft);
+  color: var(--sp-red);
+}
+
+.sp-attachments[data-variant="own"] .sp-attachment-doc-action {
+  color: rgb(255 255 255 / 0.78);
+}
+
+.sp-attachments[data-variant="own"] .sp-attachment-doc-action:hover {
+  background: rgb(255 255 255 / 0.18);
+  color: #fff;
+}
+
+.sp-attachment-video {
+  overflow: hidden;
+  border: 1px solid var(--sp-border);
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.sp-attachment-video video {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+}
+
+.sp-attachment-video-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--sp-surface);
+  font-size: 11.5px;
+  color: var(--sp-text-muted);
+}
+
+.sp-attachment-video-meta button {
+  margin-left: auto;
+  color: var(--sp-text-faint);
+}
+
+.sp-attachment-video-meta button:hover {
+  color: var(--sp-red);
+}
+
+/* ---------- Redactor de actividad ---------- */
+
+.sp-activity-composer {
+  position: relative;
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--sp-border);
+  background: var(--sp-surface);
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.sp-activity-composer[data-drag="on"] {
+  background: var(--org-primary-soft);
+  box-shadow: inset 0 0 0 2px var(--org-primary);
+}
+
+.sp-activity-progress {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  overflow: hidden;
+  background: var(--sp-surface-lowest);
+}
+
+.sp-activity-progress i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--org-primary);
+  transform-origin: left;
+  transition: transform 140ms linear;
+}
+
+.sp-composer-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.sp-composer-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 5px;
+  border: 1px solid var(--sp-border);
+  border-radius: 8px;
+  background: var(--sp-surface-low);
+}
+
+.sp-composer-chip.error {
+  border-color: color-mix(in srgb, var(--sp-red) 28%, transparent);
+  background: var(--sp-red-soft);
+}
+
+.sp-composer-thumb {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.sp-composer-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+
+.sp-composer-chip-meta {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.sp-composer-chip-meta strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.sp-composer-chip-meta > span {
+  font-size: 10.5px;
+  color: var(--sp-text-faint);
+}
+
+.sp-composer-error {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--sp-red);
+}
+
+.sp-composer-chip > button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--sp-text-faint);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-composer-chip > button:hover {
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text);
+}
+
+.sp-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.sp-composer-input {
+  min-width: 0;
+  min-height: 40px;
+  max-height: 132px;
+  flex: 1;
+  resize: none;
+  padding: 9px 10px;
+  border: 1px solid var(--sp-border);
+  border-radius: 8px;
+  background: var(--sp-surface);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sp-text);
+  outline: none;
+  field-sizing: content;
+  transition: border-color 120ms ease;
+}
+
+.sp-composer-input:focus {
+  border-color: var(--org-primary);
+}
+
+.sp-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sp-composer-attach {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--sp-text-muted);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-composer-attach:hover:not(:disabled) {
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text);
+}
+
+.sp-composer-attach:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* La cámara solo tiene sentido donde hay cámara. */
+.sp-composer-camera {
+  display: none;
+}
+
+.sp-composer-send {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--org-primary);
+  color: var(--org-on-primary, #fff);
+  transition: opacity 120ms ease;
+}
+
+.sp-composer-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sp-composer-hint {
+  margin: 6px 2px 0;
+  font-size: 10.5px;
+  color: var(--sp-text-faint);
+}
+
+/* ---------- Lightbox ---------- */
+
+.sp-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 64px 16px 32px;
+  background: rgb(2 6 23 / 0.9);
+}
+
+.sp-lightbox-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  color: rgb(255 255 255 / 0.86);
+}
+
+.sp-lightbox-bar > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-lightbox-bar strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sp-lightbox-bar span {
+  font-size: 11px;
+  color: rgb(255 255 255 / 0.62);
+}
+
+.sp-lightbox-bar a,
+.sp-lightbox-bar button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  color: inherit;
+  transition: background-color 120ms ease;
+}
+
+.sp-lightbox-bar a:hover,
+.sp-lightbox-bar button:hover {
+  background: rgb(255 255 255 / 0.14);
+}
+
+.sp-lightbox-image {
+  max-height: 90dvh;
+  max-width: 92vw;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.sp-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+  transition: background-color 120ms ease;
+}
+
+.sp-lightbox-nav:hover {
+  background: rgb(255 255 255 / 0.22);
+}
+
+.sp-lightbox-nav.left {
+  left: 12px;
+}
+
+.sp-lightbox-nav.right {
+  right: 12px;
+}
+
+/* ---------- Archivadas ---------- */
+
+.sp-archived {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 20px 20px;
+  overflow-y: auto;
+}
+
+.sp-archived-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sp-archived-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  color: var(--sp-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.sp-archived-back:hover {
+  border-color: var(--sp-border-strong);
+  color: var(--sp-text);
+}
+
+.sp-archived-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-archived-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.sp-archived-row:hover {
+  border-color: var(--sp-border-strong);
+  background: color-mix(in srgb, var(--sp-surface-low) 60%, var(--sp-surface));
+}
+
+.sp-archived-row:focus-visible {
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 2px;
+}
+
+.sp-archived-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sp-archived-title strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.sp-archived-meta {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--sp-text-faint);
+}
+
+.sp-archived-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sp-archived-chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--sp-surface-lowest);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--sp-text-muted);
+}
+
+.sp-archived-restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-archived-restore:hover {
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+}
+
+/* ---------- Formulario de creación ---------- */
+
+.sp-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sp-task-form-title {
+  position: relative;
+}
+
+.sp-task-form-title input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sp-text);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.sp-task-form-title input:focus {
+  border-color: var(--org-primary);
+}
+
+.sp-task-form-title span {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--sp-text-faint);
+}
+
+.sp-task-form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sp-task-form-more {
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sp-task-form-more > summary {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
+  color: var(--sp-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sp-task-form-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sp-task-form-more-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px;
+  border-top: 1px solid var(--sp-border);
+}
+
+.sp-task-form-adddesc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px dashed var(--sp-border-strong);
+  border-radius: 8px;
+  color: var(--sp-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-form-adddesc:hover {
+  border-color: var(--org-primary);
+  color: var(--org-primary);
+}
+
+.sp-task-form-error {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--sp-red-soft);
+  color: var(--sp-red);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* Prioridad y vencimiento son campos cortos. Apilados desperdiciaban el ancho
+   del modal en dos filas casi vacías; emparejados solo cuando hay lugar. */
+.sp-task-form-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 720px) {
+  .sp-task-form-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* El backdrop es un grid con place-items-center y columna implícita: esa
+   columna `auto` se encoge al ancho de contenido del modal, así que en
+   pantallas angostas el modal quedaba más angosto que la pantalla (medido:
+   267px de 375px). Con una columna explícita el `w-full` del modal vuelve a
+   resolver contra el ancho real. */
+.sp-shell.app-redesign .sp-modal-backdrop {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Formularios anchos: más aire en escritorio que el modal chico, sin llegar al
+   ancho de una superficie de trabajo. */
+.sp-shell.app-redesign .sp-modal.sp-modal-wide {
+  max-width: 896px;
+}
+
+/* En un celular el ancho es el recurso escaso: el modal de formulario va de
+   borde a borde y el cuerpo baja de 24px a 16px de padding. */
+@media (max-width: 560px) {
+  .sp-shell.app-redesign .sp-modal-backdrop:has(.sp-modal-wide) {
+    padding: 12px 0;
+  }
+
+  .sp-shell.app-redesign .sp-modal.sp-modal-wide {
+    max-width: none;
+  }
+
+  .sp-shell.app-redesign .sp-modal.sp-modal-wide .sp-modal-header,
+  .sp-shell.app-redesign .sp-modal.sp-modal-wide .sp-modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* ============================================================
+   Tareas v2 — adaptaciones por ancho
+   ============================================================ */
+
+/* Bajo 900px el detalle ocupa la pantalla entera y se parte en dos
+   secciones: los datos y la conversación. Mostrarlas apiladas dejaría la
+   actividad en un tercio de pantalla, que es donde se trabaja. */
+@media (max-width: 900px) {
+  .sp-shell.app-redesign .sp-modal.sp-modal-lg {
+    position: fixed;
+    inset: 0;
+    max-width: none;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .sp-modal-backdrop:has(.sp-modal-lg) {
+    padding: 0;
+  }
+
+  .sp-task-panes {
+    display: flex;
+  }
+
+  .sp-task-detail-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .sp-task-detail-actions .sp-status-control {
+    min-width: 0;
+  }
+
+  .sp-task-panes {
+    margin-left: 0;
+  }
+
+  .sp-task-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Una sección por vez: la que no está activa no ocupa lugar. */
+  .sp-task-detail-grid[data-pane="detail"] .sp-task-detail-side,
+  .sp-task-detail-grid[data-pane="activity"] .sp-task-detail-main {
+    display: none;
+  }
+
+  .sp-task-detail-side {
+    border-left: 0;
+  }
+
+  .sp-task-detail-side-head {
+    display: none;
+  }
+
+  /* Sobre el teclado virtual, respetando la barra de gestos de iOS. */
+  .sp-activity-composer {
+    position: sticky;
+    bottom: 0;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .sp-composer-camera {
+    display: grid;
+  }
+
+  /* La barra de navegación inferior es fija: sin este espacio tapa la
+     última tarjeta del listado. */
+  .sp-task-page .sp-board-area {
+    padding-bottom: 76px;
+  }
+}
+
+@media (max-width: 760px) {
+  .sp-task-command-area {
+    padding: 10px 14px 0;
+    gap: 8px;
+  }
+
+  /* Una sola fila: buscar, filtrar y crear. Antes eran tres filas apiladas y
+     la primera tarjeta empezaba recien a 230px del borde. */
+  .sp-shell.app-redesign .sp-search.sp-task-search {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+
+  .sp-task-filter-button,
+  .sp-shell.app-redesign .sp-task-command .sp-primary-action {
+    flex-shrink: 0;
+    min-height: 44px;
+  }
+
+  /* Los rotulos ceden ante el icono: el significado ya lo da el icono y el
+     badge, y asi las tres acciones entran en una linea. */
+  .sp-task-filter-button span,
+  .sp-shell.app-redesign .sp-task-command .sp-primary-action span {
+    display: none;
+  }
+
+  .sp-task-filter-button,
+  .sp-shell.app-redesign .sp-task-command .sp-primary-action {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sp-task-filter-button b {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+  }
+
+  .sp-task-filter-button {
+    position: relative;
+  }
+
+  .sp-task-tab {
+    min-height: 44px;
+  }
+
+  .sp-task-tabs {
+    padding: 10px 14px 0;
+  }
+
+  .sp-task-chip,
+  .sp-filter-person {
+    min-height: 44px;
+  }
+
+  .sp-task-fields,
+  .sp-task-form-more-fields,
+  /* El esqueleto tiene que copiar la forma real, si no el contenido salta al
+     llegar. */
+  .sp-skeleton-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sp-task-detail-main,
+  .sp-archived {
+    padding: 14px;
+  }
+
+  .sp-task-detail-actions,
+  .sp-task-notice {
+    padding: 10px 14px;
+  }
+
+  .sp-activity-item {
+    max-width: 96%;
+  }
+
+  .sp-archived-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sp-archived-restore {
+    min-height: 44px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .sp-task-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .sp-task-form-actions button {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+
+
+
+/* ============================================================
+   Tareas v2 — esqueletos de carga y calendario en pantallas chicas
+   ============================================================ */
+
+/* Reserva la forma real del contenido mientras carga, en vez de dejar el
+   layout colapsado y que todo salte al llegar la respuesta. */
+.sp-skeleton {
+  display: flex;
+  flex-direction: column;
+}
+
+.sp-skeleton-bar {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--sp-surface-lowest) 25%,
+    color-mix(in srgb, var(--sp-surface-lowest) 55%, var(--sp-surface)) 37%,
+    var(--sp-surface-lowest) 63%
+  );
+  background-size: 400% 100%;
+  animation: sp-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes sp-skeleton-shimmer {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+.sp-skeleton-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 20px;
+  padding: 16px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface-low);
+}
+
+.sp-skeleton-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sp-skeleton-field:last-child {
+  grid-column: 1 / -1;
+}
+
+.sp-skeleton-activity {
+  gap: 14px;
+  padding: 16px;
+}
+
+.sp-skeleton-msg {
+  display: flex;
+  width: 76%;
+  flex-direction: column;
+}
+
+.sp-skeleton-msg.own {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-skeleton-bar {
+    animation: none;
+  }
+}
+
+/* Calendario centrado en pantallas chicas.
+
+   Anclado al campo quedaba pegado a los bordes y, sobre todo, se reposicionaba
+   con cada scroll: en touch se movia entre el toque y el click, y el dia no
+   llegaba a seleccionarse. Centrado no se mueve nunca. */
+.sp-date-picker-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  background: rgb(2 6 23 / 0.45);
+}
+
+.sp-shell.app-redesign .sp-date-picker-popover.is-centered,
+.sp-date-picker-popover.is-centered {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  /* `bottom: auto` es obligatorio: la regla base ancla el popover con
+     `bottom: calc(100% + 8px)` y, combinada con `top`, la altura se anula y el
+     calendario se derrama sobre el contenido de atras. */
+  bottom: auto;
+  right: auto;
+  width: min(340px, calc(100vw - 32px));
+  max-width: none;
+  transform: translate(-50%, -50%);
+  z-index: 200;
+  padding: 16px;
+  background: var(--sp-surface);
+}
+
+/* Dias mas compactos y con area tactil pareja: 40px de alto entra comodo en
+   340px de ancho y evita el desborde que hacia ver el calendario gigante. */
+.sp-date-picker-popover.is-centered .sp-date-picker-grid button {
+  height: 40px;
+  font-size: 13px;
+}
+
+.sp-date-picker-popover.is-centered .sp-date-picker-header button {
+  width: 36px;
+  height: 36px;
+}
+
+/* ============================================================
+   Encabezado del shell en pantallas chicas.
+
+   Afecta a todas las vistas, no solo Tareas: el titulo a 24px con el subtitulo
+   en dos lineas y el avatar en su propia fila se comian ~160px de alto antes
+   del primer contenido util. En una herramienta operativa el alto es el recurso
+   escaso, y la seccion activa ya la comunica la barra inferior.
+   ============================================================ */
+@media (max-width: 760px) {
+  /* Una sola fila: título a la izquierda, avatar a la derecha. Antes eran tres
+     bloques apilados (título de 24px, subtítulo en dos líneas y la pastilla de
+     usuario en su propia fila) que sumaban 119px antes del primer contenido. */
+  .sp-shell.app-redesign .sp-header {
+    /* `flex-direction` y `align-items` explícitos: un bloque mobile anterior
+       (~línea 3029) apila el header con `flex-col items-stretch`, que es lo que
+       lo llevaba a tres filas. */
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    height: auto;
+    min-height: 52px;
+    padding: 0 16px;
+  }
+
+  /* Sin estirarse: la acción de usuario ocupa lo que ocupa y el título se queda
+     con el resto del ancho. */
+  .sp-shell.app-redesign .sp-header .sp-header-actions {
+    align-items: center;
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .sp-shell.app-redesign .sp-header > div:first-child {
+    min-width: 0;
+  }
+
+  .sp-shell.app-redesign .sp-header h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sp-shell.app-redesign .sp-header h1 {
+    font-size: 17px;
+    line-height: 1.2;
+  }
+
+  /* El subtítulo es contexto, no navegación: cuesta dos líneas y no cambia
+     ninguna decisión. */
+  .sp-shell.app-redesign .sp-header p {
+    display: none;
+  }
+
+  /* Del menú de usuario queda solo el avatar: el nombre y el rol son de quien
+     ya sabe quién es, y acá el ancho se le necesita al título. Siguen
+     disponibles al tocarlo. */
+  .sp-shell.app-redesign .sp-header .sp-user-trigger {
+    gap: 0;
+    padding: 0;
+  }
+
+  .sp-shell.app-redesign .sp-header .sp-user-trigger > span,
+  .sp-shell.app-redesign .sp-header .sp-user-trigger > svg {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Detalle de tarea: datos arriba en lectura, acción al pie.
+
+   Abrir una tarea es casi siempre para leerla. Los datos van primero y en modo
+   lectura; editar es un modo aparte que se pide desde el menú del encabezado.
+   La acción de avance baja al pie, donde el pulgar la alcanza.
+   ============================================================ */
+
+/* Los datos como chips en una fila que envuelve. El rótulo queda solo para
+   lectores de pantalla: el punto de color ya dice "prioridad", el avatar dice
+   "asignado" y el calendario dice "vencimiento". Un tercio del alto que ocupaba
+   la grilla de pares etiqueta-sobre-valor. */
+.sp-task-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--sp-border);
+}
+
+/* El envoltorio de cada par no debe romper la fila: dt y dd participan del
+   mismo flex que el resto. */
+.sp-task-summary-item {
+  display: contents;
+}
+
+/* Accesible pero fuera de la pantalla: el chip se entiende mirándolo, pero un
+   lector de pantalla necesita saber qué significa cada valor. */
+.sp-task-summary-item dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.sp-task-summary-item dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  background: var(--sp-surface-low);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--sp-text);
+}
+
+.sp-task-summary-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.sp-task-summary-avatar {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--org-primary);
+  color: var(--org-on-primary, #fff);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.sp-task-summary-empty {
+  color: var(--sp-text-faint);
+  font-weight: 400;
+}
+
+.sp-task-summary-overdue {
+  color: var(--sp-red);
+  font-weight: 600;
+}
+
+/* Modo edición: los mismos campos de siempre, dentro de una caja que deja claro
+   que se está editando y no leyendo. */
+.sp-task-detail-edit {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--sp-border);
+  background: var(--sp-surface-low);
+}
+
+.sp-task-detail-edit .sp-task-fields {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.sp-task-edit-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: background-color 120ms ease;
+}
+
+.sp-task-edit-done:hover {
+  background: var(--org-primary-muted);
+}
+
+/* Menú del encabezado */
+.sp-task-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sp-task-menu-trigger {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--sp-text-muted);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-menu-trigger:hover,
+.sp-task-menu-trigger[aria-expanded="true"] {
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text);
+}
+
+.sp-task-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 196px;
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid var(--sp-border);
+  border-radius: 12px;
+  background: var(--sp-surface);
+  box-shadow: 0 8px 24px rgb(0 64 223 / 0.08);
+}
+
+.sp-task-menu-list button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--sp-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sp-task-menu-list button:hover {
+  background: var(--sp-surface-low);
+  color: var(--sp-text);
+}
+
+/* Eliminar es la única acción irreversible del modal: separada y en rojo. */
+.sp-task-menu-list button.danger {
+  margin-top: 4px;
+  border-top: 1px solid var(--sp-border);
+  border-radius: 0 0 8px 8px;
+  padding-top: 4px;
+  color: var(--sp-red);
+}
+
+.sp-task-menu-list button.danger:hover {
+  background: var(--sp-red-soft);
+  color: var(--sp-red);
+}
+
+/* Barra de acción al pie */
+.sp-task-detail-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 12px 20px;
+  border-top: 1px solid var(--sp-border);
+  background: var(--sp-surface);
+}
+
+.sp-task-detail-footer .sp-status-control {
+  width: 100%;
+}
+
+/* El menú del pie abre hacia arriba: hacia abajo se saldría del modal. */
+.sp-task-detail-footer .sp-status-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+/* Sin la barra de estado arriba, las sub-pestañas quedan solas: se estiran para
+   ser un blanco táctil parejo en vez de dos pastillas perdidas a la izquierda. */
+.sp-task-detail-actions {
+  padding: 10px 20px;
+}
+
+.sp-task-detail-actions .sp-task-panes {
+  margin-left: 0;
+  width: 100%;
+}
+
+.sp-task-detail-actions .sp-task-panes button {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+@media (max-width: 760px) {
+  .sp-task-summary {
+    padding: 10px 14px;
+  }
+
+  .sp-task-detail-edit,
+  .sp-task-detail-footer {
+    padding: 12px 14px;
+  }
+
+  .sp-task-detail-footer {
+    /* Por encima de la barra de gestos de iOS. */
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .sp-task-menu-trigger {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sp-task-menu-list button,
+  .sp-task-edit-done {
+    min-height: 44px;
+  }
+}
+
+/* ============================================================
+   Dashboard · Recuento de tareas por etapa
+
+   Cuatro números que se leen de un vistazo, no un gráfico: son magnitudes
+   sueltas sin eje común. El color vive solo en el punto de la etapa (el mismo
+   del tablero); el número va en tinta neutra, porque un 318 en verde se lee
+   como "bien" y acá es apenas un acumulado.
+
+   El alcance (mis tareas / todas / por persona) es un filtro del servidor: cada
+   cambio pide otros cuatro COUNT, nunca una descarga más grande.
+   ============================================================ */
+.sp-task-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--sp-border);
+  border-radius: 16px;
+  background: var(--sp-surface);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.05);
+}
+
+.sp-task-stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sp-task-stats-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sp-task-stats-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: var(--org-primary-soft);
+  color: var(--org-primary);
+}
+
+.sp-task-stats-title h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--sp-text);
+}
+
+.sp-task-stats-title > div > span {
+  display: block;
+  font-size: 12px;
+  color: var(--sp-text-faint);
+}
+
+.sp-task-stats-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sp-task-stats-person {
+  min-height: 34px;
+  max-width: 190px;
+  padding: 0 10px;
+  border: 1px solid var(--sp-border);
+  border-radius: 8px;
+  background: var(--sp-surface);
+  color: var(--sp-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.sp-task-stats-person:focus-visible {
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 1px;
+}
+
+.sp-task-stats-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--sp-red);
+}
+
+.sp-task-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sp-task-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--sp-surface-low);
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.sp-task-stat:hover {
+  border-color: var(--sp-border);
+  background: var(--sp-surface-lowest);
+}
+
+.sp-task-stat:focus-visible {
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 1px;
+}
+
+.sp-task-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--sp-text-muted);
+}
+
+.sp-task-stat-label i {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+
+.sp-task-stat strong {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--sp-text);
+}
+
+/* Mismo alto que el número: el bloque no salta cuando llega la respuesta. */
+.sp-task-stat-skeleton {
+  display: block;
+  width: 36px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--sp-surface-lowest);
+  animation: sp-task-stat-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes sp-task-stat-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.sp-task-stats-foot {
+  margin: 0;
+  font-size: 12px;
+  color: var(--sp-text-faint);
+}
+
+@media (max-width: 640px) {
+  .sp-task-stats {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  /* Dos filas de dos: cuatro columnas dejarían el número más chico que su
+     etiqueta. El orden del flujo se sigue leyendo de izquierda a derecha. */
+  .sp-task-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Los controles pasan a ocupar el ancho completo y el segmentado reparte el
+     espacio en dos: objetivos de toque cómodos sin apretar el título. */
+  .sp-task-stats-scope {
+    width: 100%;
+  }
+
+  .sp-task-stats-scope .sp-task-chip-group {
+    flex: 1 1 100%;
+  }
+
+  .sp-task-stats-scope .sp-task-chip {
+    flex: 1 1 0;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .sp-task-stats-person {
+    flex: 1 1 100%;
+    max-width: none;
+    min-height: 40px;
+  }
+
+  .sp-task-stat {
+    min-height: 74px;
+  }
+}
+
+/* ============================================================
+   Archivadas: encabezado con recuento
+
+   El número no es decorativo: es la única señal de cuánto trabajo terminado hay
+   detrás de la paginación, que solo muestra veinte por vez. Sale del COUNT del
+   servidor, no del largo de la página.
+   ============================================================ */
+.sp-archived-head {
+  flex-wrap: wrap;
+}
+
+.sp-archived-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sp-archived-heading h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sp-text);
+}
+
+.sp-archived-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* La búsqueda se lleva el ancho sobrante; cuando no le alcanza, baja a su
+   propia línea en vez de estrujar al título. */
+.sp-shell.app-redesign .sp-archived-head .sp-search.sp-task-search {
+  flex: 1 1 220px;
+}
+
+/* Recuento de finalizadas en el acceso a Archivadas del tablero. Mismo peso
+   visual que el contador de filtros activos: es información, no alerta. */
+.sp-task-archived-link b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--sp-surface-lowest);
+  color: var(--sp-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  /* Primera fila: volver + título con el recuento. La etiqueta del botón cede
+     ante la flecha, que ya dice a dónde va, para que el número entre. */
+  .sp-archived-back span {
+    display: none;
+  }
+
+  .sp-archived-back {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    justify-content: center;
+  }
+
+  .sp-archived-heading {
+    flex: 1 1 auto;
+  }
+
+  .sp-shell.app-redesign .sp-archived-head .sp-search.sp-task-search {
+    flex: 1 1 100%;
+  }
+}

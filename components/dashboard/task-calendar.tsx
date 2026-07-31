@@ -4,7 +4,7 @@ import { ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight } from "lucide-re
 import { useMemo, useState } from "react";
 import type { Task } from "@/lib/api";
 import { capitalizeFirst } from "@/lib/format";
-import { TASK_COLUMNS, TASK_PRIORITIES } from "@/lib/tasks";
+import { TASK_PRIORITIES, TASK_STATUS_META } from "@/lib/tasks";
 
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
@@ -147,7 +147,7 @@ export function TaskCalendar({ tasks, onOpenTasks }: { tasks: Task[]; onOpenTask
           <p className="m-0 py-3 text-center text-[12px] text-slate-400">Sin tareas con vencimiento este día.</p>
         ) : (
           selectedTasks.slice(0, 4).map((task) => {
-            const column = TASK_COLUMNS.find((item) => item.key === task.status);
+            const statusMeta = TASK_STATUS_META[task.status];
             return (
               <button
                 key={task.id}
@@ -157,7 +157,7 @@ export function TaskCalendar({ tasks, onOpenTasks }: { tasks: Task[]; onOpenTask
               >
                 <i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: priorityDot(task.priority) }} />
                 <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-700">{task.title}</span>
-                <span className="shrink-0 text-[10.5px] font-medium text-slate-400">{column?.label}</span>
+                <span className="shrink-0 text-[10.5px] font-medium text-slate-400">{statusMeta?.label}</span>
               </button>
             );
           })

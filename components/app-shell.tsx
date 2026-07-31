@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
+  MoreHorizontal,
   Settings,
   Shield,
   User,
@@ -39,7 +40,7 @@ import {
   type UpdateOrganizationTeamMemberPayload,
   type UserProfile
 } from "@/lib/api";
-import { readTransitionMs } from "@/lib/browser";
+import { readTransitionMs, useIsWideScreen } from "@/lib/browser";
 import { normalizeHexColor, organizationThemeStyle } from "@/lib/colors";
 import { emptyToNull, roleLabel } from "@/lib/format";
 import { countUrgentNotices } from "@/lib/notices";
@@ -128,6 +129,10 @@ export function AppShell() {
   const [tab, setActiveTab] = useState<Tab>(() => getTabFromPathname(pathname) ?? "dashboard");
   const [clientDetailId, setClientDetailId] = useState<string | null>(null);
   const [openPolicyId, setOpenPolicyId] = useState<string | null>(null);
+  // Con qué vista abre Tareas cuando se entra desde afuera (el recuento de
+  // finalizadas del dashboard va derecho a Archivadas). La navegación normal
+  // siempre vuelve al tablero.
+  const [tasksArchived, setTasksArchived] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -152,6 +157,15 @@ export function AppShell() {
     const routedTab = getTabFromPathname(pathname);
     if (routedTab) setActiveTab(routedTab);
   }
+
+  // Entrar a Tareas desde otra vista, eligiendo si abre el tablero o Archivadas.
+  const openTasks = useCallback(
+    (archived: boolean) => {
+      setTasksArchived(archived);
+      setTab("tasks");
+    },
+    [setTab]
+  );
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -572,6 +586,8 @@ export function AppShell() {
         setTab={(next) => {
           setClientDetailId(null);
           setOpenPolicyId(null);
+          // Desde la navegación, Tareas siempre abre en el tablero.
+          setTasksArchived(false);
           setTab(next);
         }}
         urgentCount={countUrgentNotices(allNotices)}
@@ -615,6 +631,8 @@ export function AppShell() {
             <DashboardView
               userName={auth.user.fullName}
               common={common}
+              currentUserId={auth.user.id}
+              canModerate={canManageOrganization}
               notices={allNotices}
               clients={allClients}
               companies={allCompanies}
@@ -623,6 +641,7 @@ export function AppShell() {
               isCreatingPolicy={createPolicy.isPending}
               error={notices.error?.message ?? clients.error?.message ?? policies.error?.message ?? null}
               setTab={setTab}
+              onOpenTasks={openTasks}
               onCreateClient={(body) => createClient.mutateAsync(body)}
               onCreatePolicy={(values) => createPolicy.mutateAsync(values)}
             />
@@ -655,6 +674,7 @@ export function AppShell() {
               common={common}
               currentUserId={auth.user.id}
               canModerate={canManageOrganization}
+              initialArchived={tasksArchived}
               clients={allClients}
               policies={allPolicies}
               notify={notify}
@@ -838,6 +858,16 @@ function Sidebar({
   ];
   const isSettingsTab = settingsNav.some((item) => item.key === tab);
 
+  // En la barra inferior del celular entran cuatro destinos con holgura; con
+  // siete había que deslizar de costado, y una barra que se desliza no avisa
+  // que esconde algo. Los que sobran se agrupan detrás de "Más", que sí se ve.
+  // En escritorio la barra es vertical y hay lugar para todos.
+  const isWideNav = useIsWideScreen(900);
+  const primaryNav = isWideNav ? nav : nav.slice(0, 4);
+  const overflowNav = isWideNav ? settingsNav : [...nav.slice(4), ...settingsNav];
+  const overflowLabel = isWideNav ? "Configuración" : "Más";
+  const isOverflowActive = overflowNav.some((item) => item.key === tab);
+
   // El grupo se abre hacia arriba como panel flotante: se cierra al elegir una
   // opción, al tocar fuera o con Escape.
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -863,77 +893,82 @@ function Sidebar({
   }, [isSettingsOpen]);
 
   return (
-    <aside className="sp-sidebar">
-      <div className={logoUrl ? "sp-logo only-logo" : "sp-logo"}>
-        {logoUrl ? (
-          <div className="sp-logo-mark has-image">
-            <Image src={logoUrl} alt={organizationName} width={240} height={108} unoptimized />
-          </div>
-        ) : (
-          <>
-            <div className="sp-logo-mark">
-              <Shield size={17} />
+      <aside className="sp-sidebar">
+        <div className={logoUrl ? "sp-logo only-logo" : "sp-logo"}>
+          {logoUrl ? (
+            <div className="sp-logo-mark has-image">
+              <Image src={logoUrl} alt={organizationName} width={240} height={108} unoptimized />
             </div>
-            <div className="sp-logo-copy">
-              <strong>{organizationName}</strong>
+          ) : (
+            <>
+              <div className="sp-logo-mark">
+                <Shield size={17} />
+              </div>
+              <div className="sp-logo-copy">
+                <strong>{organizationName}</strong>
+              </div>
+            </>
+          )}
+        </div>
+        <nav className="sp-nav" aria-label="Navegación principal">
+          <p>Principal</p>
+          {primaryNav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                className={tab === item.key ? "active" : ""}
+                type="button"
+                onClick={() => setTab(item.key)}
+              >
+                <Icon size={22} />
+                <span>{item.name}</span>
+                {"count" in item && typeof item.count === "number" && item.count > 0 ? (
+                  <b>{item.count}</b>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="sp-nav-group" ref={settingsGroupRef}>
+          {isSettingsOpen ? (
+            <div className="sp-nav-sub" role="menu" aria-label={overflowLabel}>
+              {overflowNav.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.key}
+                    className={tab === item.key ? "active" : ""}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setTab(item.key);
+                      setIsSettingsOpen(false);
+                    }}
+                  >
+                    <Icon size={18} />
+                    <span>{item.name}</span>
+                    {"count" in item && typeof item.count === "number" && item.count > 0 ? (
+                      <b>{item.count}</b>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
-          </>
-        )}
-      </div>
-      <nav className="sp-nav" aria-label="Navegación principal">
-        <p>Principal</p>
-        {nav.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.key}
-              className={tab === item.key ? "active" : ""}
-              type="button"
-              onClick={() => setTab(item.key)}
-            >
-              <Icon size={22} />
-              <span>{item.name}</span>
-              {item.count ? <b>{item.count}</b> : null}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="sp-nav-group" ref={settingsGroupRef}>
-        {isSettingsOpen ? (
-          <div className="sp-nav-sub" role="menu" aria-label="Configuración">
-            {settingsNav.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.key}
-                  className={tab === item.key ? "active" : ""}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setTab(item.key);
-                    setIsSettingsOpen(false);
-                  }}
-                >
-                  <Icon size={18} />
-                  <span>{item.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-        <button
-          className={isSettingsTab ? "sp-nav-group-trigger active" : "sp-nav-group-trigger"}
-          type="button"
-          aria-expanded={isSettingsOpen}
-          aria-haspopup="menu"
-          onClick={() => setIsSettingsOpen((open) => !open)}
-        >
-          <Settings size={22} />
-          <span>Configuración</span>
-          <ChevronDown className="sp-nav-group-caret" size={16} aria-hidden="true" />
-        </button>
-      </div>
-    </aside>
+          ) : null}
+          <button
+            className={isOverflowActive ? "sp-nav-group-trigger active" : "sp-nav-group-trigger"}
+            type="button"
+            aria-expanded={isSettingsOpen}
+            aria-haspopup="menu"
+            onClick={() => setIsSettingsOpen((open) => !open)}
+          >
+            {isWideNav ? <Settings size={22} /> : <MoreHorizontal size={22} />}
+            <span>{overflowLabel}</span>
+            <ChevronDown className="sp-nav-group-caret" size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </aside>
   );
 }
 
@@ -1059,7 +1094,7 @@ function subtitleForTab(tab: Tab) {
   const labels: Record<Tab, string> = {
     dashboard: "Resumen de tu cartera y próximos vencimientos",
     notices: "Avisá los vencimientos y registrá los pagos",
-    tasks: "Organizá el trabajo del equipo en un tablero kanban",
+    tasks: "Seguí el trabajo del equipo por etapa, de pendiente a aprobada",
     clients: "Tu cartera de asegurados y sus datos de contacto",
     policies: "Pólizas activas de la organización",
     companies: "Compañías aseguradoras con las que trabajás",

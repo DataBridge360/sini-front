@@ -47,13 +47,29 @@ export function avatarColor(name: string) {
   return AVATAR_COLORS[seed % AVATAR_COLORS.length] ?? AVATAR_COLORS[0];
 }
 
+// Acepta tanto columnas `date` ("2026-08-21") como `timestamptz`
+// ("2026-08-21T15:30:00+00:00").
+//
+// A una fecha sin hora se le agrega T00:00:00 para que se lea en horario local:
+// sin eso, `new Date("2026-08-21")` se interpreta como UTC y en Argentina
+// muestra el día anterior.
+function toDate(value: string) {
+  const raw = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatDate(value: string) {
-  const date = new Date(`${value}T00:00:00`);
+  const date = toDate(value);
+  // Un valor con formato inesperado no debe tumbar la pantalla: Intl lanza
+  // RangeError con una fecha inválida y el error sube hasta la vista entera.
+  if (!date) return "";
   return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
 export function formatDateTime(value: string) {
-  const date = new Date(value);
+  const date = toDate(value);
+  if (!date) return "";
   return new Intl.DateTimeFormat("es-AR", {
     day: "2-digit",
     month: "2-digit",

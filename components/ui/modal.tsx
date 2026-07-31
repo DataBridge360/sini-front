@@ -8,11 +8,21 @@ export function Modal({
   title,
   isOpen,
   onClose,
+  // "lg" es para superficies de trabajo (el detalle de una tarea): más ancho en
+  // escritorio y pantalla completa en mobile. "wide" es para formularios que
+  // necesitan más aire que "md" sin llegar a ser una superficie de trabajo. El
+  // default "md" deja el markup exactamente como estaba.
+  size = "md",
+  headerSlot,
+  bodyClassName,
   children
 }: {
   title: string;
   isOpen: boolean;
   onClose: () => void;
+  size?: "md" | "wide" | "lg";
+  headerSlot?: ReactNode;
+  bodyClassName?: string;
   children: ReactNode;
 }) {
   const [isMounted, setIsMounted] = useState(isOpen);
@@ -54,16 +64,22 @@ export function Modal({
       onMouseDown={onClose}
     >
       <section
-        className={`sp-modal m-0 flex max-h-[min(760px,calc(100dvh-48px))] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl max-[520px]:max-h-[calc(100dvh-24px)] ${isClosing ? "opacity-0" : "opacity-100"}`}
+        className={`sp-modal m-0 flex w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl ${
+          size === "lg"
+            ? "sp-modal-lg max-h-[min(920px,calc(100dvh-48px))] max-w-6xl"
+            : size === "wide"
+              ? "sp-modal-wide max-h-[min(860px,calc(100dvh-48px))] max-w-4xl max-[520px]:max-h-[calc(100dvh-24px)]"
+              : "max-h-[min(760px,calc(100dvh-48px))] max-w-2xl max-[520px]:max-h-[calc(100dvh-24px)]"
+        } ${isClosing ? "opacity-0" : "opacity-100"}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="sp-modal-header flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <h2 className="m-0 text-lg font-semibold text-slate-950">{title}</h2>
+        <header className="sp-modal-header flex shrink-0 items-center gap-3 border-b border-slate-200 px-5 py-4">
+          {headerSlot ?? <h2 className="m-0 min-w-0 flex-1 text-lg font-semibold text-slate-950">{title}</h2>}
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950"
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
@@ -71,7 +87,7 @@ export function Modal({
             <X size={18} />
           </button>
         </header>
-        <div className="sp-modal-body min-h-0 overflow-y-auto p-5">{children}</div>
+        <div className={bodyClassName ?? "sp-modal-body min-h-0 overflow-y-auto p-5"}>{children}</div>
       </section>
     </div>
   );

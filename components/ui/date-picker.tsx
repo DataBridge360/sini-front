@@ -33,6 +33,7 @@ export function DatePicker({
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState<Date>(() => selectedDate ?? new Date());
   const [coords, setCoords] = useState<{
+    centered: boolean;
     top: number;
     left: number;
     width: number;
@@ -40,9 +41,24 @@ export function DatePicker({
     onPrimary: string;
   } | null>(null);
 
+  // Bajo este ancho el calendario deja de anclarse al campo y se centra en la
+  // pantalla. Anclado en un celular quedaba pegado a los bordes y, sobre todo,
+  // se reposicionaba con cada scroll: en touch el popover se movía entre el
+  // toque y el click, y el día terminaba sin seleccionarse.
+  const ANCHORED_MIN_WIDTH = 640;
+
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
+    const styles = window.getComputedStyle(trigger);
+    const primary = styles.getPropertyValue("--org-primary").trim() || "#176e64";
+    const onPrimary = styles.getPropertyValue("--org-on-primary").trim() || "#ffffff";
+
+    if (window.innerWidth < ANCHORED_MIN_WIDTH) {
+      setCoords({ centered: true, top: 0, left: 0, width: 0, primary, onPrimary });
+      return;
+    }
+
     const rect = trigger.getBoundingClientRect();
     const width = Math.min(360, window.innerWidth - 24);
     const margin = 12;
@@ -51,17 +67,19 @@ export function DatePicker({
     const spaceBelow = window.innerHeight - rect.bottom;
     const openUp = spaceBelow < popoverHeight + 12 && rect.top > spaceBelow;
     const top = openUp ? Math.max(margin, rect.top - popoverHeight - 8) : rect.bottom + 8;
-    const styles = window.getComputedStyle(trigger);
-    const primary = styles.getPropertyValue("--org-primary").trim() || "#176e64";
-    const onPrimary = styles.getPropertyValue("--org-on-primary").trim() || "#ffffff";
-    setCoords({ top, left, width, primary, onPrimary });
+    setCoords({ centered: false, top, left, width, primary, onPrimary });
   }, []);
 
   useEffect(() => {
     if (!open) return;
     updatePosition();
     const handle = () => updatePosition();
-    window.addEventListener("scroll", handle, true);
+    // El seguimiento del scroll solo tiene sentido mientras el popover está
+    // anclado a un campo; centrado no se mueve, y escucharlo reintroduce el
+    // salto que impedía seleccionar en touch.
+    if (window.innerWidth >= ANCHORED_MIN_WIDTH) {
+      window.addEventListener("scroll", handle, true);
+    }
     window.addEventListener("resize", handle);
     return () => {
       window.removeEventListener("scroll", handle, true);
@@ -112,21 +130,34 @@ export function DatePicker({
       </button>
       {open && coords
         ? createPortal(
-            <div
-              ref={popoverRef}
-              className="sp-date-picker-popover is-floating"
-              style={
-                {
-                  position: "fixed",
-                  top: coords.top,
-                  left: coords.left,
-                  bottom: "auto",
-                  width: coords.width,
-                  "--org-primary": coords.primary,
-                  "--org-on-primary": coords.onPrimary
-                } as CSSProperties
-              }
-            >
+            <>
+              {coords.centered ? (
+                <div
+                  className="sp-date-picker-scrim"
+                  role="presentation"
+                  onPointerDown={() => setOpen(false)}
+                />
+              ) : null}
+              <div
+                ref={popoverRef}
+                className={`sp-date-picker-popover is-floating ${coords.centered ? "is-centered" : ""}`}
+                style={
+                  coords.centered
+                    ? ({
+                        "--org-primary": coords.primary,
+                        "--org-on-primary": coords.onPrimary
+                      } as CSSProperties)
+                    : ({
+                        position: "fixed",
+                        top: coords.top,
+                        left: coords.left,
+                        bottom: "auto",
+                        width: coords.width,
+                        "--org-primary": coords.primary,
+                        "--org-on-primary": coords.onPrimary
+                      } as CSSProperties)
+                }
+              >
               <div className="sp-date-picker-header">
                 <button type="button" aria-label="Mes anterior" onClick={() => setViewDate(new Date(year, month - 1, 1))}>
                   <ChevronLeft size={16} />
@@ -183,7 +214,8 @@ export function DatePicker({
                   );
                 })}
               </div>
-            </div>,
+              </div>
+            </>,
             document.body
           )
         : null}

@@ -3,19 +3,26 @@
 import type { JSONContent } from "@tiptap/react";
 import { Loader2, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { Client, OrganizationMember, Policy, TaskFormPayload, TaskPriority, TaskStatus } from "@/lib/api";
-import { TASK_COLUMNS, TASK_PRIORITIES } from "@/lib/tasks";
-import { FIELD_LABEL_CLASS, FIELD_SELECT_CLASS } from "@/components/tasks/shared";
+import type { Client, OrganizationMember, Policy, TaskFormPayload, TaskPriority } from "@/lib/api";
+import { TASK_PRIORITIES } from "@/lib/tasks";
+import { FIELD_LABEL_CLASS } from "@/components/tasks/shared";
 import { SearchSelect } from "@/components/tasks/search-select";
 import { TaskEditor } from "@/components/tasks/task-editor";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Modal } from "@/components/ui/modal";
 
+// Crear una tarea tiene que ser rápido: título, prioridad, fecha y listo. Todo
+// lo demás es opcional y va plegado, porque en un celular seis campos abiertos y
+// un editor de texto son tres pantallas de scroll antes de ver el botón.
+//
+// Toda tarea nace 'pendiente'; para arrancarla enseguida está "Empezar" en la
+// tarjeta, que es un tap.
 export function TaskFormModal({
   isOpen,
   members,
   clients,
   policies,
+  currentUserId,
   isCreating,
   onClose,
   onCreate
@@ -24,18 +31,19 @@ export function TaskFormModal({
   members: OrganizationMember[];
   clients: Client[];
   policies: Policy[];
+  currentUserId: string;
   isCreating: boolean;
   onClose: () => void;
   onCreate: (payload: TaskFormPayload) => Promise<unknown>;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState<JSONContent | null>(null);
-  const [status, setStatus] = useState<TaskStatus>("pendiente");
   const [priority, setPriority] = useState<TaskPriority>("media");
   const [dueDate, setDueDate] = useState("");
   const [assignedToUserId, setAssignedToUserId] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const [policyId, setPolicyId] = useState<string | null>(null);
+  const [showDescription, setShowDescription] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Remonta el editor (y limpia el formulario) en cada apertura.
   const [formKey, setFormKey] = useState(0);
@@ -66,12 +74,12 @@ export function TaskFormModal({
   const reset = () => {
     setTitle("");
     setDescription(null);
-    setStatus("pendiente");
     setPriority("media");
     setDueDate("");
     setAssignedToUserId(null);
     setClientId(null);
     setPolicyId(null);
+    setShowDescription(false);
     setError(null);
     setFormKey((current) => current + 1);
   };
@@ -83,14 +91,14 @@ export function TaskFormModal({
   };
 
   return (
-    <Modal title="Nueva tarea" isOpen={isOpen} onClose={close}>
+    <Modal title="Nueva tarea" size="wide" isOpen={isOpen} onClose={close}>
       <form
-        className="flex flex-col gap-4"
+        className="sp-task-form"
         onSubmit={async (event) => {
           event.preventDefault();
           const value = title.trim();
           if (!value) {
-            setError("El título es obligatorio.");
+            setError("Escribí un título para la tarea.");
             return;
           }
           setError(null);
@@ -98,7 +106,7 @@ export function TaskFormModal({
             await onCreate({
               title: value,
               description,
-              status,
+              status: "pendiente",
               priority,
               dueDate: dueDate || null,
               assignedToUserId,
@@ -112,48 +120,51 @@ export function TaskFormModal({
           }
         }}
       >
-        <input
-          value={title}
-          autoFocus
-          placeholder="Título de la tarea"
-          maxLength={200}
-          className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-semibold text-slate-900 outline-none transition-colors focus:border-[color:var(--org-primary)]"
-          onChange={(event) => setTitle(event.target.value)}
-          disabled={isCreating}
-        />
+        <div className="sp-task-form-title">
+          <input
+            value={title}
+            autoFocus
+            placeholder="¿Qué hay que hacer?"
+            maxLength={200}
+            aria-label="Título de la tarea"
+            onChange={(event) => setTitle(event.target.value)}
+            disabled={isCreating}
+          />
+          {title.length > 150 ? <span>{title.length}/200</span> : null}
+        </div>
 
-        <div className="grid grid-cols-2 gap-3 max-[520px]:grid-cols-1">
-          <label className="flex min-w-0 flex-col gap-1">
-            <span className={FIELD_LABEL_CLASS}>Etapa</span>
-            <select
-              className={FIELD_SELECT_CLASS}
-              value={status}
-              onChange={(event) => setStatus(event.target.value as TaskStatus)}
-              disabled={isCreating}
-            >
-              {TASK_COLUMNS.map((column) => (
-                <option key={column.key} value={column.key}>
-                  {column.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex min-w-0 flex-col gap-1">
+        {/* Prioridad y vencimiento son los dos campos cortos: emparejados
+            cuando hay ancho, apilados cuando no. */}
+        <div className="sp-task-form-row">
+          <div className="sp-task-form-field">
             <span className={FIELD_LABEL_CLASS}>Prioridad</span>
-            <select
-              className={FIELD_SELECT_CLASS}
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as TaskPriority)}
-              disabled={isCreating}
-            >
+            <div className="sp-task-chip-group" role="group" aria-label="Prioridad">
               {TASK_PRIORITIES.map((item) => (
-                <option key={item.key} value={item.key}>
+                <button
+                  key={item.key}
+                  type="button"
+                  className="sp-task-chip"
+                  aria-pressed={priority === item.key}
+                  disabled={isCreating}
+                  onClick={() => setPriority(item.key)}
+                >
+                  <i style={{ backgroundColor: item.dot }} />
                   {item.label}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
-          <div className="flex min-w-0 flex-col gap-1">
+            </div>
+          </div>
+
+          <div className="sp-task-form-field">
+            <span className={FIELD_LABEL_CLASS}>Vencimiento</span>
+            <DatePicker value={dueDate} onChange={setDueDate} placeholder="Sin fecha" ariaLabel="Vencimiento" />
+          </div>
+        </div>
+
+        {/* Un selector de persona no gana nada con 800px de ancho: media
+            columna, igual que los campos de arriba. */}
+        <div className="sp-task-form-row">
+          <div className="sp-task-form-field">
             <span className={FIELD_LABEL_CLASS}>Asignar a</span>
             <SearchSelect
               value={assignedToUserId}
@@ -162,47 +173,75 @@ export function TaskFormModal({
               disabled={isCreating}
               onChange={setAssignedToUserId}
             />
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className={FIELD_LABEL_CLASS}>Vencimiento</span>
-            <DatePicker value={dueDate} onChange={setDueDate} placeholder="Sin fecha" ariaLabel="Vencimiento" />
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className={FIELD_LABEL_CLASS}>Asegurado</span>
-            <SearchSelect
-              value={clientId}
-              options={clientOptions}
-              placeholder="Vincular asegurado"
-              disabled={isCreating}
-              onChange={setClientId}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className={FIELD_LABEL_CLASS}>Póliza</span>
-            <SearchSelect
-              value={policyId}
-              options={policyOptions}
-              placeholder="Vincular póliza"
-              disabled={isCreating}
-              onChange={setPolicyId}
-            />
+            {assignedToUserId !== currentUserId ? (
+              <button
+                type="button"
+                className="sp-task-chip mt-1.5 self-start"
+                disabled={isCreating}
+                onClick={() => setAssignedToUserId(currentUserId)}
+              >
+                Asignármela a mí
+              </button>
+            ) : null}
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className={FIELD_LABEL_CLASS}>Descripción</span>
-          <TaskEditor
-            key={formKey}
-            value={null}
-            minHeightClass="min-h-[140px]"
-            placeholder="Detallá la tarea: objetivos, checklist, tablas..."
-            onChange={setDescription}
-          />
-        </div>
+        {/* Vínculos y descripción son opcionales y poco frecuentes al crear:
+            plegados, no compiten con lo que sí se completa siempre. */}
+        <details className="sp-task-form-more">
+          <summary>Vincular asegurado o póliza</summary>
+          <div className="sp-task-form-more-fields">
+            <div className="sp-task-form-field">
+              <span className={FIELD_LABEL_CLASS}>Asegurado</span>
+              <SearchSelect
+                value={clientId}
+                options={clientOptions}
+                placeholder="Vincular asegurado"
+                disabled={isCreating}
+                onChange={setClientId}
+              />
+            </div>
+            <div className="sp-task-form-field">
+              <span className={FIELD_LABEL_CLASS}>Póliza</span>
+              <SearchSelect
+                value={policyId}
+                options={policyOptions}
+                placeholder="Vincular póliza"
+                disabled={isCreating}
+                onChange={setPolicyId}
+              />
+            </div>
+          </div>
+        </details>
 
-        {error ? <div className="rounded-lg bg-red-50 px-3 py-2 text-[13px] font-medium text-red-700">{error}</div> : null}
+        {showDescription ? (
+          <div className="sp-task-form-field">
+            <span className={FIELD_LABEL_CLASS}>Descripción</span>
+            <TaskEditor
+              key={formKey}
+              value={null}
+              minHeightClass="min-h-[140px]"
+              placeholder="Detallá la tarea: objetivos, checklist, tablas..."
+              onChange={setDescription}
+            />
+          </div>
+        ) : (
+          // El editor no se monta si no se usa: TipTap es caro y la mayoría de
+          // las tareas se crean solo con título.
+          <button
+            type="button"
+            className="sp-task-form-adddesc"
+            disabled={isCreating}
+            onClick={() => setShowDescription(true)}
+          >
+            <Plus size={13} />
+            Agregar descripción
+          </button>
+        )}
 
-        <div className="sp-modal-actions">
+        {error ? <div className="sp-task-form-error">{error}</div> : null}
+
+        <div className="sp-modal-actions sp-task-form-actions">
           <button type="button" className="sp-secondary-action" onClick={close} disabled={isCreating}>
             Cancelar
           </button>

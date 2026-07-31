@@ -1,52 +1,64 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import type { JSONContent } from "@tiptap/react";
-import {
-  CalendarDays,
-  Check,
-  FileText,
-  Film,
-  Loader2,
-  MessageSquare,
-  Paperclip,
-  Send,
-  Trash2,
-  User,
-  X
-} from "lucide-react";
+import { Check, Info, Loader2, MessageSquare } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Client, OrganizationMember, Policy, Task, TaskPriority, TaskStatus } from "@/lib/api";
+import {
+  apiRequest,
+  type ApiCommonOptions,
+  type Client,
+  type OrganizationMember,
+  type Policy,
+  type TaskDetail,
+  type TaskListItem
+} from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { canDeleteTask, TASK_COLUMNS, TASK_PRIORITIES } from "@/lib/tasks";
-import { FIELD_LABEL_CLASS, FIELD_SELECT_CLASS, formatFileSize, type TaskApi } from "@/components/tasks/shared";
-import { SearchSelect } from "@/components/tasks/search-select";
+import { collectImages } from "@/lib/task-attachments";
+import { canDeleteTask } from "@/lib/tasks";
+import { AttachmentGrid } from "@/components/tasks/attachment-tile";
+import { AttachmentLightbox } from "@/components/tasks/attachment-lightbox";
+import { FIELD_LABEL_CLASS, StatusChip, type TaskApi } from "@/components/tasks/shared";
+import { TaskActivity } from "@/components/tasks/task-activity";
+import { TaskActivityComposer } from "@/components/tasks/task-activity-composer";
+import { TaskDetailFields } from "@/components/tasks/task-detail-fields";
+import { TaskDetailMenu } from "@/components/tasks/task-detail-menu";
+import { TaskActivitySkeleton, TaskDetailSkeleton } from "@/components/tasks/task-detail-skeleton";
+import { TaskDetailSummary } from "@/components/tasks/task-detail-summary";
 import { TaskEditor } from "@/components/tasks/task-editor";
-import { DatePicker } from "@/components/ui/date-picker";
-import { ConfirmDialog } from "@/components/ui/modal";
-
-const ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime";
+import { TaskStatusControl } from "@/components/tasks/task-status-control";
+import { ConfirmDialog, Modal } from "@/components/ui/modal";
+import { ErrorState } from "@/components/ui/states";
 
 export function TaskDetailModal({
-  task,
+  taskId,
+  fallback,
+  common,
   members,
   clients,
   policies,
   api,
   onClose
 }: {
-  task: Task | null;
+  taskId: string | null;
+  // Fila del listado que ya está en caché: permite pintar el encabezado real
+  // mientras llega el detalle, en vez de un spinner en blanco.
+  fallback: TaskListItem | null;
+  common: ApiCommonOptions;
   members: OrganizationMember[];
   clients: Client[];
   policies: Policy[];
   api: TaskApi;
   onClose: () => void;
 }) {
-  if (!task) return null;
+  if (!taskId) return null;
   // Keyed por id: cambiar de tarea resetea el estado local (título, borradores).
   return (
     <TaskDetailContent
-      key={task.id}
-      task={task}
+      key={taskId}
+      taskId={taskId}
+      fallback={fallback}
+      common={common}
       members={members}
       clients={clients}
       policies={policies}
@@ -57,229 +69,266 @@ export function TaskDetailModal({
 }
 
 function TaskDetailContent({
-  task,
+  taskId,
+  fallback,
+  common,
   members,
   clients,
   policies,
   api,
   onClose
 }: {
-  task: Task;
+  taskId: string;
+  fallback: TaskListItem | null;
+  common: ApiCommonOptions;
   members: OrganizationMember[];
   clients: Client[];
   policies: Policy[];
   api: TaskApi;
   onClose: () => void;
 }) {
-  const [title, setTitle] = useState(task.title);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [lightboxId, setLightboxId] = useState<string | null>(null);
+  // Los datos se leen; editarlos es un modo aparte que se pide desde el menú.
+  const [isEditing, setIsEditing] = useState(false);
+  // En mobile el detalle se parte en dos: los datos y la conversación.
+  const [paneOverride, setPaneOverride] = useState<"detail" | "activity" | null>(null);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  const detailQuery = useQuery({
+    queryKey: ["task", common.organizationSlug ?? "", taskId],
+    queryFn: () => apiRequest<TaskDetail>(`/tasks/${taskId}`, common),
+    // El detalle abierto se refresca solo para que la actividad se sienta viva.
+    // Antes esto reconsultaba TODAS las tareas; ahora es una sola.
+    refetchInterval: 15_000
+  });
 
-  const memberOptions = useMemo(
-    () => members.map((member) => ({ id: member.id, label: member.full_name })),
-    [members]
-  );
-  const clientOptions = useMemo(
-    () =>
-      clients.map((client) => ({
-        id: client.id,
-        label: client.full_name,
-        hint: client.phone ?? client.locality ?? undefined
-      })),
-    [clients]
-  );
-  const policyOptions = useMemo(
-    () =>
-      policies.map((policy) => ({
-        id: policy.id,
-        label: `#${policy.policy_number} · ${policy.clients?.full_name ?? "Sin cliente"}`,
-        hint: `${policy.branch}${policy.vehicle_plate ? ` · ${policy.vehicle_plate}` : ""}`
-      })),
-    [policies]
-  );
+  const task = detailQuery.data;
 
-  // El toast de error ya lo muestra la mutación; acá solo evitamos rechazos sin capturar.
+  // El título es el del servidor salvo que el usuario esté editándolo: así no
+  // hay que sincronizar estado con un efecto cuando llega el detalle.
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const title = titleDraft ?? task?.title ?? fallback?.title ?? "";
+
+  // Por defecto abre en la conversación si ya hay algo escrito: es lo que la
+  // gente viene a mirar cuando vuelve a una tarea en curso.
+  const pane = paneOverride ?? (task && task.messages.length > 0 ? "activity" : "detail");
+
+  const images = useMemo(() => {
+    if (!task) return [];
+    return collectImages([...task.messages.flatMap((message) => message.attachments), ...task.attachments]);
+  }, [task]);
+
+  const status = task?.status ?? fallback?.status ?? "pendiente";
+  const allowDelete = task ? canDeleteTask(task, api.currentUserId, api.canModerate) : false;
+  const isAwaitingApproval = status === "revision" && !api.canModerate;
+
   const update = (patch: Parameters<TaskApi["onUpdate"]>[1]) => {
-    void api.onUpdate(task.id, patch).catch(() => undefined);
+    void api.onUpdate(taskId, patch).catch(() => undefined);
   };
 
   const saveTitle = () => {
     const value = title.trim();
-    if (!value) {
-      setTitle(task.title);
+    // Un título vacío no es un título: se descarta el borrador y vuelve el real.
+    if (!value || !task) {
+      setTitleDraft(null);
       return;
     }
-    if (value !== task.title) {
-      update({ title: value });
-    }
+    if (value !== task.title) update({ title: value });
+    setTitleDraft(null);
   };
 
-  const allowDelete = canDeleteTask(task, api.currentUserId, api.canModerate);
+  const header = (
+    <div className="sp-task-detail-head">
+      <input
+        value={title}
+        maxLength={200}
+        aria-label="Título de la tarea"
+        className="sp-task-title-input"
+        readOnly={!isEditing}
+        onChange={(event) => setTitleDraft(event.target.value)}
+        onBlur={saveTitle}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
+      />
+      <StatusChip status={status} />
+      <TaskDetailMenu
+        isEditing={isEditing}
+        canDelete={allowDelete}
+        onToggleEdit={() => setIsEditing((editing) => !editing)}
+        onDelete={() => setConfirmingDelete(true)}
+      />
+    </div>
+  );
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid min-h-dvh place-items-center overflow-hidden bg-slate-950/45 p-4 max-[520px]:p-2"
-      role="presentation"
-      onMouseDown={onClose}
-    >
-      <section
-        className="flex h-[min(900px,calc(100dvh-24px))] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label={task.title}
-        onMouseDown={(event) => event.stopPropagation()}
+    <>
+      <Modal
+        isOpen
+        size="lg"
+        title={task?.title ?? fallback?.title ?? "Tarea"}
+        headerSlot={header}
+        bodyClassName="sp-task-detail-body"
+        onClose={onClose}
       >
-        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-6 py-4 max-[640px]:px-4">
-          <input
-            value={title}
-            maxLength={200}
-            aria-label="Título de la tarea"
-            className="h-10 min-w-0 flex-1 rounded-lg bg-transparent px-2 text-xl font-bold text-slate-900 outline-none transition-colors focus:bg-slate-50 max-[640px]:text-lg"
-            onChange={(event) => setTitle(event.target.value)}
-            onBlur={saveTitle}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.currentTarget.blur();
-              }
-            }}
-          />
-          {allowDelete ? (
+        {/* Los datos, arriba de todo: es lo primero que se mira al abrir. En
+            lectura por defecto; los controles aparecen con "Editar datos". */}
+        {task ? (
+          isEditing ? (
+            <div className="sp-task-detail-edit">
+              <TaskDetailFields
+                task={task}
+                members={members}
+                clients={clients}
+                policies={policies}
+                onUpdate={update}
+              />
+              <button type="button" className="sp-task-edit-done" onClick={() => setIsEditing(false)}>
+                <Check size={14} />
+                Listo
+              </button>
+            </div>
+          ) : (
+            <TaskDetailSummary task={task} />
+          )
+        ) : null}
+
+        <div className="sp-task-detail-actions">
+          <nav className="sp-task-panes" role="tablist" aria-label="Secciones de la tarea">
             <button
               type="button"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-              aria-label="Eliminar tarea"
-              title="Eliminar tarea"
-              onClick={() => setConfirmingDelete(true)}
+              role="tab"
+              aria-selected={pane === "detail"}
+              onClick={() => setPaneOverride("detail")}
             >
-              <Trash2 size={17} />
+              Detalle
             </button>
-          ) : null}
-          <button
-            type="button"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950"
-            aria-label="Cerrar"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </header>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={pane === "activity"}
+              onClick={() => setPaneOverride("activity")}
+            >
+              <MessageSquare size={13} />
+              Actividad
+              {task && task.messages.length > 0 ? <b>{task.messages.length}</b> : null}
+            </button>
+          </nav>
+        </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_400px] max-[1100px]:grid-cols-[minmax(0,1fr)_340px] max-[900px]:grid-cols-1">
-          <div className="min-h-0 overflow-y-auto px-7 py-6 max-[900px]:max-h-[55%] max-[640px]:px-4 max-[640px]:py-4">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4 max-[640px]:grid-cols-1">
-              <label className="flex min-w-0 flex-col gap-1">
-                <span className={FIELD_LABEL_CLASS}>Etapa</span>
-                <select
-                  className={FIELD_SELECT_CLASS}
-                  value={task.status}
-                  onChange={(event) => update({ status: event.target.value as TaskStatus })}
-                >
-                  {TASK_COLUMNS.map((column) => (
-                    <option key={column.key} value={column.key}>
-                      {column.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-0 flex-col gap-1">
-                <span className={FIELD_LABEL_CLASS}>Prioridad</span>
-                <select
-                  className={FIELD_SELECT_CLASS}
-                  value={task.priority}
-                  onChange={(event) => update({ priority: event.target.value as TaskPriority })}
-                >
-                  {TASK_PRIORITIES.map((item) => (
-                    <option key={item.key} value={item.key}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className={FIELD_LABEL_CLASS}>Asignado a</span>
-                <SearchSelect
-                  value={task.assigned_to_user_id}
-                  options={memberOptions}
-                  placeholder="Sin asignar"
-                  onChange={(id) => update({ assignedToUserId: id })}
-                />
-              </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className={FIELD_LABEL_CLASS}>Vencimiento</span>
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <div className="min-w-0 flex-1">
-                    <DatePicker
-                      value={task.due_date ?? ""}
-                      onChange={(value) => update({ dueDate: value || null })}
-                      placeholder="Sin fecha"
-                      ariaLabel="Vencimiento"
+        {isAwaitingApproval ? (
+          <p className="sp-task-notice">
+            <Info size={15} className="shrink-0" />
+            Esta tarea está esperando la aprobación de un productor. Podés seguir comentando en la
+            actividad.
+          </p>
+        ) : null}
+
+        {detailQuery.error ? <ErrorState text={detailQuery.error.message} /> : null}
+
+        <div className="sp-task-detail-grid" data-pane={pane ?? "detail"}>
+          <div className="sp-task-detail-main">
+            {!task ? (
+              <TaskDetailSkeleton />
+            ) : (
+              <>
+                <TaskDescription task={task} onUpdate={api.onUpdate} />
+
+                {task.attachments.length > 0 ? (
+                  <details className="sp-task-legacy-files">
+                    <summary>Archivos de la tarea ({task.attachments.length})</summary>
+                    <p>Se adjuntaron antes de que los archivos formaran parte de una actividad.</p>
+                    <AttachmentGrid
+                      attachments={task.attachments}
+                      deletingId={api.deletingAttachmentId}
+                      canRemove={(attachment) =>
+                        api.canModerate || attachment.uploaded_by_user_id === api.currentUserId
+                      }
+                      onOpenImage={setLightboxId}
+                      onRemove={(attachment) =>
+                        void api.onDeleteAttachment(taskId, attachment.id).catch(() => undefined)
+                      }
                     />
-                  </div>
-                  {task.due_date ? (
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-md p-1 text-slate-400 transition-colors hover:text-red-500"
-                      aria-label="Quitar fecha"
-                      onClick={() => update({ dueDate: null })}
-                    >
-                      <X size={14} />
-                    </button>
+                  </details>
+                ) : null}
+
+                <p className="sp-task-detail-meta">
+                  Creada por{" "}
+                  <strong>{task.created_by?.full_name ?? "Usuario"}</strong>
+                  {" · "}
+                  {formatDateTime(task.created_at)}
+                  {task.status === "finalizado" && task.archived_at ? (
+                    <>
+                      {" · Aprobada"}
+                      {task.approved_by ? ` por ${task.approved_by.full_name}` : ""} el{" "}
+                      {formatDate(task.archived_at)}
+                    </>
                   ) : null}
-                </div>
-              </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className={FIELD_LABEL_CLASS}>Asegurado</span>
-                <SearchSelect
-                  value={task.clients?.id ?? null}
-                  options={clientOptions}
-                  placeholder="Vincular asegurado"
-                  onChange={(id) => update({ clientId: id })}
-                />
-              </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className={FIELD_LABEL_CLASS}>Póliza</span>
-                <SearchSelect
-                  value={task.policies?.id ?? null}
-                  options={policyOptions}
-                  placeholder="Vincular póliza"
-                  onChange={(id) => update({ policyId: id })}
-                />
-              </div>
-            </div>
-
-            <TaskDescription task={task} api={api} />
-
-            <TaskAttachments task={task} api={api} />
-
-            <p className="mt-5 border-t border-slate-100 pt-3 text-[11px] text-slate-400">
-              Creada por <strong className="font-semibold text-slate-500">{task.created_by?.full_name ?? "Usuario"}</strong>
-              {" · "}
-              {formatDateTime(task.created_at)}
-            </p>
+                  {task.due_date ? ` · Vence el ${formatDate(task.due_date)}` : ""}
+                </p>
+              </>
+            )}
           </div>
 
-          <TaskChat task={task} api={api} />
+          <aside className="sp-task-detail-side">
+            <header className="sp-task-detail-side-head">
+              <MessageSquare size={14} />
+              <h3>Actividad</h3>
+              {task && task.messages.length > 0 ? <span>{task.messages.length}</span> : null}
+            </header>
+
+            {task ? (
+              <TaskActivity
+                messages={task.messages}
+                currentUserId={api.currentUserId}
+                canModerate={api.canModerate}
+                deletingMessageId={api.deletingMessageId}
+                deletingAttachmentId={api.deletingAttachmentId}
+                onOpenImage={setLightboxId}
+                onDeleteMessage={(messageId) => api.onDeleteMessage(taskId, messageId)}
+                onDeleteAttachment={(attachmentId) => api.onDeleteAttachment(taskId, attachmentId)}
+              />
+            ) : (
+              <TaskActivitySkeleton />
+            )}
+
+            <TaskActivityComposer
+              isSending={api.isSendingMessage}
+              progress={api.uploadProgress}
+              onSend={(message, files) => api.onSendMessage(taskId, message, files)}
+            />
+          </aside>
         </div>
-      </section>
+
+        {/* La acción de avance al pie: en el celular queda donde llega el pulgar,
+            y deja de competir con los datos por el borde superior. */}
+        <footer className="sp-task-detail-footer">
+          <TaskStatusControl
+            status={status}
+            canModerate={api.canModerate}
+            isBusy={api.movingTaskId === taskId}
+            size="md"
+            fullWidth
+            onMove={(next) => void api.onMove(taskId, next).catch(() => undefined)}
+          />
+        </footer>
+      </Modal>
+
+      <AttachmentLightbox images={images} startId={lightboxId} onClose={() => setLightboxId(null)} />
 
       <ConfirmDialog
         isOpen={confirmingDelete}
         title="Eliminar tarea"
-        message={`¿Eliminar la tarea "${task.title}"? Se borran también el chat y los adjuntos. Esta acción no se puede deshacer.`}
+        message={`¿Eliminar la tarea "${task?.title ?? ""}"? Se borran también la actividad y los archivos. Esta acción no se puede deshacer.`}
         confirmLabel="Eliminar tarea"
         isBusy={api.isDeleting}
         onClose={() => setConfirmingDelete(false)}
         onConfirm={() => {
           void api
-            .onDelete(task.id)
+            .onDelete(taskId)
             .then(() => {
               setConfirmingDelete(false);
               onClose();
@@ -287,21 +336,27 @@ function TaskDetailContent({
             .catch(() => undefined);
         }}
       />
-    </div>
+    </>
   );
 }
 
-function TaskDescription({ task, api }: { task: Task; api: TaskApi }) {
+function TaskDescription({
+  task,
+  onUpdate
+}: {
+  task: TaskDetail;
+  onUpdate: TaskApi["onUpdate"];
+}) {
   const [saveState, setSaveState] = useState<"idle" | "pending" | "saving" | "saved">("idle");
   const draftRef = useRef<JSONContent | null>(null);
   const timerRef = useRef<number | null>(null);
   const taskIdRef = useRef(task.id);
-  const onUpdateRef = useRef(api.onUpdate);
+  const onUpdateRef = useRef(onUpdate);
 
   // Mantiene las referencias frescas para el flush diferido sin re-crear el timer.
   useEffect(() => {
     taskIdRef.current = task.id;
-    onUpdateRef.current = api.onUpdate;
+    onUpdateRef.current = onUpdate;
   });
 
   const flush = async () => {
@@ -338,260 +393,27 @@ function TaskDescription({ task, api }: { task: Task; api: TaskApi }) {
   }, []);
 
   return (
-    <div className="mt-6">
+    <div className="sp-task-description">
       <div className="mb-2 flex items-center justify-between">
         <span className={FIELD_LABEL_CLASS}>Descripción</span>
         <span className="flex items-center gap-1 text-[11px] text-slate-400">
           {saveState === "saving" ? <Loader2 size={11} className="animate-spin" /> : null}
           {saveState === "saved" ? <Check size={11} className="text-emerald-500" /> : null}
-          {saveState === "pending" ? "Sin guardar..." : saveState === "saving" ? "Guardando..." : saveState === "saved" ? "Guardado" : ""}
+          {saveState === "pending"
+            ? "Sin guardar..."
+            : saveState === "saving"
+              ? "Guardando..."
+              : saveState === "saved"
+                ? "Guardado"
+                : ""}
         </span>
       </div>
       <TaskEditor
         value={task.description}
-        minHeightClass="min-h-[260px]"
+        minHeightClass="min-h-[220px]"
         placeholder="Detallá la tarea: objetivos, checklist, tablas..."
         onChange={schedule}
       />
     </div>
-  );
-}
-
-function TaskAttachments({ task, api }: { task: Task; api: TaskApi }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const attachments = task.attachments ?? [];
-  const confirming = attachments.find((attachment) => attachment.id === confirmingId);
-
-  return (
-    <div className="mt-6">
-      <div className="mb-2 flex items-center justify-between">
-        <span className={FIELD_LABEL_CLASS}>
-          Adjuntos{attachments.length > 0 ? ` (${attachments.length})` : ""}
-        </span>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-60"
-          onClick={() => inputRef.current?.click()}
-          disabled={api.isUploading}
-        >
-          {api.isUploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
-          {api.isUploading ? "Subiendo..." : "Adjuntar"}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          hidden
-          accept={ATTACHMENT_ACCEPT}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void api.onUploadAttachment(task.id, file).catch(() => undefined);
-            event.target.value = "";
-          }}
-        />
-      </div>
-      {attachments.length === 0 ? (
-        <p className="m-0 rounded-lg border border-dashed border-slate-200 px-3 py-3 text-center text-[12px] text-slate-400">
-          Imágenes y videos de hasta 50 MB
-        </p>
-      ) : (
-        <div className="grid grid-cols-3 gap-2.5 max-[1100px]:grid-cols-2">
-          {attachments.map((attachment) => {
-            const isImage = attachment.mime_type.startsWith("image/");
-            const isVideo = attachment.mime_type.startsWith("video/");
-            const canRemove = api.canModerate || attachment.uploaded_by_user_id === api.currentUserId;
-            return (
-              <div key={attachment.id} className="group relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                {attachment.url && isImage ? (
-                  <a href={attachment.url} target="_blank" rel="noreferrer">
-                    {/* Signed URL temporal: <img> nativo, next/image no aplica acá */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={attachment.url} alt={attachment.file_name} className="h-32 w-full object-cover" />
-                  </a>
-                ) : attachment.url && isVideo ? (
-                  <video src={attachment.url} controls preload="metadata" className="h-32 w-full bg-slate-900 object-contain" />
-                ) : (
-                  <div className="flex h-32 w-full items-center justify-center text-slate-300">
-                    {isVideo ? <Film size={26} /> : <FileText size={26} />}
-                  </div>
-                )}
-                <div className="flex items-center gap-1.5 px-2 py-1.5">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[11px] font-medium text-slate-600">{attachment.file_name}</span>
-                    <span className="block truncate text-[10px] text-slate-400">
-                      {formatFileSize(attachment.file_size_bytes)} · {attachment.uploaded_by?.full_name ?? "Usuario"}
-                    </span>
-                  </span>
-                  {canRemove ? (
-                    <button
-                      type="button"
-                      aria-label="Eliminar adjunto"
-                      className="shrink-0 text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50"
-                      disabled={api.deletingAttachmentId === attachment.id}
-                      onClick={() => setConfirmingId(attachment.id)}
-                    >
-                      {api.deletingAttachmentId === attachment.id ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={13} />
-                      )}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <ConfirmDialog
-        isOpen={Boolean(confirming)}
-        title="Eliminar adjunto"
-        message={`¿Eliminar el archivo "${confirming?.file_name ?? ""}"? Esta acción no se puede deshacer.`}
-        confirmLabel="Eliminar adjunto"
-        isBusy={Boolean(confirmingId && api.deletingAttachmentId === confirmingId)}
-        onClose={() => setConfirmingId(null)}
-        onConfirm={() => {
-          if (!confirmingId) return;
-          void api
-            .onDeleteAttachment(task.id, confirmingId)
-            .catch(() => undefined)
-            .finally(() => setConfirmingId(null));
-        }}
-      />
-    </div>
-  );
-}
-
-function TaskChat({ task, api }: { task: Task; api: TaskApi }) {
-  const [draft, setDraft] = useState("");
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const messages = task.messages ?? [];
-
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages.length]);
-
-  const send = async () => {
-    const value = draft.trim();
-    if (!value || api.isSendingMessage) return;
-    try {
-      await api.onSendMessage(task.id, value);
-      setDraft("");
-    } catch {
-      // El toast de error ya se mostró; se conserva el borrador para reintentar.
-    }
-  };
-
-  return (
-    <aside className="flex min-h-0 flex-col border-l border-slate-200 bg-slate-50/60 max-[900px]:border-l-0 max-[900px]:border-t">
-      <header className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-4 py-3">
-        <MessageSquare size={15} className="text-slate-400" />
-        <h3 className="m-0 text-[13px] font-semibold text-slate-700">Actividad</h3>
-        {messages.length > 0 ? (
-          <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-[11px] font-bold text-slate-500">{messages.length}</span>
-        ) : null}
-      </header>
-
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-4">
-        {messages.length === 0 ? (
-          <p className="m-0 mt-4 text-center text-[12px] text-slate-400">
-            Documentá acá lo que va pasando con esta tarea.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {messages.map((message) => {
-              const own = message.user_id === api.currentUserId;
-              const canRemove = own || api.canModerate;
-              return (
-                <div key={message.id} className={`group flex max-w-[92%] flex-col gap-0.5 ${own ? "self-end" : "self-start"}`}>
-                  <span className={`flex items-center gap-1 text-[10px] text-slate-400 ${own ? "justify-end" : ""}`}>
-                    <strong className="font-semibold text-slate-500">{own ? "Vos" : message.user?.full_name ?? "Usuario"}</strong>
-                    {formatDateTime(message.created_at)}
-                  </span>
-                  <div
-                    className={`relative whitespace-pre-line rounded-xl px-3 py-2 text-[13px] leading-snug ${
-                      own
-                        ? "rounded-br-sm bg-[color:var(--org-primary)] text-white"
-                        : "rounded-bl-sm border border-slate-200 bg-white text-slate-700"
-                    }`}
-                  >
-                    {message.message}
-                    {canRemove ? (
-                      <button
-                        type="button"
-                        aria-label="Eliminar mensaje"
-                        className={`absolute -top-1.5 ${own ? "-left-1.5" : "-right-1.5"} hidden h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm transition-colors hover:text-red-600 group-hover:flex`}
-                        disabled={api.deletingMessageId === message.id}
-                        onClick={() => setConfirmingId(message.id)}
-                      >
-                        {api.deletingMessageId === message.id ? (
-                          <Loader2 size={10} className="animate-spin" />
-                        ) : (
-                          <Trash2 size={10} />
-                        )}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="shrink-0 border-t border-slate-200 p-3">
-        <div className="flex items-end gap-2">
-          <textarea
-            value={draft}
-            rows={2}
-            placeholder="Escribí una actualización..."
-            className="min-h-9 min-w-0 flex-1 resize-none rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[13px] text-slate-700 outline-none transition-colors focus:border-[color:var(--org-primary)]"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-            disabled={api.isSendingMessage}
-          />
-          <button
-            type="button"
-            aria-label="Enviar mensaje"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[color:var(--org-primary)] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            onClick={() => void send()}
-            disabled={api.isSendingMessage || !draft.trim()}
-          >
-            {api.isSendingMessage ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-          </button>
-        </div>
-        <p className="m-0 mt-1 flex items-center gap-1 text-[10px] text-slate-400">
-          <User size={10} /> Enter envía · Shift+Enter salto de línea
-          {task.due_date ? (
-            <span className="ml-auto flex items-center gap-1">
-              <CalendarDays size={10} /> Vence el {formatDate(task.due_date)}
-            </span>
-          ) : null}
-        </p>
-      </div>
-
-      <ConfirmDialog
-        isOpen={Boolean(confirmingId)}
-        title="Eliminar mensaje"
-        message="¿Eliminar este mensaje del chat? Esta acción no se puede deshacer."
-        confirmLabel="Eliminar mensaje"
-        isBusy={Boolean(confirmingId && api.deletingMessageId === confirmingId)}
-        onClose={() => setConfirmingId(null)}
-        onConfirm={() => {
-          if (!confirmingId) return;
-          void api
-            .onDeleteMessage(task.id, confirmingId)
-            .catch(() => undefined)
-            .finally(() => setConfirmingId(null));
-        }}
-      />
-    </aside>
   );
 }

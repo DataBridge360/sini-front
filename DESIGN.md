@@ -20,6 +20,8 @@ colors:
   state-amber-soft: "#fffaeb"
   state-red: "#b42318"
   state-red-soft: "#fef3f2"
+  state-violet: "#6941c6"
+  state-violet-soft: "#f5f3ff"
 typography:
   body:
     fontFamily: "'Plus Jakarta Sans', Inter, 'Segoe UI', system-ui, sans-serif"
@@ -106,6 +108,7 @@ Paleta neutra fría con un único acento themable y tres colores de estado.
 - **Ámbar** (#b54708 sobre #fffaeb): por vencer, advertencias.
 - **Rojo** (#b42318 sobre #fef3f2): vencido, errores, destructivo.
 - **Azul informativo** (utilidades blue-50/blue-700): acciones informativas suaves en cards de avisos.
+- **Violeta** (#6941c6 sobre #f5f3ff): etapa "En revisión" de una tarea (esperando aprobación del productor). Es estado de flujo de trabajo, no de cobranza: por eso no reusa el semáforo verde/ámbar/rojo, que en esta app significa vencimiento.
 
 ### Named Rules
 **The Semantic-Color Rule.** Un elemento solo lleva color si comunica estado o es la acción primaria. Todo lo demás es neutro.
