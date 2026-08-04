@@ -4,6 +4,7 @@ import type { JSONContent } from "@tiptap/react";
 import { Loader2, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Client, OrganizationMember, Policy, TaskFormPayload, TaskPriority } from "@/lib/api";
+import { useDeferRealtime } from "@/lib/realtime";
 import { TASK_PRIORITIES } from "@/lib/tasks";
 import { FIELD_LABEL_CLASS } from "@/components/tasks/shared";
 import { SearchSelect } from "@/components/tasks/search-select";
@@ -47,6 +48,11 @@ export function TaskFormModal({
   const [error, setError] = useState<string | null>(null);
   // Remonta el editor (y limpia el formulario) en cada apertura.
   const [formKey, setFormKey] = useState(0);
+
+  // Mientras se está cargando una tarea nueva, los refrescos de tiempo real
+  // esperan: nadie tiene por qué ver moverse el fondo mientras completa el
+  // formulario. Al cerrarlo se aplican todos juntos.
+  useDeferRealtime(isOpen);
 
   const memberOptions = useMemo(
     () => members.map((member) => ({ id: member.id, label: member.full_name })),

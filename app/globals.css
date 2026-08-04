@@ -8736,3 +8736,180 @@ a.sp-client-field-value:hover {
     flex: 1 1 100%;
   }
 }
+
+/* ==========================================================================
+   Oferta de instalación de la PWA (components/pwa/install-prompt.tsx).
+
+   Reglas bare (fuera de @layer) siguiendo la convención del archivo: lo que va
+   dentro de @layer components pierde contra las reglas sin capa.
+
+   En desktop es una tarjeta abajo a la izquierda — arriba a la derecha ya lo
+   ocupan los toasts. En mobile ocupa el ancho, apoyada sobre el borde inferior.
+   ========================================================================== */
+
+.sp-install-card {
+  position: fixed;
+  z-index: 90;
+  left: 20px;
+  bottom: 20px;
+  width: min(360px, calc(100vw - 32px));
+  display: grid;
+  gap: 16px;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--sp-border);
+  border-radius: 16px;
+  background: var(--sp-surface);
+  box-shadow: 0 12px 32px rgba(16, 32, 31, 0.14);
+  animation: sp-install-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sp-install-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-install-card {
+    animation: none;
+  }
+}
+
+.sp-install-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sp-text-faint);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.sp-install-close:hover {
+  background: var(--sp-surface-hover);
+  color: var(--sp-text);
+}
+
+.sp-install-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding-right: 24px;
+}
+
+.sp-install-icon {
+  flex: 0 0 auto;
+  border-radius: 10px;
+}
+
+.sp-install-head h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sp-text);
+}
+
+.sp-install-head p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--sp-text-muted);
+}
+
+.sp-install-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.sp-install-actions button {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.sp-install-later {
+  border: 1px solid var(--sp-border-strong);
+  background: transparent;
+  color: var(--sp-text-muted);
+}
+
+.sp-install-later:hover {
+  background: var(--sp-surface-hover);
+  color: var(--sp-text);
+}
+
+.sp-install-confirm {
+  border: 1px solid transparent;
+  background: var(--org-primary);
+  color: var(--org-on-primary);
+}
+
+.sp-install-confirm:hover {
+  filter: brightness(0.94);
+}
+
+/* Pasos de iOS: ahí no hay diálogo nativo, solo se puede explicar el camino. */
+.sp-install-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+  border-radius: 12px;
+  background: var(--sp-surface-low);
+}
+
+.sp-install-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sp-text-muted);
+}
+
+.sp-install-steps li svg {
+  flex: 0 0 auto;
+  color: var(--org-primary);
+}
+
+.sp-install-steps strong {
+  color: var(--sp-text);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .sp-install-card {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    /* Por encima de la barra de navegación, que abajo de 900px pasa a ser fija
+       al borde inferior (ver `.sp-shell.app-redesign .sp-sidebar` más arriba). */
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 640px) {
+  .sp-install-actions button {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+}

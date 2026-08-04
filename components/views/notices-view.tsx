@@ -29,6 +29,7 @@ import {
   type NoticeFilters,
   type NoticeView
 } from "@/lib/notices";
+import { useDeferRealtime } from "@/lib/realtime";
 import { BRANCHES, type NoticeNoteApi } from "@/lib/shell-types";
 import { DueChip, NOTICE_COLUMNS, NoticeNotes } from "@/components/notices/shared";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -71,6 +72,13 @@ export function NoticesView({
   // Confirmaciones: marcar avisado (1 o N del mismo asegurado) y revertir estado.
   const [notifyTarget, setNotifyTarget] = useState<Notice[] | null>(null);
   const [revertTarget, setRevertTarget] = useState<Notice | null>(null);
+
+  // Con un modal abierto los refrescos de tiempo real esperan: las confirmaciones
+  // de avisado, pago y reversión trabajan sobre una copia del aviso, y cambiarla
+  // por debajo mientras alguien decide sería confuso. Al cerrar se aplican todos.
+  useDeferRealtime(
+    Boolean(payNoticeTarget || detailNotices || notifyTarget || revertTarget)
+  );
 
   const requestNotify = (notice: Notice) => setNotifyTarget([notice]);
   const openDetail = (notice: Notice) => setDetailNotices([notice]);

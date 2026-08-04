@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sin conexión · SiniPro</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #f4f7f6;
+        color: #13201f;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      main {
+        width: min(420px, 100%);
+        background: #ffffff;
+        border: 1px solid rgba(20, 35, 39, 0.1);
+        border-radius: 16px;
+        padding: 32px 28px;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(16, 32, 31, 0.06);
+      }
+      svg {
+        display: block;
+        margin: 0 auto 20px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      p {
+        margin: 0 0 24px;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #536361;
+      }
+      button {
+        appearance: none;
+        border: 0;
+        cursor: pointer;
+        width: 100%;
+        min-height: 44px;
+        border-radius: 10px;
+        background: #176e64;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      button:hover {
+        background: #135a52;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg width="56" height="56" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0f4fbf" />
+        <path
+          d="M32 10 49 17v12c0 12-7 19-17 25-10-6-17-13-17-25V17l17-7Z"
+          fill="#e8f1ff"
+        />
+        <path
+          d="M32 17 43 21.5V30c0 8-4.5 12.5-11 16.5C25.5 42.5 21 38 21 30v-8.5L32 17Z"
+          fill="#4d8eff"
+        />
+      </svg>
+      <h1>Estás sin conexión</h1>
+      <p>
+        SiniPro necesita internet para mostrar tus pólizas, avisos y tareas.
+        Revisá la conexión y volvé a intentar.
+      </p>
+      <button type="button" onclick="window.location.reload()">Reintentar</button>
+    </main>
+  </body>
+</html>
