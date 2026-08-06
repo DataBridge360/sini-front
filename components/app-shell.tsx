@@ -56,9 +56,11 @@ import {
   type UploadLogoResponse
 } from "@/lib/shell-types";
 import { FORCED_ORG_SLUG, resolveLoginSlug } from "@/lib/slug";
+import { useRealtimeSync } from "@/lib/use-realtime-sync";
 import { Avatar } from "@/components/ui/avatar";
 import { LoadingState } from "@/components/ui/states";
 import { ToastViewport, type ToastMessage } from "@/components/ui/toast";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 
 // Cada vista se carga on-demand (code-split): el usuario solo descarga el chunk
 // de la pestaña que visita, y el de login no viaja a usuarios autenticados.
@@ -206,6 +208,17 @@ export function AppShell() {
     () => auth?.organizations.find((organization) => organization.slug === slug),
     [auth, slug]
   );
+
+  // Escucha los cambios que hacen los demás en la organización y marca para
+  // recargar solo lo afectado. Va acá arriba, antes de cualquier return, para no
+  // alterar el orden de los hooks cuando todavía no hay sesión.
+  useRealtimeSync({
+    organizationId: selectedOrganization?.id ?? null,
+    slug,
+    accessToken: auth?.accessToken ?? null,
+    expiresAt: auth?.expiresAt ?? null,
+    currentUserId: auth?.user.id ?? null
+  });
 
   const common = {
     token: auth?.accessToken,
@@ -815,6 +828,9 @@ export function AppShell() {
         </div>
       </section>
       <ToastViewport toasts={toasts} onDismiss={dismissToast} />
+      {/* Va dentro de la rama autenticada a propósito: la instalación se ofrece
+          después de iniciar sesión, no en el login. */}
+      <InstallPrompt />
     </main>
   );
 }

@@ -398,7 +398,10 @@ const AUTH_STORAGE_KEY = "sinipro2.auth";
 export const AUTH_CHANGED_EVENT = "sinipro2.auth.changed";
 let authRefreshPromise: Promise<AuthState | null> | null = null;
 
-async function refreshStoredAuth() {
+// Exportada además de para el reintento del 401: el canal de tiempo real
+// necesita renovar el token antes de que venza, porque un WebSocket abierto
+// puede pasar horas sin hacer una sola request que dispare el 401.
+export async function refreshStoredAuth() {
   if (authRefreshPromise) {
     return authRefreshPromise;
   }

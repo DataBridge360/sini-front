@@ -14,6 +14,7 @@ import {
   type TaskListItem
 } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { useDeferRealtime, useRealtimeStatus } from "@/lib/realtime";
 import { collectImages } from "@/lib/task-attachments";
 import { canDeleteTask } from "@/lib/tasks";
 import { AttachmentGrid } from "@/components/tasks/attachment-tile";
@@ -94,12 +95,16 @@ function TaskDetailContent({
   // En mobile el detalle se parte en dos: los datos y la conversación.
   const [paneOverride, setPaneOverride] = useState<"detail" | "activity" | null>(null);
 
+  // Con el canal de tiempo real conectado la actividad llega sola y no hace falta
+  // preguntar cada 15 segundos. El refresco periódico queda como respaldo para
+  // cuando no hay canal (sin configurar, red caída, suscripción rechazada): así
+  // el detalle nunca funciona peor que antes.
+  const isLive = useRealtimeStatus() === "connected";
+
   const detailQuery = useQuery({
     queryKey: ["task", common.organizationSlug ?? "", taskId],
     queryFn: () => apiRequest<TaskDetail>(`/tasks/${taskId}`, common),
-    // El detalle abierto se refresca solo para que la actividad se sienta viva.
-    // Antes esto reconsultaba TODAS las tareas; ahora es una sola.
-    refetchInterval: 15_000
+    refetchInterval: isLive ? false : 15_000
   });
 
   const task = detailQuery.data;
@@ -348,6 +353,12 @@ function TaskDescription({
   onUpdate: TaskApi["onUpdate"];
 }) {
   const [saveState, setSaveState] = useState<"idle" | "pending" | "saving" | "saved">("idle");
+
+  // Mientras hay texto sin guardar los refrescos esperan, para no meter ruido
+  // encima de alguien que está escribiendo. El freno se suelta solo, poco después
+  // de que deja de tipear y el autoguardado termina.
+  useDeferRealtime(saveState === "pending" || saveState === "saving");
+
   const draftRef = useRef<JSONContent | null>(null);
   const timerRef = useRef<number | null>(null);
   const taskIdRef = useRef(task.id);

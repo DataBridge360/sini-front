@@ -6257,6 +6257,13 @@ a.sp-client-field-value:hover {
   display: flex;
   flex-direction: column;
   min-height: 0;
+
+  /* Altura única de los controles del módulo. El módulo la necesita como token
+     propio porque cada control llega con la suya: el search hereda min-h-12
+     (48px) de los campos de formulario del rediseño y `.sp-primary-action`
+     min-h-9 (36px). Sin unificar, la fila de comando alineaba tres alturas
+     distintas y ningún borde coincidía con el de al lado. */
+  --sp-task-control-h: 40px;
 }
 
 /* ---------- Barra de comando: búsqueda, filtros y acciones ---------- */
@@ -6280,6 +6287,17 @@ a.sp-client-field-value:hover {
   position: relative;
 }
 
+/* El control manda la altura y el input solo lo rellena — mismo criterio que
+   `.sp-combobox-control`, que ya resolvió este choque más arriba. */
+.sp-shell.app-redesign .sp-task-page .sp-search.sp-task-search,
+.sp-shell.app-redesign .sp-task-page .sp-search.sp-task-search input,
+.sp-task-page .sp-task-mine-button,
+.sp-task-page .sp-task-filter-button,
+.sp-task-page .sp-archived-back,
+.sp-shell.app-redesign .sp-task-command .sp-primary-action {
+  min-height: var(--sp-task-control-h);
+}
+
 .sp-task-search-clear {
   display: grid;
   place-items: center;
@@ -6293,6 +6311,41 @@ a.sp-client-field-value:hover {
 .sp-task-search-clear:hover {
   background: var(--sp-surface-lowest);
   color: var(--sp-text);
+}
+
+/* Atajo "Mis tareas": siempre con acento de org para encontrarlo al vuelo.
+   El resto de filtros van en el panel; este vive afuera porque es el más usado. */
+.sp-task-mine-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--org-primary) 35%, var(--sp-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--org-primary) 8%, var(--sp-surface));
+  color: var(--org-primary);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+/* Los dos toggles de la barra se pintan en hover solo donde hay puntero: en
+   touch el hover queda pegado después del tap y un botón que no está activo
+   se lee como si lo estuviera. */
+@media (hover: hover) {
+  .sp-task-mine-button:hover {
+    border-color: color-mix(in srgb, var(--org-primary) 55%, var(--sp-border));
+    background: color-mix(in srgb, var(--org-primary) 14%, var(--sp-surface));
+  }
+}
+
+.sp-task-mine-button[aria-pressed="true"] {
+  border-color: var(--org-primary);
+  background: var(--org-primary);
+  color: var(--org-on-primary, #fff);
 }
 
 /* Botón de filtros: abre el panel. El badge dice cuántos hay puestos sin
@@ -6313,9 +6366,25 @@ a.sp-client-field-value:hover {
   transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
 }
 
-.sp-task-filter-button:hover {
-  border-color: var(--sp-border-strong);
-  color: var(--sp-text);
+@media (hover: hover) {
+  .sp-task-filter-button:hover {
+    border-color: var(--sp-border-strong);
+    color: var(--sp-text);
+  }
+}
+
+/* El anillo de foco de la app. Estos controles no estaban en la lista general
+   de `:focus-visible` y caían al outline por defecto del navegador, que en el
+   botón activo —relleno con el acento— casi no se ve. */
+.sp-task-mine-button:focus-visible,
+.sp-task-filter-button:focus-visible,
+.sp-task-archived-link:focus-visible,
+.sp-archived-back:focus-visible,
+.sp-task-search-clear:focus-visible,
+.sp-task-edit-filters:focus-visible,
+.sp-task-active-chip button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--org-primary) 34%, transparent);
+  outline-offset: 2px;
 }
 
 /* Activo = superficie + borde de acento, nunca un relleno saturado. */
@@ -6502,6 +6571,7 @@ a.sp-client-field-value:hover {
 
 .sp-task-resultbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   font-size: 12px;
@@ -7914,6 +7984,11 @@ a.sp-client-field-value:hover {
 }
 
 @media (max-width: 760px) {
+  /* 44px es el mínimo táctil cómodo; el resto del shell se queda en 36–40. */
+  .sp-task-page {
+    --sp-task-control-h: 44px;
+  }
+
   .sp-task-command-area {
     padding: 10px 14px 0;
     gap: 8px;
@@ -7923,25 +7998,29 @@ a.sp-client-field-value:hover {
      la primera tarjeta empezaba recien a 230px del borde. */
   .sp-shell.app-redesign .sp-search.sp-task-search {
     flex: 1 1 auto;
-    min-height: 44px;
   }
 
+  .sp-task-mine-button,
   .sp-task-filter-button,
   .sp-shell.app-redesign .sp-task-command .sp-primary-action {
     flex-shrink: 0;
-    min-height: 44px;
   }
 
-  /* Los rotulos ceden ante el icono: el significado ya lo da el icono y el
-     badge, y asi las tres acciones entran en una linea. */
+  /* "Mis tareas" mantiene el rótulo: es el atajo que hay que reconocer al toque.
+     Filtros y crear ceden al icono para que la fila entre. */
   .sp-task-filter-button span,
   .sp-shell.app-redesign .sp-task-command .sp-primary-action span {
     display: none;
   }
 
+  .sp-task-mine-button {
+    padding: 0 12px;
+    font-size: 12.5px;
+  }
+
   .sp-task-filter-button,
   .sp-shell.app-redesign .sp-task-command .sp-primary-action {
-    width: 44px;
+    width: var(--sp-task-control-h);
     padding: 0;
     justify-content: center;
   }
@@ -8012,7 +8091,43 @@ a.sp-client-field-value:hover {
   }
 }
 
+/* Teléfonos angostos: la fila de comando se parte en dos.
+   El corte no es un tamaño de dispositivo, es donde deja de haber campo donde
+   escribir: con los cuatro controles en línea, la búsqueda se queda con ~56px
+   de texto útil —y con el aspa de borrar puesta, ~34px—, así que no se lee lo
+   que uno acaba de tipear. Con la búsqueda en su propia línea sobra lugar y los
+   dos controles que hay que reconocer por su nombre, "Mis tareas" y "Filtros",
+   recuperan el rótulo. */
+@media (max-width: 400px) {
+  .sp-task-command {
+    flex-wrap: wrap;
+  }
 
+  .sp-shell.app-redesign .sp-task-command .sp-search.sp-task-search {
+    flex: 1 1 100%;
+  }
+
+  .sp-task-filter-button {
+    width: auto;
+    padding: 0 12px;
+  }
+
+  .sp-task-filter-button span {
+    display: inline;
+  }
+
+  /* Con el rótulo de vuelta, el contador se sienta al lado de la palabra: la
+     esquina flotante existía para el botón que era solo un icono. */
+  .sp-task-filter-button b {
+    position: static;
+  }
+
+  /* Crear se queda con el icono y se va contra el borde derecho: el pulgar lo
+     encuentra ahí y no le roba ancho a los dos rótulos. */
+  .sp-shell.app-redesign .sp-task-command .sp-primary-action {
+    margin-left: auto;
+  }
+}
 
 /* ============================================================
    Tareas v2 — esqueletos de carga y calendario en pantallas chicas
@@ -8692,10 +8807,25 @@ a.sp-client-field-value:hover {
   white-space: nowrap;
 }
 
-/* La búsqueda se lleva el ancho sobrante; cuando no le alcanza, baja a su
-   propia línea en vez de estrujar al título. */
-.sp-shell.app-redesign .sp-archived-head .sp-search.sp-task-search {
-  flex: 1 1 220px;
+/* Buscar y "Mis tareas" viajan juntos: son los dos filtros del listado y bajan
+   de línea como una unidad, en vez de dejar el atajo colgado solo arriba.
+   Se llevan el ancho sobrante y, cuando no les alcanza, bajan enteros en vez de
+   estrujar al título. */
+.sp-archived-tools {
+  display: flex;
+  flex: 1 1 280px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sp-shell.app-redesign .sp-archived-tools .sp-search.sp-task-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sp-archived-tools .sp-task-mine-button {
+  flex-shrink: 0;
 }
 
 /* Recuento de finalizadas en el acceso a Archivadas del tablero. Mismo peso
@@ -8732,7 +8862,185 @@ a.sp-client-field-value:hover {
     flex: 1 1 auto;
   }
 
-  .sp-shell.app-redesign .sp-archived-head .sp-search.sp-task-search {
+  /* Segunda fila completa para los dos filtros. */
+  .sp-archived-tools {
     flex: 1 1 100%;
+  }
+}
+
+/* ==========================================================================
+   Oferta de instalación de la PWA (components/pwa/install-prompt.tsx).
+
+   Reglas bare (fuera de @layer) siguiendo la convención del archivo: lo que va
+   dentro de @layer components pierde contra las reglas sin capa.
+
+   En desktop es una tarjeta abajo a la izquierda — arriba a la derecha ya lo
+   ocupan los toasts. En mobile ocupa el ancho, apoyada sobre el borde inferior.
+   ========================================================================== */
+
+.sp-install-card {
+  position: fixed;
+  z-index: 90;
+  left: 20px;
+  bottom: 20px;
+  width: min(360px, calc(100vw - 32px));
+  display: grid;
+  gap: 16px;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--sp-border);
+  border-radius: 16px;
+  background: var(--sp-surface);
+  box-shadow: 0 12px 32px rgba(16, 32, 31, 0.14);
+  animation: sp-install-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sp-install-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-install-card {
+    animation: none;
+  }
+}
+
+.sp-install-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sp-text-faint);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.sp-install-close:hover {
+  background: var(--sp-surface-hover);
+  color: var(--sp-text);
+}
+
+.sp-install-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding-right: 24px;
+}
+
+.sp-install-icon {
+  flex: 0 0 auto;
+  border-radius: 10px;
+}
+
+.sp-install-head h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sp-text);
+}
+
+.sp-install-head p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--sp-text-muted);
+}
+
+.sp-install-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.sp-install-actions button {
+  min-height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.sp-install-later {
+  border: 1px solid var(--sp-border-strong);
+  background: transparent;
+  color: var(--sp-text-muted);
+}
+
+.sp-install-later:hover {
+  background: var(--sp-surface-hover);
+  color: var(--sp-text);
+}
+
+.sp-install-confirm {
+  border: 1px solid transparent;
+  background: var(--org-primary);
+  color: var(--org-on-primary);
+}
+
+.sp-install-confirm:hover {
+  filter: brightness(0.94);
+}
+
+/* Pasos de iOS: ahí no hay diálogo nativo, solo se puede explicar el camino. */
+.sp-install-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+  border-radius: 12px;
+  background: var(--sp-surface-low);
+}
+
+.sp-install-steps li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sp-text-muted);
+}
+
+.sp-install-steps li svg {
+  flex: 0 0 auto;
+  color: var(--org-primary);
+}
+
+.sp-install-steps strong {
+  color: var(--sp-text);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .sp-install-card {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    /* Por encima de la barra de navegación, que abajo de 900px pasa a ser fija
+       al borde inferior (ver `.sp-shell.app-redesign .sp-sidebar` más arriba). */
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 640px) {
+  .sp-install-actions button {
+    flex: 1 1 0;
+    min-height: 44px;
   }
 }

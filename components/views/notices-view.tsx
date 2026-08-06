@@ -29,8 +29,10 @@ import {
   type NoticeFilters,
   type NoticeView
 } from "@/lib/notices";
+import { useDeferRealtime } from "@/lib/realtime";
 import { BRANCHES, type NoticeNoteApi } from "@/lib/shell-types";
 import { DueChip, NOTICE_COLUMNS, NoticeNotes } from "@/components/notices/shared";
+import { WhatsAppPreview } from "@/components/notices/whatsapp-preview";
 import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog, Modal } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -71,6 +73,13 @@ export function NoticesView({
   // Confirmaciones: marcar avisado (1 o N del mismo asegurado) y revertir estado.
   const [notifyTarget, setNotifyTarget] = useState<Notice[] | null>(null);
   const [revertTarget, setRevertTarget] = useState<Notice | null>(null);
+
+  // Con un modal abierto los refrescos de tiempo real esperan: las confirmaciones
+  // de avisado, pago y reversión trabajan sobre una copia del aviso, y cambiarla
+  // por debajo mientras alguien decide sería confuso. Al cerrar se aplican todos.
+  useDeferRealtime(
+    Boolean(payNoticeTarget || detailNotices || notifyTarget || revertTarget)
+  );
 
   const requestNotify = (notice: Notice) => setNotifyTarget([notice]);
   const openDetail = (notice: Notice) => setDetailNotices([notice]);
@@ -325,9 +334,7 @@ function NotifyDialog({
           Vas a marcar como avisado{notices && notices.length > 1 ? `s los ${notices.length} vencimientos` : " el vencimiento"} de{" "}
           <strong className="font-semibold text-slate-800">{clientName}</strong>. Podés copiar el mensaje sugerido y enviárselo:
         </p>
-        <div className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-[12.5px] leading-relaxed text-slate-700">
-          {message}
-        </div>
+        <WhatsAppPreview message={message} />
         <button
           type="button"
           className={`inline-flex w-fit items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
@@ -368,6 +375,7 @@ function NoticeDetailModal({
   onViewPolicy: (notice: Notice) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const first = notices?.[0];
   if (!notices || !first) {
     return <Modal title="Detalle del aviso" isOpen={false} onClose={onClose}><div /></Modal>;
@@ -376,10 +384,14 @@ function NoticeDetailModal({
   const client = first.policies?.clients;
   const minDays = Math.min(...notices.map((notice) => getDaysUntilDue(notice.due_date)));
   const showCopy = notices.some((notice) => notice.status !== "pagado");
+  const message = buildNoticeReminderMessage(notices);
 
+  // Al copiar también se muestra la vista previa, para ver qué le va a llegar
+  // al asegurado antes de pegarlo en WhatsApp.
   const copyMessage = () => {
+    setShowPreview(true);
     void navigator.clipboard
-      .writeText(buildNoticeReminderMessage(notices))
+      .writeText(message)
       .then(() => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 2500);
@@ -387,11 +399,17 @@ function NoticeDetailModal({
       .catch(() => undefined);
   };
 
+  // La vista previa arranca oculta cada vez que se abre el detalle.
+  const handleClose = () => {
+    setShowPreview(false);
+    onClose();
+  };
+
   return (
     <Modal
       title={notices.length > 1 ? `Detalle de ${notices.length} avisos` : "Detalle del aviso"}
       isOpen
-      onClose={onClose}
+      onClose={handleClose}
     >
       <div className="flex flex-col gap-4">
         {/* Cabecera: asegurado + estado + urgencia */}
@@ -448,6 +466,25 @@ function NoticeDetailModal({
           </div>
         ) : null}
 
+        {showCopy && showPreview ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Vista previa del mensaje
+              </span>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-600"
+                onClick={() => setShowPreview(false)}
+              >
+                <X size={11} />
+                Ocultar
+              </button>
+            </div>
+            <WhatsAppPreview message={message} />
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3">
           {showCopy ? (
             <button
@@ -463,7 +500,7 @@ function NoticeDetailModal({
               {copied ? "Mensaje copiado" : "Copiar mensaje"}
             </button>
           ) : null}
-          <button type="button" className="sp-secondary-action" onClick={onClose}>Cerrar</button>
+          <button type="button" className="sp-secondary-action" onClick={handleClose}>Cerrar</button>
         </div>
       </div>
     </Modal>

@@ -157,6 +157,14 @@ export const EMPTY_TASK_FILTERS: TaskFilters = {
   due: "all"
 };
 
+// El atajo "Mis tareas" y elegirse a uno mismo en la lista de asignados son lo
+// mismo filtro. Se pregunta por acá en todos lados para que el botón de la barra
+// y el panel no puedan quedar contradiciéndose —uno apagado, el otro con tu
+// nombre tildado— mostrando exactamente las mismas tareas.
+export function isMineTaskAssignee(assignee: string, currentUserId: string) {
+  return assignee === "me" || assignee === currentUserId;
+}
+
 export function hasActiveTaskFilters(filters: TaskFilters) {
   return (
     filters.search !== "" ||
@@ -166,10 +174,16 @@ export function hasActiveTaskFilters(filters: TaskFilters) {
   );
 }
 
-export function countActiveTaskFilters(filters: TaskFilters) {
+// Cuántos filtros hay puestos que no se ven en la barra. "Mis tareas" no cuenta:
+// tiene su propio botón encendido al lado, y sumarlo al globo de Filtros dice
+// que hay algo escondido adentro del panel cuando no hay nada.
+export function countActiveTaskFilters(filters: TaskFilters, currentUserId: string) {
+  const hasOtherAssignee =
+    filters.assignee !== "all" && !isMineTaskAssignee(filters.assignee, currentUserId);
+
   return (
     (filters.priority !== "all" ? 1 : 0) +
-    (filters.assignee !== "all" ? 1 : 0) +
+    (hasOtherAssignee ? 1 : 0) +
     (filters.due !== "all" ? 1 : 0)
   );
 }
@@ -211,6 +225,21 @@ export function matchesTaskFilters(
     matchesAssignee &&
     matchesDueFilter(task.due_date, filters.due)
   );
+}
+
+// Más cerca de vencer primero (vencidas arriba). Sin fecha de vencimiento, al final.
+// due_date llega como "YYYY-MM-DD": localeCompare ordena cronológicamente.
+export function compareTasksByDueDate(a: TaskListItem, b: TaskListItem) {
+  if (a.due_date === b.due_date) {
+    return a.created_at.localeCompare(b.created_at);
+  }
+  if (!a.due_date) return 1;
+  if (!b.due_date) return -1;
+  return a.due_date.localeCompare(b.due_date);
+}
+
+export function sortTasksByDueDate(tasks: TaskListItem[]) {
+  return [...tasks].sort(compareTasksByDueDate);
 }
 
 // Solo quien creó la tarea puede eliminarla; el productor puede eliminar cualquiera.

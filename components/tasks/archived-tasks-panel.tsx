@@ -17,6 +17,15 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 
 const PAGE_SIZE = 20;
 
+// El vacío nombra el filtro que lo dejó vacío: "no hay nada" y "no hay nada tuyo
+// con ese texto" mandan a hacer cosas distintas.
+function emptyStateText(search: string, isMine: boolean) {
+  if (search && isMine) return "Ninguna tarea tuya coincide con esa búsqueda.";
+  if (search) return "Ninguna tarea archivada coincide con esa búsqueda.";
+  if (isMine) return "Todavía no se archivó ninguna tarea asignada a vos.";
+  return "Las tareas que un productor aprueba se guardan acá.";
+}
+
 // Tareas aprobadas y archivadas. Viven en su propia pantalla para que el tablero
 // muestre solo trabajo vivo: si no, en unos meses el equipo scrollea cientos de
 // tarjetas terminadas para encontrar las tres que importan.
@@ -24,6 +33,7 @@ const PAGE_SIZE = 20;
 // Paginación server-side porque este listado crece sin techo.
 export function ArchivedTasksPanel({
   common,
+  currentUserId,
   canModerate,
   totalCount,
   isUnarchiving,
@@ -32,9 +42,10 @@ export function ArchivedTasksPanel({
   onUnarchive
 }: {
   common: ApiCommonOptions;
+  currentUserId: string;
   canModerate: boolean;
   // Total de finalizadas sin filtrar, del COUNT del servidor. `null` mientras
-  // viaja. Con búsqueda activa manda el total de la búsqueda, que es lo que se
+  // viaja. Con algún filtro puesto manda el total del filtro, que es lo que se
   // está mirando.
   totalCount: number | null;
   isUnarchiving: boolean;
@@ -45,6 +56,10 @@ export function ArchivedTasksPanel({
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  // Mismo atajo que en el tablero: "¿qué terminé yo?" es la pregunta que se le
+  // hace a este listado, y acá se filtra en el servidor porque las archivadas
+  // vienen paginadas y no se pueden filtrar en el cliente sin mentir el total.
+  const [isMine, setIsMine] = useState(false);
   const [confirming, setConfirming] = useState<TaskListItem | null>(null);
 
   useEffect(() => {
@@ -55,8 +70,10 @@ export function ArchivedTasksPanel({
     return () => window.clearTimeout(timer);
   }, [search]);
 
+  const assignedTo = isMine ? currentUserId : null;
+
   const query = useQuery({
-    queryKey: ["tasks-archived", common.organizationSlug ?? "", page, debouncedSearch],
+    queryKey: ["tasks-archived", common.organizationSlug ?? "", page, debouncedSearch, assignedTo],
     placeholderData: keepPreviousData,
     queryFn: () => {
       const params = new URLSearchParams({
@@ -65,6 +82,7 @@ export function ArchivedTasksPanel({
         pageSize: String(PAGE_SIZE)
       });
       if (debouncedSearch) params.set("search", debouncedSearch);
+      if (assignedTo) params.set("assignedTo", assignedTo);
       return apiRequest<Paginated<TaskListItem>>(`/tasks?${params.toString()}`, common);
     }
   });
@@ -73,10 +91,11 @@ export function ArchivedTasksPanel({
   const items = result?.items ?? [];
   const total = result?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const isFiltered = Boolean(debouncedSearch) || isMine;
 
-  // Con búsqueda, el número que importa es el de la búsqueda; sin ella, el
-  // total de la organización que ya trajo el recuento del tablero.
-  const badgeCount = debouncedSearch ? (result ? total : null) : totalCount ?? (result ? total : null);
+  // Con algún filtro puesto el número que importa es el del filtro; sin filtros,
+  // el total de la organización que ya trajo el recuento del tablero.
+  const badgeCount = isFiltered ? (result ? total : null) : totalCount ?? (result ? total : null);
 
   return (
     <div className="sp-archived">
@@ -90,7 +109,7 @@ export function ArchivedTasksPanel({
           {badgeCount === null ? null : (
             <span className="sp-archived-count">
               {badgeCount.toLocaleString("es-AR")}{" "}
-              {debouncedSearch
+              {isFiltered
                 ? badgeCount === 1
                   ? "resultado"
                   : "resultados"
@@ -100,24 +119,42 @@ export function ArchivedTasksPanel({
             </span>
           )}
         </div>
-        <div className="sp-search sp-task-search">
-          <Search size={15} />
-          <input
-            placeholder="Buscar por título..."
-            value={search}
-            aria-label="Buscar tareas archivadas"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          {search ? (
-            <button
-              type="button"
-              className="sp-task-search-clear"
-              aria-label="Borrar búsqueda"
-              onClick={() => setSearch("")}
-            >
-              <X size={13} />
-            </button>
-          ) : null}
+
+        <div className="sp-archived-tools">
+          <div className="sp-search sp-task-search">
+            <Search size={15} />
+            <input
+              placeholder="Buscar por título..."
+              value={search}
+              aria-label="Buscar tareas archivadas"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            {search ? (
+              <button
+                type="button"
+                className="sp-task-search-clear"
+                aria-label="Borrar búsqueda"
+                onClick={() => setSearch("")}
+              >
+                <X size={13} />
+              </button>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            className="sp-task-mine-button"
+            aria-pressed={isMine}
+            onClick={() => {
+              setIsMine((current) => !current);
+              // El filtro cambia el largo del listado: quedarse en la página 7
+              // de un resultado que ahora tiene dos no muestra nada.
+              setPage(1);
+            }}
+          >
+            <User size={15} strokeWidth={2.25} />
+            <span>Mis tareas</span>
+          </button>
         </div>
       </div>
 
@@ -126,12 +163,8 @@ export function ArchivedTasksPanel({
 
       {!query.isLoading && !query.error && items.length === 0 ? (
         <EmptyState
-          title={debouncedSearch ? "Sin resultados" : "Sin tareas archivadas"}
-          text={
-            debouncedSearch
-              ? "Ninguna tarea archivada coincide con esa búsqueda."
-              : "Las tareas que un productor aprueba se guardan acá."
-          }
+          title={isFiltered ? "Sin resultados" : "Sin tareas archivadas"}
+          text={emptyStateText(debouncedSearch, isMine)}
         />
       ) : null}
 

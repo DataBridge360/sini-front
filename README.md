@@ -19,9 +19,16 @@ Variables:
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:4000
 NEXT_PUBLIC_BASE_DOMAIN=localhost
+
+# Tiempo real (opcional): sin esto la app funciona, pero sin actualización en vivo.
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
 
-No se usan claves de Supabase en el frontend. La app consume solamente la API del backend.
+Todos los datos los provee la API del backend. Las dos variables de Supabase se usan
+únicamente para abrir por WebSocket el canal privado `org:<id>`, que avisa qué cambió
+para que las tareas y los avisos se actualicen solos: el frontend no consulta tablas,
+RPC ni Storage, y por el canal no viaja ningún dato de negocio.
 
 ## Desarrollo
 

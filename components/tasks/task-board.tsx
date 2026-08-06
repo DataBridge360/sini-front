@@ -13,6 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { useRef, useState } from "react";
 import type { TaskListItem, TaskStatus } from "@/lib/api";
+import { useDeferRealtime } from "@/lib/realtime";
 import { canTransitionStatus, TASK_BOARD_STATUSES, TASK_STATUS_META } from "@/lib/tasks";
 import { TaskCardContent } from "@/components/tasks/task-card";
 
@@ -39,6 +40,10 @@ export function TaskBoard({
   const [activeTask, setActiveTask] = useState<TaskListItem | null>(null);
   // 6px de tolerancia: el click sigue abriendo el detalle, arrastrar mueve.
   const dragHappenedRef = useRef(false);
+
+  // Mientras se arrastra una tarjeta no entra ningún refresco: si la lista se
+  // reordenara bajo el puntero, la tarjeta saltaría de lugar a mitad del gesto.
+  useDeferRealtime(activeTask !== null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
