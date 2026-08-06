@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { OrganizationMember } from "@/lib/api";
 import {
   EMPTY_TASK_FILTERS,
+  isMineTaskAssignee,
   TASK_PRIORITIES,
   type TaskDueFilter,
   type TaskFilters
@@ -27,12 +28,14 @@ export function TaskFilterSheet({
   isOpen,
   filters,
   members,
+  currentUserId,
   onApply,
   onClose
 }: {
   isOpen: boolean;
   filters: TaskFilters;
   members: OrganizationMember[];
+  currentUserId: string;
   onApply: (filters: TaskFilters) => void;
   onClose: () => void;
 }) {
@@ -45,6 +48,8 @@ export function TaskFilterSheet({
   const update = <K extends keyof TaskFilters>(key: K, value: TaskFilters[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
   };
+
+  const isMine = isMineTaskAssignee(draft.assignee, currentUserId);
 
   return (
     <Modal title="Filtrar tareas" isOpen={isOpen} onClose={onClose}>
@@ -107,24 +112,29 @@ export function TaskFilterSheet({
             <button
               type="button"
               className="sp-filter-person"
-              aria-pressed={draft.assignee === "me"}
+              aria-pressed={isMine}
               onClick={() => update("assignee", "me")}
             >
               <span>Mis tareas</span>
-              {draft.assignee === "me" ? <Check size={15} /> : null}
+              {isMine ? <Check size={15} /> : null}
             </button>
-            {members.map((member) => (
-              <button
-                key={member.id}
-                type="button"
-                className="sp-filter-person"
-                aria-pressed={draft.assignee === member.id}
-                onClick={() => update("assignee", member.id)}
-              >
-                <span className="truncate">{member.full_name}</span>
-                {draft.assignee === member.id ? <Check size={15} /> : null}
-              </button>
-            ))}
+            {/* Uno mismo no se repite acá abajo: ya está arriba como "Mis
+                tareas", y dos filas que filtran lo mismo obligan a mirar cuál
+                quedó tildada. */}
+            {members
+              .filter((member) => member.id !== currentUserId)
+              .map((member) => (
+                <button
+                  key={member.id}
+                  type="button"
+                  className="sp-filter-person"
+                  aria-pressed={draft.assignee === member.id}
+                  onClick={() => update("assignee", member.id)}
+                >
+                  <span className="truncate">{member.full_name}</span>
+                  {draft.assignee === member.id ? <Check size={15} /> : null}
+                </button>
+              ))}
           </div>
         </section>
 

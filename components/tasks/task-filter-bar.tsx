@@ -1,12 +1,13 @@
 "use client";
 
-import { Archive, Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { Archive, Plus, Search, SlidersHorizontal, User, X } from "lucide-react";
 import { useState } from "react";
 import type { OrganizationMember } from "@/lib/api";
 import {
   countActiveTaskFilters,
   EMPTY_TASK_FILTERS,
   hasActiveTaskFilters,
+  isMineTaskAssignee,
   taskPriorityMeta,
   type TaskDueFilter,
   type TaskFilters
@@ -37,12 +38,12 @@ function activeChips(
     chips.push({ key: "priority", label: `Prioridad ${meta.label.toLowerCase()}`, dot: meta.dot });
   }
 
-  if (filters.assignee !== "all") {
-    const label =
-      filters.assignee === "me" || filters.assignee === currentUserId
-        ? "Mis tareas"
-        : members.find((member) => member.id === filters.assignee)?.full_name ?? "Asignada";
-    chips.push({ key: "assignee", label });
+  // "Mis tareas" se controla con el botón de la barra: no duplicamos el chip.
+  if (filters.assignee !== "all" && !isMineTaskAssignee(filters.assignee, currentUserId)) {
+    chips.push({
+      key: "assignee",
+      label: members.find((member) => member.id === filters.assignee)?.full_name ?? "Asignada"
+    });
   }
 
   if (filters.due !== "all") {
@@ -79,8 +80,9 @@ export function TaskFilterBar({
   // vigentes.
   const [sheetKey, setSheetKey] = useState(0);
 
-  const activeCount = countActiveTaskFilters(filters);
+  const activeCount = countActiveTaskFilters(filters, currentUserId);
   const chips = activeChips(filters, members, currentUserId);
+  const isMine = isMineTaskAssignee(filters.assignee, currentUserId);
 
   const openSheet = () => {
     setSheetKey((current) => current + 1);
@@ -89,6 +91,10 @@ export function TaskFilterBar({
 
   const clearChip = (key: keyof TaskFilters) => {
     onChange({ ...filters, [key]: EMPTY_TASK_FILTERS[key] });
+  };
+
+  const toggleMine = () => {
+    onChange({ ...filters, assignee: isMine ? "all" : "me" });
   };
 
   return (
@@ -113,6 +119,20 @@ export function TaskFilterBar({
             </button>
           ) : null}
         </div>
+
+        {/* Botón de dos estados: el nombre accesible es el rótulo que se ve y el
+            estado lo lleva aria-pressed. Un aria-label que cambie con el estado
+            ("Mostrar todas las tareas") se anuncia peleado con el propio pressed
+            y deja de coincidir con lo que el usuario lee para dictarlo por voz. */}
+        <button
+          type="button"
+          className="sp-task-mine-button"
+          aria-pressed={isMine}
+          onClick={toggleMine}
+        >
+          <User size={15} strokeWidth={2.25} />
+          <span>Mis tareas</span>
+        </button>
 
         <button
           type="button"
@@ -179,6 +199,7 @@ export function TaskFilterBar({
         isOpen={isSheetOpen}
         filters={filters}
         members={members}
+        currentUserId={currentUserId}
         onApply={onChange}
         onClose={() => setIsSheetOpen(false)}
       />

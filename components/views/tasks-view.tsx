@@ -20,6 +20,7 @@ import {
   EMPTY_TASK_FILTERS,
   hasActiveTaskFilters,
   matchesTaskFilters,
+  sortTasksByDueDate,
   TASK_BOARD_STATUSES,
   TASK_STATUS_META,
   type TaskFilters
@@ -270,7 +271,10 @@ export function TasksView({
     : null;
 
   const filtered = useMemo(
-    () => allTasks.filter((task) => matchesTaskFilters(task, filters, currentUserId)),
+    () =>
+      sortTasksByDueDate(
+        allTasks.filter((task) => matchesTaskFilters(task, filters, currentUserId))
+      ),
     [allTasks, filters, currentUserId]
   );
 
@@ -299,6 +303,7 @@ export function TasksView({
       <div className="sp-page flush sp-task-page">
         <ArchivedTasksPanel
           common={common}
+          currentUserId={currentUserId}
           canModerate={canModerate}
           totalCount={archivedCount}
           isUnarchiving={unarchiveTask.isPending}
