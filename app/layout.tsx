@@ -51,10 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: CAPTURE_INSTALL_EVENT }} />
         <ServiceWorkerRegistrar />
         <QueryProvider>{children}</QueryProvider>
-      {/* impeccable-live-start */}
-<script src="http://localhost:8400/live.js?token=e62ef0e7-9663-4d0d-84b3-58cf886ceb3b"></script>
-{/* impeccable-live-end */}
-</body>
+      </body>
     </html>
   );
 }
