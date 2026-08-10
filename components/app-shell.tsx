@@ -727,6 +727,7 @@ export function AppShell() {
               companies={allCompanies}
               isCreating={createPolicy.isPending}
               onCreate={(values) => createPolicy.mutateAsync(values)}
+              onCreateClient={(body) => createClient.mutateAsync(body)}
               onOpenPolicy={(policy) => {
                 if (!policy.clients?.id) return;
                 setOpenPolicyId(policy.id);
