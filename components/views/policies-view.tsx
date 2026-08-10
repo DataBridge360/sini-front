@@ -15,6 +15,11 @@ import { readView, writeView } from "@/lib/browser";
 import { formatDate } from "@/lib/format";
 import { BRANCHES, type EntityView, type PolicyFormValues } from "@/lib/shell-types";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import {
+  AnalyzePolicyButton,
+  PolicyAnalysisModal,
+  type CoverageDates
+} from "@/components/policies/policy-analysis-modal";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
 import { PAGE_SIZE, Pagination } from "@/components/ui/pagination";
 import { SearchableSelect } from "@/components/ui/selects";
@@ -31,6 +36,7 @@ export function PoliciesView({
   companies,
   isCreating,
   onCreate,
+  onCreateClient,
   onOpenPolicy
 }: {
   common: ApiCommonOptions;
@@ -38,6 +44,7 @@ export function PoliciesView({
   companies: InsuranceCompany[];
   isCreating: boolean;
   onCreate: (values: PolicyFormValues) => Promise<unknown>;
+  onCreateClient: (body: Record<string, string>) => Promise<Client>;
   onOpenPolicy: (policy: Policy) => void;
 }) {
   const slug = common.organizationSlug ?? "";
@@ -47,6 +54,12 @@ export function PoliciesView({
   const [page, setPage] = useState(1);
   const [view, setView] = useState<EntityView>(() => readView("sp-policies-view", "list"));
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isAnalyzeOpen, setIsAnalyzeOpen] = useState(false);
+  // Valores que salieron de analizar un PDF. `prefillKey` fuerza el remount del
+  // formulario, que inicializa su estado una sola vez.
+  const [prefill, setPrefill] = useState<PolicyFormValues | null>(null);
+  const [coverageDates, setCoverageDates] = useState<CoverageDates | null>(null);
+  const [prefillKey, setPrefillKey] = useState(0);
   const debouncedSearch = useDebouncedValue(search.trim());
 
   // Cambiar búsqueda o filtros siempre vuelve a la primera página
@@ -113,7 +126,16 @@ export function PoliciesView({
             writeView("sp-policies-view", next);
           }}
         />
-        <button className="sp-primary-action" type="button" onClick={() => setIsCreateOpen(true)}>
+        <AnalyzePolicyButton onClick={() => setIsAnalyzeOpen(true)} />
+        <button
+          className="sp-primary-action"
+          type="button"
+          onClick={() => {
+            setPrefill(null);
+            setCoverageDates(null);
+            setIsCreateOpen(true);
+          }}
+        >
           <Plus size={14} />
           Nueva póliza
         </button>
@@ -151,19 +173,43 @@ export function PoliciesView({
         ) : null}
       </section>
 
+      <PolicyAnalysisModal
+        isOpen={isAnalyzeOpen}
+        common={common}
+        clients={clients}
+        companies={companies}
+        onClose={() => setIsAnalyzeOpen(false)}
+        onCreateClient={onCreateClient}
+        onUseData={(values, dates) => {
+          setPrefill(values);
+          setCoverageDates(dates);
+          setPrefillKey((value) => value + 1);
+          setIsAnalyzeOpen(false);
+          setIsCreateOpen(true);
+        }}
+      />
+
       <PolicyFormModal
-        key="policy-create"
-        title="Nueva póliza"
+        key={`policy-create-${prefillKey}`}
+        title={prefill ? "Nueva póliza (datos del análisis)" : "Nueva póliza"}
         submitLabel="Guardar póliza"
         isOpen={isCreateOpen}
         policy={null}
+        initialValues={prefill ?? undefined}
+        coverageDates={coverageDates ?? undefined}
         clients={clients}
         companies={companies}
         isSaving={isCreating}
-        onClose={() => setIsCreateOpen(false)}
+        onClose={() => {
+          setIsCreateOpen(false);
+          setPrefill(null);
+          setCoverageDates(null);
+        }}
         onSubmit={async (values) => {
           await onCreate(values);
           setIsCreateOpen(false);
+          setPrefill(null);
+          setCoverageDates(null);
         }}
       />
     </div>
