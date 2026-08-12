@@ -1,6 +1,6 @@
 // Tipos y constantes compartidos entre el shell y las vistas.
 
-import type { Client, InsuranceCompany, OrganizationSettings } from "@/lib/api";
+import type { Client, InsuranceCompany, OrganizationSettings, PaymentMethod } from "@/lib/api";
 
 export type Tab = "dashboard" | "notices" | "tasks" | "clients" | "policies" | "companies" | "clubplaza" | "team" | "settings" | "profile";
 
@@ -42,6 +42,7 @@ export type PolicyFormValues = {
   policyNumber: string;
   vehiclePlate: string;
   paymentIntervalMonths: number;
+  paymentMethod: PaymentMethod;
   firstPaymentDate: string;
 };
 

@@ -103,12 +103,17 @@ export type InsuranceCompany = {
   is_active: boolean;
 };
 
+// 'debito_automatico' cubre débito y tarjeta de crédito automáticos: la póliza
+// se cobra sola y no genera avisos de cobranza.
+export type PaymentMethod = "manual" | "debito_automatico";
+
 export type Policy = {
   id: string;
   branch: string;
   policy_number: string;
   vehicle_plate: string | null;
   payment_interval_months: number;
+  payment_method: PaymentMethod;
   first_payment_date: string;
   clients?: { id: string; full_name: string } | null;
   insurance_companies?: { id: string; name: string } | null;
@@ -251,6 +256,25 @@ export type Paginated<T> = {
 // Fila de /clients paginado: incluye el conteo de pólizas activas embebido.
 export type ClientListItem = Client & { policies?: Array<{ count: number }> };
 
+// Error de la API con el status y el `code` que manda el backend. Sigue siendo
+// un Error común (quien solo usa .message no cambia), pero permite reaccionar a
+// un conflicto puntual: p. ej. CLIENT_DUPLICATE_NAME pide el DNI en el formulario.
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+// Códigos de conflicto de asegurados (espejo de backend/src/clients/clients.schemas.ts).
+export const CLIENT_DUPLICATE_NAME = "CLIENT_DUPLICATE_NAME";
+export const CLIENT_DUPLICATE_DNI = "CLIENT_DUPLICATE_DNI";
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const makeInit = (token = options.token): RequestInit => {
     const headers = new Headers();
@@ -287,7 +311,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const payload = await response.json().catch(() => null);
     const message =
       typeof payload?.message === "string" ? payload.message : "No se pudo completar la operacion";
-    throw new Error(message);
+    throw new ApiError(message, response.status, typeof payload?.code === "string" ? payload.code : null);
   }
 
   return response.json() as Promise<T>;
@@ -468,4 +492,8 @@ export function intervalLabel(months: number) {
     12: "anual"
   };
   return labels[months] ?? `cada ${months} meses`;
+}
+
+export function paymentMethodLabel(method: PaymentMethod) {
+  return method === "debito_automatico" ? "Débito/crédito automático" : "Pago manual";
 }

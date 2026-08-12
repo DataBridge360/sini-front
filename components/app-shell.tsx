@@ -326,9 +326,15 @@ export function AppShell() {
   const createPolicy = useMutation({
     mutationFn: (body: Record<string, FormDataEntryValue | number>) =>
       apiRequest<Policy>("/policies", { ...common, method: "POST", body }),
-    onSuccess: async () => {
+    onSuccess: async (policy) => {
       await queryClient.invalidateQueries({ queryKey: ["policies", slug] });
       await queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+      // Una póliza por débito automático no genera aviso: mandar al tablero de
+      // avisos sería mandar a una pantalla donde no pasó nada.
+      if (policy?.payment_method === "debito_automatico") {
+        notify("Póliza creada. Por débito automático no genera avisos.");
+        return;
+      }
       notify("Póliza creada.");
       setTab("notices");
     }
@@ -726,6 +732,7 @@ export function AppShell() {
               clients={allClients}
               companies={allCompanies}
               isCreating={createPolicy.isPending}
+              isCreatingClient={createClient.isPending}
               onCreate={(values) => createPolicy.mutateAsync(values)}
               onCreateClient={(body) => createClient.mutateAsync(body)}
               onOpenPolicy={(policy) => {

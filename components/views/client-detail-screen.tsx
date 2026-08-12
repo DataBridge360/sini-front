@@ -3,7 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CalendarDays, CheckCircle, ChevronDown, Edit3, FileText, Hash, Loader2, Mail, MapPin, Phone, Save, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { apiRequest, intervalLabel, type Client, type Notice, type Policy } from "@/lib/api";
+import {
+  apiRequest,
+  intervalLabel,
+  paymentMethodLabel,
+  type Client,
+  type Notice,
+  type Policy
+} from "@/lib/api";
 import { AVATAR_COLORS, formatDate, initials } from "@/lib/format";
 import { noticeStatusLabel, noticeStatusPill } from "@/lib/notices";
 import type { NoticeNoteApi, PolicyActions } from "@/lib/shell-types";
@@ -457,8 +464,10 @@ function PolicyHistoryPanel({
     { label: "N° de póliza", value: policy.policy_number || "-" },
     { label: "Patente", value: policy.vehicle_plate || "-" },
     { label: "Periodicidad", value: intervalLabel(policy.payment_interval_months) },
+    { label: "Tipo de pago", value: paymentMethodLabel(policy.payment_method) },
     { label: "Primer pago", value: policy.first_payment_date ? formatDate(policy.first_payment_date) : "-" }
   ];
+  const isAutomatic = policy.payment_method === "debito_automatico";
 
   return (
     <article className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -479,6 +488,7 @@ function PolicyHistoryPanel({
               {policy.policy_number ? `#${policy.policy_number}` : "Sin N°"}
               {policy.vehicle_plate ? ` · ${policy.vehicle_plate}` : ""}
               {` · ${intervalLabel(policy.payment_interval_months)}`}
+              {policy.payment_method === "debito_automatico" ? " · débito automático" : ""}
             </span>
           </div>
           <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -531,7 +541,11 @@ function PolicyHistoryPanel({
               <div className="flex flex-col gap-2">
                 <h4 className="m-0 text-xs font-bold uppercase tracking-wide text-slate-500">Historial de avisos</h4>
                 {notices.length === 0 ? (
-                  <p className="m-0 text-xs text-slate-400">Sin avisos para esta póliza.</p>
+                  <p className="m-0 text-xs text-slate-400">
+                    {isAutomatic
+                      ? "Se cobra por débito automático: no genera avisos."
+                      : "Sin avisos para esta póliza."}
+                  </p>
                 ) : (
                   <div className="flex flex-col gap-1.5">
                     {notices.map((notice) => (

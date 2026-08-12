@@ -31,7 +31,7 @@ import {
 } from "@/lib/notices";
 import { useDeferRealtime } from "@/lib/realtime";
 import { BRANCHES, type NoticeNoteApi } from "@/lib/shell-types";
-import { DueChip, NOTICE_COLUMNS, NoticeNotes } from "@/components/notices/shared";
+import { ClientNote, DueChip, NOTICE_COLUMNS, NoticeNotes } from "@/components/notices/shared";
 import { WhatsAppPreview } from "@/components/notices/whatsapp-preview";
 import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog, Modal } from "@/components/ui/modal";
@@ -311,7 +311,8 @@ function NotifyDialog({
   const [copied, setCopied] = useState(false);
   const isOpen = Boolean(notices && notices.length > 0);
   const message = notices ? buildNoticeReminderMessage(notices) : "";
-  const clientName = notices?.[0]?.policies?.clients?.full_name ?? "el asegurado";
+  const client = notices?.[0]?.policies?.clients;
+  const clientName = client?.full_name ?? "el asegurado";
 
   const copyMessage = () => {
     void navigator.clipboard
@@ -334,6 +335,9 @@ function NotifyDialog({
           Vas a marcar como avisado{notices && notices.length > 1 ? `s los ${notices.length} vencimientos` : " el vencimiento"} de{" "}
           <strong className="font-semibold text-slate-800">{clientName}</strong>. Podés copiar el mensaje sugerido y enviárselo:
         </p>
+        {/* Antes del mensaje: si el asegurado tiene requisitos para contactarlo,
+            hay que verlos ahora y no después de mandarlo. */}
+        <ClientNote note={client?.notes} />
         <WhatsAppPreview message={message} />
         <button
           type="button"
@@ -459,12 +463,7 @@ function NoticeDetailModal({
           </div>
         ) : null}
 
-        {client?.notes ? (
-          <div className="border-l-2 border-amber-300 pl-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Nota del asegurado</span>
-            <p className="m-0 mt-0.5 whitespace-pre-line text-[12.5px] leading-snug text-slate-600">{client.notes}</p>
-          </div>
-        ) : null}
+        <ClientNote note={client?.notes} />
 
         {showCopy && showPreview ? (
           <div className="flex flex-col gap-1.5">
@@ -709,6 +708,7 @@ function NoticeCard({
       <p className="m-0 mt-0.5 truncate text-[11px] text-slate-400">
         {notice.policies?.branch ?? "Rama"} · Vence el {formatDate(notice.due_date)}
       </p>
+      <ClientNote note={client?.notes} variant="card" />
 
       <NoticeActions
         notice={notice}
@@ -777,6 +777,7 @@ function NoticeGroupCard({
         <Layers size={11} className="shrink-0" />
         {notices.length} pólizas con vencimientos juntos
       </p>
+      <ClientNote note={client?.notes} variant="card" />
 
       {/* Una línea por póliza: compañía · número a la izquierda, fecha a la derecha */}
       <div className="mt-2 flex flex-col divide-y divide-slate-100 border-t border-slate-100">
@@ -892,6 +893,7 @@ function NoticeListRow({
           {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
           {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
         </span>
+        <ClientNote note={client?.notes} variant="card" />
       </div>
       <span className="sp-branch-tag">{notice.policies?.branch ?? "Rama"}</span>
       <span className="grid justify-items-start gap-0.5">

@@ -302,6 +302,8 @@ export function toPolicyFormValues(
       extraction.vigenciaDesde,
       extraction.vigenciaHasta
     ),
+    // La póliza no dice cómo se cobra: lo elige la persona en el formulario.
+    paymentMethod: "manual",
     // Siempre vacío: la póliza trae vigencia, no el calendario de cobranza, y
     // esta fecha dispara el trigger que mueve el aviso pendiente. La pone la
     // persona.
