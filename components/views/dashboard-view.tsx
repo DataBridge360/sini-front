@@ -53,7 +53,7 @@ export function DashboardView({
   error: string | null;
   setTab: (tab: Tab) => void;
   onOpenTasks: (archived: boolean) => void;
-  onCreateClient: (body: Record<string, FormDataEntryValue>) => Promise<unknown>;
+  onCreateClient: (body: Record<string, FormDataEntryValue>) => Promise<Client>;
   onCreatePolicy: (values: PolicyFormValues) => Promise<unknown>;
 }) {
   const [createOpen, setCreateOpen] = useState<"client" | "policy" | null>(null);
@@ -265,6 +265,7 @@ export function DashboardView({
       <ClientCreateModal
         isOpen={createOpen === "client"}
         isCreating={isCreatingClient}
+        common={common}
         onClose={() => setCreateOpen(null)}
         onCreate={onCreateClient}
       />
@@ -277,6 +278,9 @@ export function DashboardView({
         clients={clients}
         companies={companies}
         isSaving={isCreatingPolicy}
+        common={common}
+        isCreatingClient={isCreatingClient}
+        onCreateClient={onCreateClient}
         onClose={() => setCreateOpen(null)}
         onSubmit={async (values) => {
           await onCreatePolicy(values);

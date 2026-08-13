@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { CalendarDays, ChevronRight, Hash, Plus, Search, ShieldCheck, User } from "lucide-react";
+import { CalendarDays, ChevronRight, CreditCard, Hash, Plus, Search, ShieldCheck, User } from "lucide-react";
 import { useState } from "react";
 import {
   apiRequest,
@@ -35,6 +35,7 @@ export function PoliciesView({
   clients,
   companies,
   isCreating,
+  isCreatingClient,
   onCreate,
   onCreateClient,
   onOpenPolicy
@@ -43,8 +44,9 @@ export function PoliciesView({
   clients: Client[];
   companies: InsuranceCompany[];
   isCreating: boolean;
+  isCreatingClient: boolean;
   onCreate: (values: PolicyFormValues) => Promise<unknown>;
-  onCreateClient: (body: Record<string, string>) => Promise<Client>;
+  onCreateClient: (body: Record<string, FormDataEntryValue>) => Promise<Client>;
   onOpenPolicy: (policy: Policy) => void;
 }) {
   const slug = common.organizationSlug ?? "";
@@ -200,6 +202,9 @@ export function PoliciesView({
         clients={clients}
         companies={companies}
         isSaving={isCreating}
+        common={common}
+        isCreatingClient={isCreatingClient}
+        onCreateClient={onCreateClient}
         onClose={() => {
           setIsCreateOpen(false);
           setPrefill(null);
@@ -246,8 +251,23 @@ function PolicyCard({ policy, onOpen }: { policy: Policy; onOpen: (policy: Polic
       <div className="sp-entity-footer">
         <CalendarDays size={14} />
         <span>{formatDate(policy.first_payment_date)}</span>
+        {policy.payment_method === "debito_automatico" ? <AutomaticDebitChip /> : null}
       </div>
     </article>
+  );
+}
+
+// Estas pólizas no aparecen en el gestor de avisos: el chip explica por qué su
+// vencimiento no genera trabajo de cobranza.
+function AutomaticDebitChip() {
+  return (
+    <span
+      className="ml-auto inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700"
+      title="Débito o crédito automático: no genera avisos de cobro"
+    >
+      <CreditCard size={11} />
+      Automático
+    </span>
   );
 }
 
@@ -277,6 +297,7 @@ function PolicyRow({ policy, onOpen }: { policy: Policy; onOpen: (policy: Policy
           ].filter(Boolean).join(" · ")}
         </span>
       </span>
+      {policy.payment_method === "debito_automatico" ? <AutomaticDebitChip /> : null}
       <span className="sp-policy-row-date">
         <CalendarDays size={13} />
         {formatDate(policy.first_payment_date)}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type SelectOption = {
@@ -12,6 +12,11 @@ export type SelectOption = {
 };
 
 
+// Con más resultados que esto, buscar sigue siendo lo razonable y la acción de
+// alta solo ensuciaría la lista. Aparece cuando la búsqueda no encontró nada
+// (lo más común: el asegurado todavía no está cargado) o cuando quedan pocos.
+const CREATE_ACTION_MAX_RESULTS = 5;
+
 export function SearchableSelect({
   label,
   name,
@@ -19,6 +24,9 @@ export function SearchableSelect({
   options,
   placeholder,
   required,
+  // Alta rápida desde el propio desplegable: se muestra al final de la lista y
+  // recibe lo que se haya tipeado, para no volver a escribir el nombre.
+  createAction,
   onChange
 }: {
   label?: string;
@@ -27,6 +35,7 @@ export function SearchableSelect({
   options: SelectOption[];
   placeholder: string;
   required?: boolean;
+  createAction?: { label: string; onSelect: (query: string) => void } | undefined;
   onChange?: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -102,6 +111,24 @@ export function SearchableSelect({
               </button>
             ))}
           </div>
+          {/* Fuera de la lista scrolleable: queda siempre a la vista. */}
+          {createAction && filtered.length <= CREATE_ACTION_MAX_RESULTS ? (
+            <div className="mt-1 border-t border-slate-100 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const typed = query.trim();
+                  closeSelect();
+                  createAction.onSelect(typed);
+                }}
+              >
+                <span className="flex items-center gap-1.5 text-[color:var(--org-primary)]">
+                  <Plus size={13} className="shrink-0" />
+                  {query.trim() ? `${createAction.label} «${query.trim()}»` : createAction.label}
+                </span>
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {name ? (

@@ -7832,26 +7832,6 @@ a.sp-client-field-value:hover {
   border-top: 1px solid var(--sp-border);
 }
 
-.sp-task-form-adddesc {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  min-height: 38px;
-  padding: 0 12px;
-  border: 1px dashed var(--sp-border-strong);
-  border-radius: 8px;
-  color: var(--sp-text-muted);
-  font-size: 12.5px;
-  font-weight: 600;
-  transition: border-color 120ms ease, color 120ms ease;
-}
-
-.sp-task-form-adddesc:hover {
-  border-color: var(--org-primary);
-  color: var(--org-primary);
-}
-
 .sp-task-form-error {
   padding: 9px 12px;
   border-radius: 8px;

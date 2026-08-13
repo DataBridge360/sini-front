@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Bell, CalendarDays, CheckCircle, ChevronDown, Clock, Loader2, MessageSquare, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, Bell, CalendarDays, CheckCircle, ChevronDown, Clock, Loader2, MessageSquare, Save, StickyNote, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { Notice } from "@/lib/api";
 import { dueLabel } from "@/lib/format";
@@ -30,6 +30,48 @@ export function DueChip({ days, status }: { days: number; status: NoticeStatus }
       <Icon size={11} />
       {dueLabel(days)}
     </span>
+  );
+}
+
+
+// Nota del asegurado (la de su ficha, no las notas internas del aviso). Suele
+// traer requisitos para contactarlo — "avisar por correo", "hablar con la
+// hija", "no llamar al fijo" —, así que tiene que verse en el tablero y antes
+// de marcar avisado, no solo abriendo el detalle.
+// 'card' la recorta a dos líneas para no desarmar la tarjeta; 'block' la
+// muestra completa.
+export function ClientNote({
+  note,
+  variant = "block"
+}: {
+  note: string | null | undefined;
+  variant?: "block" | "card";
+}) {
+  const text = note?.trim();
+  if (!text) return null;
+
+  if (variant === "card") {
+    // Sin elementos hijos de por medio: la fila de la vista lista estiliza sus
+    // <span> internos y pisaría tanto el recorte como el color de la nota.
+    return (
+      <p
+        className="m-0 mt-1.5 line-clamp-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] leading-snug text-amber-900"
+        title={text}
+      >
+        <StickyNote size={11} className="mr-1 inline align-[-1px]" />
+        {text}
+      </p>
+    );
+  }
+
+  return (
+    <div className="border-l-2 border-amber-300 pl-3">
+      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+        <StickyNote size={11} />
+        Nota del asegurado
+      </span>
+      <p className="m-0 mt-0.5 whitespace-pre-line text-[12.5px] leading-snug text-slate-600">{text}</p>
+    </div>
   );
 }
 

@@ -12,9 +12,10 @@ import { TaskEditor } from "@/components/tasks/task-editor";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Modal } from "@/components/ui/modal";
 
-// Crear una tarea tiene que ser rápido: título, prioridad, fecha y listo. Todo
-// lo demás es opcional y va plegado, porque en un celular seis campos abiertos y
-// un editor de texto son tres pantallas de scroll antes de ver el botón.
+// Crear una tarea tiene que ser rápido: título, prioridad, fecha y listo. Los
+// vínculos a asegurado y póliza van plegados, porque en un celular seis campos
+// abiertos son varias pantallas de scroll antes de ver el botón. La descripción
+// sí está siempre montada: escribirla es parte de crear la tarea, no un extra.
 //
 // Toda tarea nace 'pendiente'; para arrancarla enseguida está "Empezar" en la
 // tarjeta, que es un tap.
@@ -44,7 +45,6 @@ export function TaskFormModal({
   const [assignedToUserId, setAssignedToUserId] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const [policyId, setPolicyId] = useState<string | null>(null);
-  const [showDescription, setShowDescription] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Remonta el editor (y limpia el formulario) en cada apertura.
   const [formKey, setFormKey] = useState(0);
@@ -85,7 +85,6 @@ export function TaskFormModal({
     setAssignedToUserId(null);
     setClientId(null);
     setPolicyId(null);
-    setShowDescription(false);
     setError(null);
     setFormKey((current) => current + 1);
   };
@@ -220,30 +219,16 @@ export function TaskFormModal({
           </div>
         </details>
 
-        {showDescription ? (
-          <div className="sp-task-form-field">
-            <span className={FIELD_LABEL_CLASS}>Descripción</span>
-            <TaskEditor
-              key={formKey}
-              value={null}
-              minHeightClass="min-h-[140px]"
-              placeholder="Detallá la tarea: objetivos, checklist, tablas..."
-              onChange={setDescription}
-            />
-          </div>
-        ) : (
-          // El editor no se monta si no se usa: TipTap es caro y la mayoría de
-          // las tareas se crean solo con título.
-          <button
-            type="button"
-            className="sp-task-form-adddesc"
-            disabled={isCreating}
-            onClick={() => setShowDescription(true)}
-          >
-            <Plus size={13} />
-            Agregar descripción
-          </button>
-        )}
+        <div className="sp-task-form-field">
+          <span className={FIELD_LABEL_CLASS}>Descripción</span>
+          <TaskEditor
+            key={formKey}
+            value={null}
+            minHeightClass="min-h-[140px]"
+            placeholder="Detallá la tarea: objetivos, checklist, tablas..."
+            onChange={setDescription}
+          />
+        </div>
 
         {error ? <div className="sp-task-form-error">{error}</div> : null}
 

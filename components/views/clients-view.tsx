@@ -150,6 +150,7 @@ export function ClientsView({
       <ClientCreateModal
         isOpen={isModalOpen}
         isCreating={isCreating}
+        common={common}
         onClose={() => setIsModalOpen(false)}
         onCreate={onCreate}
       />
