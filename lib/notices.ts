@@ -194,7 +194,7 @@ export function buildNoticeReminderMessage(notices: Notice[]): string {
     "*💳 Métodos de pago disponibles:*",
     "",
     "- *Efectivo:* En nuestras oficinas.",
-    "- *Mercado Pago:* Responda a este mensaje solicitando el link de pago y se lo enviaremos a la brevedad.",
+    "- *Link de Mercado Pago:* ",
     "",
     "*⚠️ Importante:*",
     "Le recordamos que la falta de pago en término puede ocasionar la suspensión de su cobertura.",
