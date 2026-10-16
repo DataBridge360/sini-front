@@ -2,6 +2,8 @@ import "server-only";
 import { getSupabase } from "@/server/core/supabase";
 import { route, type Route } from "@/server/core/router";
 import {
+  createAttachmentUploadsSchema,
+  createTaskMessageSchema,
   createTaskSchema,
   listTasksQuerySchema,
   taskStatsQuerySchema,
@@ -10,9 +12,10 @@ import {
 } from "./schemas";
 import { TasksService } from "./service";
 
-// POST /tasks/:id/messages (actividad multipart) no está acá a propósito: en
-// Vercel el body de una request está limitado a 4.5 MB, así que los adjuntos
-// suben directo a Storage con URLs firmadas (spec S5).
+// Adjuntos: en Vercel el body de una request está limitado a 4.5 MB, así que
+// los archivos suben directo a Storage con URLs firmadas. POST
+// /tasks/:id/attachments/uploads firma y POST /tasks/:id/messages (JSON)
+// confirma la actividad con los paths subidos.
 
 const service = () => new TasksService(getSupabase());
 
@@ -81,6 +84,26 @@ export const tasksRoutes: Route[] = [
     access: "organization",
     handler: ({ organization, user, uuidParam }) =>
       service().delete(organization, uuidParam("id"), user.id)
+  }),
+
+  route({
+    method: "POST",
+    path: "/tasks/:id/attachments/uploads",
+    access: "organization",
+    handler: async ({ organization, uuidParam, body }) => {
+      const id = uuidParam("id");
+      return service().createAttachmentUploads(organization.id, id, await body(createAttachmentUploadsSchema));
+    }
+  }),
+
+  route({
+    method: "POST",
+    path: "/tasks/:id/messages",
+    access: "organization",
+    handler: async ({ organization, user, uuidParam, body }) => {
+      const id = uuidParam("id");
+      return service().addMessage(organization.id, id, user.id, await body(createTaskMessageSchema));
+    }
   }),
 
   route({

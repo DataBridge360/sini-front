@@ -59,11 +59,36 @@ export const updateTaskStatusSchema = z.object({
   status: z.enum(taskStatusValues)
 });
 
-// En multipart el texto es opcional: una actividad puede ser solo archivos. Que
-// venga al menos una de las dos cosas lo valida el servicio, que es quien ve los
-// files.
+// Adjuntos en dos pasos (Vercel corta los bodies en 4.5 MB): primero se piden
+// URLs firmadas para subir directo a Storage y después se confirma la actividad
+// con los paths que firmó el server. Los topes de cantidad, tamaño y formato los
+// aplica el servicio, con los mismos mensajes que la subida multipart.
+export const createAttachmentUploadsSchema = z.object({
+  files: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(255),
+        type: z.string().max(255).default(""),
+        size: z.number().int().min(0)
+      })
+    )
+    .min(1)
+    .max(50)
+});
+
+// El texto es opcional: una actividad puede ser solo archivos. Que venga al
+// menos una de las dos cosas lo valida el servicio.
 export const createTaskMessageSchema = z.object({
-  message: z.preprocess(emptyToNull, z.string().trim().min(1).max(4000).nullable().optional())
+  message: z.preprocess(emptyToNull, z.string().trim().min(1).max(4000).nullable().optional()),
+  attachments: z
+    .array(
+      z.object({
+        path: z.string().min(1).max(512),
+        name: z.string().max(255)
+      })
+    )
+    .max(50)
+    .optional()
 });
 
 // GET /tasks?archived=1&page=&pageSize=&search=&priority=&assignedTo=
@@ -87,5 +112,6 @@ export type CreateTaskDto = z.infer<typeof createTaskSchema>;
 export type UpdateTaskDto = z.infer<typeof updateTaskSchema>;
 export type UpdateTaskStatusDto = z.infer<typeof updateTaskStatusSchema>;
 export type CreateTaskMessageDto = z.infer<typeof createTaskMessageSchema>;
+export type CreateAttachmentUploadsDto = z.infer<typeof createAttachmentUploadsSchema>;
 export type ListTasksQueryDto = z.infer<typeof listTasksQuerySchema>;
 export type TaskStatsQueryDto = z.infer<typeof taskStatsQuerySchema>;

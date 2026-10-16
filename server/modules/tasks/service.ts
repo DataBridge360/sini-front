@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import {
   BadRequestException,
   ForbiddenException,
@@ -18,6 +19,7 @@ import type { OrganizationContext } from "@/server/core/context";
 import { canTransitionStatus, transitionErrorMessage } from "./tasks.rules";
 import {
   taskBoardStatusValues,
+  type CreateAttachmentUploadsDto,
   type CreateTaskDto,
   type CreateTaskMessageDto,
   type ListTasksQueryDto,
@@ -36,10 +38,18 @@ export type TaskStats = {
   activas: number;
 };
 
-export type UploadedAttachmentFile = {
-  originalname: string;
-  mimetype: string;
-  buffer: Buffer;
+// Lo que declara el navegador al pedir una subida firmada (paso 1).
+export type AttachmentUploadRequest = {
+  name: string;
+  type: string;
+  size: number;
+};
+
+// Un adjunto ya subido y verificado contra Storage (paso 2).
+type VerifiedAttachment = {
+  path: string;
+  displayName: string;
+  mimeType: string;
   size: number;
 };
 
@@ -118,6 +128,32 @@ export const ATTACHMENT_MAX_SIZE_BYTES = 5_242_880; // 5 MB por archivo, ya comp
 export const ATTACHMENT_MAX_FILES = 10;
 export const ATTACHMENT_BUCKET = "task-attachments";
 const SIGNED_URL_TTL_SECONDS = 3600;
+
+const INVALID_ATTACHMENT_MESSAGE = "Adjunto inválido. Volvé a adjuntar el archivo.";
+
+// Solo paths con la forma exacta que genera prepareAttachment, dentro de la
+// carpeta de esta organización y esta tarea: sin "..", sin otras carpetas y
+// con una extensión del allowlist.
+const ATTACHMENT_PATH_EXTENSIONS = [...new Set(ATTACHMENT_MIME_TYPES.values())].join("|");
+function isTaskAttachmentPath(organizationId: string, taskId: string, path: string) {
+  const [folderOrg, folderTask, fileName, ...rest] = path.split("/");
+  return (
+    rest.length === 0 &&
+    folderOrg === organizationId &&
+    folderTask === taskId &&
+    new RegExp(`^\\d+-[0-9a-f]{8}-[a-z0-9-]{1,48}\\.(${ATTACHMENT_PATH_EXTENSIONS})$`).test(fileName ?? "")
+  );
+}
+
+// Nombre saneado: sin saltos de línea y acotado (viene del cliente, no es confiable).
+function sanitizeDisplayName(name: string) {
+  return name.replace(/[\r\n\t]+/g, " ").trim().slice(0, 200) || "archivo";
+}
+
+function tooLargeMessage(name: string, size: number) {
+  const megabytes = (size / 1_048_576).toFixed(1).replace(".", ",");
+  return `«${name}» pesa ${megabytes} MB. El límite es 5 MB por archivo.`;
+}
 
 export class TasksService {
   private readonly logger = new Logger(TasksService.name);
@@ -422,32 +458,100 @@ export class TasksService {
     return { ok: true };
   }
 
-  // Una actividad = texto y/o archivos, en una sola request multipart.
-  //
-  // Todo o nada: los archivos se validan ANTES de tocar storage y, si algo falla
-  // después, se borran los objetos subidos y el mensaje. El usuario ve "se envió
-  // todo" o "no se envió nada", nunca una actividad a medias.
-  async addMessage(
-    organizationId: string,
-    taskId: string,
-    userId: string,
-    dto: CreateTaskMessageDto,
-    files: UploadedAttachmentFile[]
-  ) {
+  // Paso 1 de una actividad con adjuntos. Vercel corta los bodies en 4.5 MB, así
+  // que los archivos no pasan por acá: se validan sus datos (mismos topes y
+  // mensajes que la subida multipart) y se firma una subida directa a Storage
+  // por archivo. El path lo elige el server, dentro de la carpeta de la
+  // organización y la tarea, y la URL firmada no permite pisar un objeto.
+  async createAttachmentUploads(organizationId: string, taskId: string, dto: CreateAttachmentUploadsDto) {
     await this.ensureTaskInOrganization(organizationId, taskId);
 
-    const message = dto.message ?? null;
-    if (!message && files.length === 0) {
-      throw new BadRequestException("Escribí algo o adjuntá un archivo.");
-    }
-    if (files.length > ATTACHMENT_MAX_FILES) {
+    if (dto.files.length > ATTACHMENT_MAX_FILES) {
       throw new BadRequestException(`Se pueden adjuntar hasta ${ATTACHMENT_MAX_FILES} archivos por actividad.`);
     }
 
-    // 1) Validar todo antes de subir nada.
-    const prepared = files.map((file) => this.prepareAttachment(organizationId, taskId, file));
+    // Validar todo antes de firmar nada.
+    const prepared = dto.files.map((file) => this.prepareAttachment(organizationId, taskId, file));
 
-    // 2) Insertar el mensaje.
+    const uploads: Array<{ name: string; path: string; contentType: string; signedUrl: string; token: string }> = [];
+    for (const item of prepared) {
+      const { data, error } = await this.supabase.admin.storage
+        .from(ATTACHMENT_BUCKET)
+        .createSignedUploadUrl(item.path);
+      if (error || !data) {
+        throw supabaseError(
+          this.logger,
+          "tasks.createAttachmentUploads",
+          error,
+          `No se pudo preparar la subida de «${item.displayName}».`
+        );
+      }
+      uploads.push({
+        name: item.displayName,
+        path: item.path,
+        contentType: item.mimeType,
+        signedUrl: data.signedUrl,
+        token: data.token
+      });
+    }
+
+    return { uploads };
+  }
+
+  // Paso 2: la actividad = texto y/o los archivos ya subidos.
+  //
+  // Todo o nada: cada adjunto se verifica contra lo que realmente quedó en
+  // Storage (que sea un path de esta tarea, que exista, tamaño y formato) ANTES
+  // de tocar la base y, si algo falla, se borran los objetos y el mensaje. El
+  // usuario ve "se envió todo" o "no se envió nada", nunca una actividad a medias.
+  async addMessage(organizationId: string, taskId: string, userId: string, dto: CreateTaskMessageDto) {
+    await this.ensureTaskInOrganization(organizationId, taskId);
+
+    const message = dto.message ?? null;
+    const attachments = dto.attachments ?? [];
+    if (!message && attachments.length === 0) {
+      throw new BadRequestException("Escribí algo o adjuntá un archivo.");
+    }
+    if (attachments.length > ATTACHMENT_MAX_FILES) {
+      throw new BadRequestException(`Se pueden adjuntar hasta ${ATTACHMENT_MAX_FILES} archivos por actividad.`);
+    }
+
+    // 1) Solo paths que este server pudo haber firmado para esta tarea. Un path
+    // ajeno no se toca: ni se verifica ni se borra.
+    const paths = attachments.map((attachment) => attachment.path);
+    if (
+      new Set(paths).size !== paths.length ||
+      paths.some((path) => !isTaskAttachmentPath(organizationId, taskId, path))
+    ) {
+      throw new BadRequestException(INVALID_ATTACHMENT_MESSAGE);
+    }
+
+    // Un objeto ya vinculado a otro adjunto no se reusa (ni se borra: es de otro).
+    if (paths.length > 0) {
+      const { data: used, error: usedError } = await this.supabase.admin
+        .from("task_attachments")
+        .select("storage_path")
+        .in("storage_path", paths);
+      if (usedError) {
+        throw supabaseError(this.logger, "tasks.addMessage.used", usedError, "No se pudo enviar la actividad.");
+      }
+      if ((used ?? []).length > 0) {
+        throw new BadRequestException(INVALID_ATTACHMENT_MESSAGE);
+      }
+    }
+
+    // 2) Verificar cada objeto subido.
+    const verified: VerifiedAttachment[] = [];
+    try {
+      for (const attachment of attachments) {
+        verified.push(await this.verifyUploadedAttachment(attachment));
+      }
+    } catch (cause) {
+      await this.removeStoredFiles("tasks.addMessage.rejected", paths);
+      throw cause;
+    }
+
+    // 3) Insertar el mensaje.
     const { data: created, error } = await this.supabase.admin
       .from("task_messages")
       .insert({
@@ -460,46 +564,27 @@ export class TasksService {
       .single();
 
     if (error) {
+      await this.removeStoredFiles("tasks.addMessage.rollback", paths);
       throw supabaseError(this.logger, "tasks.addMessage", error, "No se pudo enviar la actividad.");
     }
 
-    if (prepared.length === 0) {
+    if (verified.length === 0) {
       return { ...created, attachments: [] };
     }
 
-    // 3) Subir los objetos. 4) Insertar las filas. 5) Rollback si algo falla.
-    const uploaded: string[] = [];
+    // 4) Insertar las filas. 5) Rollback si algo falla.
     try {
-      for (const item of prepared) {
-        const { error: uploadError } = await this.supabase.admin.storage
-          .from(ATTACHMENT_BUCKET)
-          .upload(item.path, item.file.buffer, {
-            cacheControl: "31536000",
-            contentType: item.mimeType,
-            upsert: false
-          });
-        if (uploadError) {
-          throw supabaseError(
-            this.logger,
-            "tasks.addMessage.storage",
-            uploadError,
-            `No se pudo subir «${item.displayName}».`
-          );
-        }
-        uploaded.push(item.path);
-      }
-
-      const { data: attachments, error: attachmentsError } = await this.supabase.admin
+      const { data: rowsData, error: attachmentsError } = await this.supabase.admin
         .from("task_attachments")
         .insert(
-          prepared.map((item) => ({
+          verified.map((item) => ({
             organization_id: organizationId,
             task_id: taskId,
             message_id: created.id,
             uploaded_by_user_id: userId,
             file_name: item.displayName,
             mime_type: item.mimeType,
-            file_size_bytes: item.file.size,
+            file_size_bytes: item.size,
             storage_path: item.path
           }))
         )
@@ -514,14 +599,14 @@ export class TasksService {
         );
       }
 
-      const rows = (attachments ?? []) as unknown as AttachmentRow[];
+      const rows = (rowsData ?? []) as unknown as AttachmentRow[];
       const urlByPath = await this.signPathMap(rows.map((row) => row.storage_path));
       return {
         ...created,
         attachments: rows.map((row) => ({ ...row, url: urlByPath.get(row.storage_path) ?? null }))
       };
     } catch (rollbackCause) {
-      await this.removeStoredFiles("tasks.addMessage.rollback", uploaded);
+      await this.removeStoredFiles("tasks.addMessage.rollback", paths);
       await this.supabase.admin
         .from("task_messages")
         .delete()
@@ -628,8 +713,8 @@ export class TasksService {
 
   // Valida tipo y tamaño, y arma nombre + path. No toca storage: se corre sobre
   // todos los archivos antes de subir el primero.
-  private prepareAttachment(organizationId: string, taskId: string, file: UploadedAttachmentFile) {
-    if (!file?.buffer?.length) {
+  private prepareAttachment(organizationId: string, taskId: string, file: AttachmentUploadRequest) {
+    if (!file.size) {
       throw new BadRequestException("El archivo está vacío.");
     }
 
@@ -637,14 +722,11 @@ export class TasksService {
     const extension = ATTACHMENT_MIME_TYPES.get(mimeType)!;
 
     if (file.size > ATTACHMENT_MAX_SIZE_BYTES) {
-      const megabytes = (file.size / 1_048_576).toFixed(1).replace(".", ",");
-      throw new BadRequestException(
-        `«${file.originalname}» pesa ${megabytes} MB. El límite es 5 MB por archivo.`
-      );
+      throw new BadRequestException(tooLargeMessage(file.name, file.size));
     }
 
     const safeBaseName =
-      file.originalname
+      file.name
         .replace(/\.[^.]+$/, "")
         .toLowerCase()
         .replace(/[^a-z0-9-]+/g, "-")
@@ -652,31 +734,58 @@ export class TasksService {
         .slice(0, 48) || "archivo";
 
     return {
-      file,
       mimeType,
-      // Nombre saneado: sin saltos de línea y acotado (viene del cliente, no es confiable).
-      displayName: file.originalname.replace(/[\r\n\t]+/g, " ").trim().slice(0, 200) || "archivo",
-      path: `${organizationId}/${taskId}/${Date.now()}-${safeBaseName}.${extension}`
+      displayName: sanitizeDisplayName(file.name),
+      // El sufijo aleatorio evita choques entre archivos firmados en el mismo ms.
+      path: `${organizationId}/${taskId}/${Date.now()}-${randomBytes(4).toString("hex")}-${safeBaseName}.${extension}`
     };
   }
 
-  // El navegador miente: Windows y Safari mandan application/octet-stream o
-  // text/plain para varios .csv/.docx. Si el MIME declarado no está en el
-  // allowlist, se resuelve por extensión. El MIME que devuelve esta función es el
-  // que se guarda y el que se manda al bucket, así que siempre pertenece al
-  // allowlist del bucket.
-  private normalizeMimeType(file: UploadedAttachmentFile): string {
-    if (ATTACHMENT_MIME_TYPES.has(file.mimetype)) {
-      return file.mimetype;
+  private normalizeMimeType(file: AttachmentUploadRequest): string {
+    if (ATTACHMENT_MIME_TYPES.has(file.type)) {
+      return file.type;
     }
 
-    const extension = file.originalname.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+    const extension = file.name.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
     const byExtension = extension ? MIME_BY_EXTENSION.get(extension) : undefined;
     if (byExtension) {
       return byExtension;
     }
 
-    throw new BadRequestException(`«${file.originalname}» no es un formato permitido. ${ATTACHMENT_TYPES_MESSAGE}`);
+    throw new BadRequestException(`«${file.name}» no es un formato permitido. ${ATTACHMENT_TYPES_MESSAGE}`);
+  }
+
+  // Lo que manda el navegador no es confiable: el tamaño y el formato se leen
+  // del objeto que quedó en Storage. El MIME esperado sale de la extensión, que
+  // eligió el server al firmar.
+  private async verifyUploadedAttachment(attachment: { path: string; name: string }): Promise<VerifiedAttachment> {
+    const displayName = sanitizeDisplayName(attachment.name);
+    const { data, error } = await this.supabase.admin.storage.from(ATTACHMENT_BUCKET).info(attachment.path);
+    if (error || !data) {
+      throw new BadRequestException(`No se encontró «${displayName}». Volvé a adjuntarlo.`);
+    }
+
+    const info = data as { size?: number; contentType?: string; metadata?: { size?: number; mimetype?: string } };
+    const size = Number(info.size ?? info.metadata?.size ?? 0);
+    const contentType = String(info.contentType ?? info.metadata?.mimetype ?? "")
+      .split(";")[0]!
+      .trim()
+      .toLowerCase();
+
+    if (!size) {
+      throw new BadRequestException("El archivo está vacío.");
+    }
+    if (size > ATTACHMENT_MAX_SIZE_BYTES) {
+      throw new BadRequestException(tooLargeMessage(displayName, size));
+    }
+
+    const extension = attachment.path.slice(attachment.path.lastIndexOf(".") + 1);
+    const mimeType = MIME_BY_EXTENSION.get(extension);
+    if (!mimeType || contentType !== mimeType) {
+      throw new BadRequestException(`«${displayName}» no es un formato permitido. ${ATTACHMENT_TYPES_MESSAGE}`);
+    }
+
+    return { path: attachment.path, displayName, mimeType, size };
   }
 
   private async ensureTaskInOrganization(organizationId: string, taskId: string) {

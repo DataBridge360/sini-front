@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   apiRequest,
-  apiUploadForm,
+  uploadToSignedUrl,
   type ApiCommonOptions,
   type Client,
   type OrganizationMember,
   type Policy,
+  type SignedAttachmentUpload,
   type TaskDetail,
   type TaskFormPayload,
   type TaskListItem,
@@ -201,22 +202,45 @@ export function TasksView({
     onError
   });
 
-  // Una actividad viaja completa: texto y archivos en una sola request, con
-  // progreso real de subida.
+  // Una actividad con archivos va en tres pasos: el server firma una subida por
+  // archivo, el navegador sube directo a Storage (con progreso real) y al final
+  // se confirma la actividad; el server verifica los objetos antes de guardarla.
   const addMessage = useMutation({
-    mutationFn: ({ taskId, message, files }: { taskId: string; message: string; files: File[] }) => {
-      setUploadProgress(files.length > 0 ? 0 : null);
-      return apiUploadForm<unknown>(
-        `/tasks/${taskId}/messages`,
-        () => {
-          const form = new FormData();
-          if (message) form.set("message", message);
-          for (const file of files) form.append("files", file);
-          return form;
-        },
-        // Solo hay progreso que mostrar si viajan archivos.
-        files.length > 0 ? { ...common, onProgress: setUploadProgress } : common
+    mutationFn: async ({ taskId, message, files }: { taskId: string; message: string; files: File[] }) => {
+      const send = (attachments: Array<{ path: string; name: string }>) =>
+        apiRequest<unknown>(`/tasks/${taskId}/messages`, {
+          ...common,
+          method: "POST",
+          body: { message: message || null, attachments }
+        });
+
+      if (files.length === 0) {
+        return send([]);
+      }
+
+      setUploadProgress(0);
+      const { uploads } = await apiRequest<{ uploads: SignedAttachmentUpload[] }>(
+        `/tasks/${taskId}/attachments/uploads`,
+        {
+          ...common,
+          method: "POST",
+          body: { files: files.map((file) => ({ name: file.name, type: file.type, size: file.size })) }
+        }
       );
+
+      // Solo hay progreso que mostrar si viajan archivos: se suma lo subido de todos.
+      const totalBytes = files.reduce((sum, file) => sum + file.size, 0) || 1;
+      const loadedBytes = files.map(() => 0);
+      await Promise.all(
+        uploads.map((upload, index) =>
+          uploadToSignedUrl(upload, files[index]!, (loaded) => {
+            loadedBytes[index] = loaded;
+            setUploadProgress(Math.min(1, loadedBytes.reduce((sum, value) => sum + value, 0) / totalBytes));
+          })
+        )
+      );
+
+      return send(uploads.map((upload) => ({ path: upload.path, name: upload.name })));
     },
     onSettled: () => setUploadProgress(null),
     onSuccess: (_data, { taskId }) => invalidateTask(taskId),
