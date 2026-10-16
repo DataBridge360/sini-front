@@ -1,3 +1,7 @@
+import "server-only";
+import { authenticate } from "@/server/core/context";
+import { getSupabase } from "@/server/core/supabase";
+
 // Helpers SOLO de servidor para el proxy hacia Club Plaza.
 //
 // Las credenciales del productor viven en variables de entorno sin prefijo
@@ -38,25 +42,17 @@ export function getClubplazaClubId(): string {
   return requiredEnv("CLUBPLAZA_CLUB_ID");
 }
 
-// Valida que quien llama al proxy tenga una sesión activa de SiniPro,
-// consultando GET /profile del backend propio con el token recibido.
+// Valida que quien llama al proxy tenga una sesión activa de SiniPro, con la
+// misma verificación que las rutas `user` de la API (token + perfil activo).
 export async function requireSiniproSession(request: Request): Promise<void> {
   const authorization = request.headers.get("authorization");
   if (!authorization) {
     throw new ProxyError("Necesitás iniciar sesión en SiniPro", 401);
   }
 
-  const backendUrl =
-    process.env.BACKEND_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
-  const headers = new Headers({ Authorization: authorization });
-  const organizationSlug = request.headers.get("x-organization-slug");
-  if (organizationSlug) {
-    headers.set("X-Organization-Slug", organizationSlug);
-  }
-
-  const response = await fetch(`${backendUrl}/profile`, { headers, cache: "no-store" });
-  if (!response.ok) {
+  try {
+    await authenticate(request.headers, getSupabase());
+  } catch {
     throw new ProxyError("Sesión de SiniPro inválida o expirada", 401);
   }
 }

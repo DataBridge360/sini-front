@@ -1,4 +1,7 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+// La API vive en esta misma app (app/api/v1): mismo origen, sin CORS. Fijo a
+// propósito, para que un NEXT_PUBLIC_API_URL viejo no mande tráfico al backend
+// separado que se dio de baja.
+const API_URL = "/api/v1";
 
 export type AuthState = {
   accessToken: string;
