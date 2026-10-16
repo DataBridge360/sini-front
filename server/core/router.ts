@@ -258,7 +258,9 @@ async function readLimitedBytes(request: Request, maxBytes: number): Promise<Uin
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel();
+      // Se deja de leer sin cancel(): cancelar el body de undici a mitad de un
+      // chunk dispara un ERR_INVALID_STATE no manejado. El resto se descarta.
+      reader.releaseLock();
       throw tooLarge();
     }
     chunks.push(value);
