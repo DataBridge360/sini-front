@@ -62,8 +62,16 @@ Vercel corta los bodies en 4.5 MB, así que los archivos no pasan por la API:
 2. El navegador sube cada archivo directo a Supabase Storage (`PUT` a la URL firmada).
 3. `POST /api/v1/tasks/:id/messages` con `{ message, attachments: [{ path, name }] }`. Antes de guardar, el server verifica cada objeto en Storage: que sea de la tarea, que exista, su tamaño y su formato. Si algo falla, borra los objetos y no se guarda nada.
 
-Si alguien abandona la subida después del paso 2, el objeto queda huérfano en el
-bucket privado `task-attachments`. Nadie puede acceder a él, pero ocupa espacio.
+Los archivos se suben recién cuando la persona envía la actividad, y las imágenes
+viajan comprimidas (WEBP, máx. 1920 px, ver `lib/media.ts`). No quedan huérfanos:
+
+- Si falla una subida o la confirmación, el navegador llama a
+  `POST /api/v1/tasks/:id/attachments/discard` con los paths. El server borra solo
+  los de esa tarea que ninguna actividad vincula.
+- Si se cierra la pestaña en el medio, el Cron de Vercel (`vercel.json`, todos los
+  días 07:00 UTC) llama a `/api/cron/task-attachments-cleanup`. Ahí se borran los
+  objetos del bucket sin fila en `task_attachments` que tengan más de 3 horas (la
+  URL firmada de subida dura 2). Si no puede consultar la base, no borra nada.
 
 ## Desarrollo
 
@@ -90,7 +98,7 @@ pnpm start
 
 ## Deploy (Vercel)
 
-1. Cargar en el proyecto de Vercel `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` y `BASE_DOMAIN`, sin prefijo `NEXT_PUBLIC_`.
+1. Cargar en el proyecto de Vercel `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `BASE_DOMAIN` y `CRON_SECRET` (un valor aleatorio largo), sin prefijo `NEXT_PUBLIC_`. Sin `CRON_SECRET`, el barrido de huérfanos responde 503 y no corre.
 2. Borrar `NEXT_PUBLIC_API_URL`, que ya no se usa.
 3. Verificar login, tareas con adjuntos y el logo de la organización en el preview.
 4. Recién después dar de baja el servicio `sinipro-backend` de Cloud Run.

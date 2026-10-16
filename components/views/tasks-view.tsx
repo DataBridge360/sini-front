@@ -231,16 +231,33 @@ export function TasksView({
       // Solo hay progreso que mostrar si viajan archivos: se suma lo subido de todos.
       const totalBytes = files.reduce((sum, file) => sum + file.size, 0) || 1;
       const loadedBytes = files.map(() => 0);
-      await Promise.all(
-        uploads.map((upload, index) =>
-          uploadToSignedUrl(upload, files[index]!, (loaded) => {
-            loadedBytes[index] = loaded;
-            setUploadProgress(Math.min(1, loadedBytes.reduce((sum, value) => sum + value, 0) / totalBytes));
-          })
-        )
-      );
+      try {
+        // allSettled: si una subida falla hay que esperar a las demás para poder
+        // descartar todo lo que sí llegó a Storage.
+        const results = await Promise.allSettled(
+          uploads.map((upload, index) =>
+            uploadToSignedUrl(upload, files[index]!, (loaded) => {
+              loadedBytes[index] = loaded;
+              setUploadProgress(Math.min(1, loadedBytes.reduce((sum, value) => sum + value, 0) / totalBytes));
+            })
+          )
+        );
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed) {
+          throw failed.reason;
+        }
 
-      return send(uploads.map((upload) => ({ path: upload.path, name: upload.name })));
+        return await send(uploads.map((upload) => ({ path: upload.path, name: upload.name })));
+      } catch (error) {
+        // Nada queda huérfano: lo subido de una actividad que no se guardó se
+        // descarta. El server solo borra paths que ninguna actividad vincula.
+        await apiRequest(`/tasks/${taskId}/attachments/discard`, {
+          ...common,
+          method: "POST",
+          body: { paths: uploads.map((upload) => upload.path) }
+        }).catch(() => undefined);
+        throw error;
+      }
     },
     onSettled: () => setUploadProgress(null),
     onSuccess: (_data, { taskId }) => invalidateTask(taskId),

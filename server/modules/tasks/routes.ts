@@ -4,6 +4,7 @@ import { route, type Route } from "@/server/core/router";
 import {
   createAttachmentUploadsSchema,
   createTaskMessageSchema,
+  discardAttachmentUploadsSchema,
   createTaskSchema,
   listTasksQuerySchema,
   taskStatsQuerySchema,
@@ -93,6 +94,16 @@ export const tasksRoutes: Route[] = [
     handler: async ({ organization, uuidParam, body }) => {
       const id = uuidParam("id");
       return service().createAttachmentUploads(organization.id, id, await body(createAttachmentUploadsSchema));
+    }
+  }),
+
+  route({
+    method: "POST",
+    path: "/tasks/:id/attachments/discard",
+    access: "organization",
+    handler: async ({ organization, uuidParam, body }) => {
+      const id = uuidParam("id");
+      return service().discardAttachmentUploads(organization.id, id, await body(discardAttachmentUploadsSchema));
     }
   }),
 

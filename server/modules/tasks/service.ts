@@ -20,6 +20,7 @@ import { canTransitionStatus, transitionErrorMessage } from "./tasks.rules";
 import {
   taskBoardStatusValues,
   type CreateAttachmentUploadsDto,
+  type DiscardAttachmentUploadsDto,
   type CreateTaskDto,
   type CreateTaskMessageDto,
   type ListTasksQueryDto,
@@ -623,6 +624,31 @@ export class TasksService {
         .eq("id", created.id);
       throw rollbackCause;
     }
+  }
+
+  // Descarta lo que el navegador subió para una actividad que no llegó a
+  // confirmarse (falló una subida o la confirmación). Solo borra paths de esta
+  // tarea que ninguna actividad vincula: si la confirmación sí llegó, no toca nada.
+  async discardAttachmentUploads(organizationId: string, taskId: string, dto: DiscardAttachmentUploadsDto) {
+    await this.ensureTaskInOrganization(organizationId, taskId);
+
+    if (dto.paths.some((path) => !isTaskAttachmentPath(organizationId, taskId, path))) {
+      throw new BadRequestException(INVALID_ATTACHMENT_MESSAGE);
+    }
+
+    const paths = [...new Set(dto.paths)];
+    const { data: used, error } = await this.supabase.admin
+      .from("task_attachments")
+      .select("storage_path")
+      .in("storage_path", paths);
+    if (error) {
+      throw supabaseError(this.logger, "tasks.discardAttachmentUploads", error, "No se pudieron descartar los adjuntos.");
+    }
+
+    const linked = new Set((used ?? []).map((row: { storage_path: string }) => row.storage_path));
+    const orphans = paths.filter((path) => !linked.has(path));
+    await this.removeStoredFiles("tasks.discardAttachmentUploads", orphans);
+    return { ok: true, removed: orphans.length };
   }
 
   async deleteMessage(

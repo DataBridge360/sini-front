@@ -417,3 +417,47 @@ describe("POST /tasks/:id/messages", () => {
     expect(state.insertedAttachments[0]?.file_name).toBe("linea nueva .png");
   });
 });
+
+describe("POST /tasks/:id/attachments/discard", () => {
+  const discard = (paths: unknown) => post(`/tasks/${TASK}/attachments/discard`, { paths });
+
+  it("removes uploaded objects that no activity links", async () => {
+    const uploads = await signAndStore([
+      { name: "a.png", type: "image/png", size: 10 },
+      { name: "b.pdf", type: "application/pdf", size: 10 }
+    ]);
+    const response = await discard(uploads.map((upload) => upload.path));
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ ok: true, removed: 2 });
+    expect(state.removed).toEqual([uploads.map((upload) => upload.path)]);
+  });
+
+  it("never removes an object an activity already links", async () => {
+    const uploads = await signAndStore([
+      { name: "a.png", type: "image/png", size: 10 },
+      { name: "b.png", type: "image/png", size: 10 }
+    ]);
+    state.usedPaths = [uploads[0]!.path];
+    const response = await discard(uploads.map((upload) => upload.path));
+
+    expect(await response.json()).toEqual({ ok: true, removed: 1 });
+    expect(state.removed).toEqual([[uploads[1]!.path]]);
+  });
+
+  it("rejects paths outside the task folder without removing anything", async () => {
+    const response = await discard([`${OTHER_ORG}/${TASK}/1700000000000-abcdef12-x.pdf`]);
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toBe("Adjunto inválido. Volvé a adjuntar el archivo.");
+    expect(state.removed).toEqual([]);
+  });
+
+  it("answers 404 for a task of another organization without removing anything", async () => {
+    state.task = null;
+    const response = await discard([`${ORG}/${TASK}/1700000000000-abcdef12-x.pdf`]);
+
+    expect(response.status).toBe(404);
+    expect(state.removed).toEqual([]);
+  });
+});

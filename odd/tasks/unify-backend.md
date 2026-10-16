@@ -14,6 +14,8 @@ Branch: `feat/unify-backend` (from `develop`). The old backend lives at `../back
 - **S3 — Same contract.** Paths, methods, query params, response shapes and the `X-Next-Cursor` header stay identical to `../backend`, so the UI does not change beyond the API base URL.
 - **S4 — No AI.** "no tenemos nada de IA y demas" + decision "Eliminarlo" → policy PDF analysis (`POST /policies/analyze`, `PolicyAnalysisModal`, OpenAI, `unpdf`, all `AI_*` env) is removed, not ported. `suggestNextPaymentDate` is kept if the policy form still uses it.
 - **S5 — Attachments over Vercel's 4.5 MB limit.** Decision "Subida directa firmada" → task activity attachments keep 10 files × 5 MB, same MIME/extension rules. The browser asks the server for signed upload URLs (server validates session, org, task, type, size, fixed path), uploads directly to Supabase Storage, then confirms; the server verifies the objects exist under the signed paths with the declared size before creating the message and rows, and removes the objects if confirmation fails. All-or-nothing is preserved from the user's point of view.
+- **S7 — No orphaned uploads.** "que no queden archivos huerfanos, unicamente se suben si se confirma, y deben subirse comprimidos" → files upload only after the user sends the activity; if upload or confirmation fails the client discards what it uploaded (server removes only unlinked paths of that task); a protected daily cron removes unlinked objects older than 3 h left by abandoned uploads. Images keep the existing browser compression before upload.
+- **S8 — Develop.** "ponlo en develop unicamente asi lo puedo probar" → integrate the branch into `develop` only (not `main`).
 - **S6 — Git.** "haz un git pull de develop y main" → done before starting (frontend `main` fast-forwarded 33 commits; backend up to date).
 
 ## Tasks
@@ -26,6 +28,8 @@ Branch: `feat/unify-backend` (from `develop`). The old backend lives at `../back
 | T4 | S2 S3 | worker C: tasks (without attachment upload), club-plaza-registrations | done | 4ea2e12 |
 | T5 | S5 | inline | done (22 tests) | 5c811b3 |
 | T6 | S1 S4 | inline: wire route table, base URL, remove AI, security headers | done | e18e5e4, 4c4304e |
+| T8 | S7 | inline: discard endpoint, client cleanup, cron sweep | done (171 tests, build ok) | see git log |
+| T9 | S8 | inline: fast-forward develop | pending | |
 | T7 | S1 S2 | inline docs/env + independent verify | done (verify: S1-S4 pass, S5 security pass) | 8dfa8d5, see L11 |
 
 - T1: `server/` core: env, Supabase clients, HttpError family (Nest-compatible bodies), auth/org context, router with access table, body limits, validation helpers, rate limiter, `app/api/v1/[...path]/route.ts`; vitest + tests.
@@ -59,4 +63,5 @@ Branch: `feat/unify-backend` (from `develop`). The old backend lives at `../back
 - L9 (evidence): `next build` passes; `.next/static` has 0 hits for service-role/server code. 160 server tests pass.
 - L10 (blocker): harness blocks edits to `.env.example`; README documents the new server env vars instead.
 - L11 (verify): no security regression. Fixed finding 1 (concurrent double-confirm deleted linked files on unique violation). Open: orphaned unconfirmed uploads (no cleanup), stale `.env.example` (harness-blocked).
+- L12 (user): "ponlo en develop unicamente asi lo puedo probar. y que no queden archivos huerfanos, unicamente se suben si se confirma, y deben subirse comprimidos"
 - L6 (note): `~/.git` (empty home repo, holds `engram-project-identity.json`) — user approved deletion, harness blocked `rm -rf`; user to run it manually.

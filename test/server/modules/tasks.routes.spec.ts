@@ -16,6 +16,7 @@ const EXPECTED = [
   ["DELETE", "/tasks/:id", "organization"],
   // Reemplazan al POST multipart de Nest (spec S5): firma + confirmación.
   ["POST", "/tasks/:id/attachments/uploads", "organization"],
+  ["POST", "/tasks/:id/attachments/discard", "organization"],
   ["POST", "/tasks/:id/messages", "organization"],
   ["DELETE", "/tasks/:id/messages/:messageId", "organization"],
   ["DELETE", "/tasks/:id/attachments/:attachmentId", "organization"]

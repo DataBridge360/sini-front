@@ -76,6 +76,11 @@ export const createAttachmentUploadsSchema = z.object({
     .max(50)
 });
 
+// Lo que subió el navegador para una actividad que no llegó a confirmarse.
+export const discardAttachmentUploadsSchema = z.object({
+  paths: z.array(z.string().min(1).max(512)).min(1).max(50)
+});
+
 // El texto es opcional: una actividad puede ser solo archivos. Que venga al
 // menos una de las dos cosas lo valida el servicio.
 export const createTaskMessageSchema = z.object({
@@ -112,6 +117,7 @@ export type CreateTaskDto = z.infer<typeof createTaskSchema>;
 export type UpdateTaskDto = z.infer<typeof updateTaskSchema>;
 export type UpdateTaskStatusDto = z.infer<typeof updateTaskStatusSchema>;
 export type CreateTaskMessageDto = z.infer<typeof createTaskMessageSchema>;
+export type DiscardAttachmentUploadsDto = z.infer<typeof discardAttachmentUploadsSchema>;
 export type CreateAttachmentUploadsDto = z.infer<typeof createAttachmentUploadsSchema>;
 export type ListTasksQueryDto = z.infer<typeof listTasksQuerySchema>;
 export type TaskStatsQueryDto = z.infer<typeof taskStatsQuerySchema>;
