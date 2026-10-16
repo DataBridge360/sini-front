@@ -20,19 +20,32 @@ Branch: `feat/unify-backend` (from `develop`). The old backend lives at `../back
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S1 S2 S3 | inline | pending | |
-| T2 | S2 S3 | worker A: auth, profile, organizations, insurance-companies | pending | |
-| T3 | S2 S3 | worker B: clients, policies, notices | pending | |
-| T4 | S2 S3 | worker C: tasks (without attachment upload), club-plaza-registrations | pending | |
-| T5 | S5 | inline | pending | |
-| T6 | S1 S4 | inline: wire route table, base URL, remove AI, security headers | pending | |
-| T7 | S1 S2 | inline docs/env + independent verify | pending | |
+| T1 | S1 S2 S3 | inline | done (37 tests) | 06a303c |
+| T2 | S2 S3 | worker A: auth, profile, organizations, insurance-companies | done | d2f96d5 |
+| T3 | S2 S3 | worker B: clients, policies, notices | done | 92d0b1d |
+| T4 | S2 S3 | worker C: tasks (without attachment upload), club-plaza-registrations | done | 4ea2e12 |
+| T5 | S5 | inline | done (22 tests) | 5c811b3 |
+| T6 | S1 S4 | inline: wire route table, base URL, remove AI, security headers | done | e18e5e4, 4c4304e |
+| T7 | S1 S2 | inline docs/env + independent verify | in progress | |
 
 - T1: `server/` core: env, Supabase clients, HttpError family (Nest-compatible bodies), auth/org context, router with access table, body limits, validation helpers, rate limiter, `app/api/v1/[...path]/route.ts`; vitest + tests.
+- Port conventions (T2–T4): see `## Port conventions` below.
 - T2–T4: port each module to `server/modules/<name>/{schemas,service,routes}.ts`, logic verbatim, Spanish comments kept.
 - T5: signed upload flow (server routes + `lib/task-attachments.ts`/UI client).
 - T6: aggregate routes, `NEXT_PUBLIC_API_URL` default `/api/v1`, delete policy-analysis UI, `next.config.ts` headers.
 - T7: README, `.env.example`, deploy notes (Vercel env vars, Cloud Run shutdown is the user's step), verification.
+
+## Port conventions
+
+- Files: `server/modules/<backend-folder-name>/{schemas,service,routes}.ts`. Logic, queries, messages and Spanish comments copied verbatim from `../backend/src/<module>/`.
+- Imports: exceptions from `@/server/core/http-errors` (same names as Nest), `Logger` from `@/server/core/logger`, `supabaseError` from `@/server/core/supabase-error`, pagination/postgrest helpers from `@/server/core/*`, `SupabaseService`/`getSupabase` from `@/server/core/supabase`, types `AuthUser`/`OrganizationContext` from `@/server/core/context`. Every service/routes file starts with `import "server-only";`.
+- Service: plain class, no decorators, `constructor(private readonly supabase: SupabaseService)`. Routes build it lazily: `const service = () => new XService(getSupabase());`.
+- Routes: `export const <camelName>Routes: Route[] = [route({...}), ...]` in the controller's declaration order; `path` includes the controller prefix (`/clients/:id`).
+- Access: no guard → `public`; `AuthGuard` only → `user`; `AuthGuard + OrganizationGuard` → `organization` (class-level or method-level guards).
+- `@Throttle({ default: { ttl, limit } })` → `rateLimit: { limit, ttlMs: ttl }`. `@Body(new ZodValidationPipe(s))` → `await body(s)`; `@Query(new ZodValidationPipe(s))` → `query(s)`; `@Param("id", ParseUUIDPipe)` → `uuidParam("id")`; plain `@Param("x")` → `params.x`; `@Res({ passthrough: true })` + `setHeader` → `setHeader`; `@CurrentUser()` → `user`; `@CurrentOrganization()` → `organization`.
+- Multipart (`FileInterceptor`): `await formData(limit + 64 * 1024)`, then per-file size check → `new PayloadTooLargeException("File too large")`; adapt `File` to the `{ originalname, mimetype, buffer: Buffer, size }` shape the service expects.
+- Tests: `test/server/modules/<module>.routes.spec.ts` asserting the exact `[method, path, access, rateLimit]` table against the Nest controller (security test), plus ported backend specs that apply.
+- Never edit `server/core/**`, `server/routes.ts`, `package.json`, or other modules; report needed core changes instead. No commits.
 
 ## Log
 
@@ -41,4 +54,8 @@ Branch: `feat/unify-backend` (from `develop`). The old backend lives at `../back
 - L3 (decision): destination "En sini-front (Vercel)".
 - L4 (evidence): backend still has `policy-analysis` (OpenAI) used by `components/views/policies-view.tsx:178`. Decision: "Eliminarlo".
 - L5 (evidence): task activities upload up to 10 × 5 MB in one multipart request (`backend/src/tasks/tasks.controller.ts:127`); Vercel caps request bodies at 4.5 MB. Decision: "Subida directa firmada".
+- L7 (evidence): core fix b4983bf — cancelling an oversized undici body raised an unhandled ERR_INVALID_STATE (found by worker C; T1 had been reported green without checking the exit code).
+- L8 (evidence): worker A found Nest applied the 1 MB JSON limit to all `/profile/*`; `/profile/password` now gets 1 MB too.
+- L9 (evidence): `next build` passes; `.next/static` has 0 hits for service-role/server code. 160 server tests pass.
+- L10 (blocker): harness blocks edits to `.env.example`; README documents the new server env vars instead.
 - L6 (note): `~/.git` (empty home repo, holds `engram-project-identity.json`) — user approved deletion, harness blocked `rm -rf`; user to run it manually.
