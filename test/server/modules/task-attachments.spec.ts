@@ -23,7 +23,8 @@ const state = {
   insertedMessages: [] as Array<Record<string, unknown>>,
   insertedAttachments: [] as Array<Record<string, unknown>>,
   deletedMessages: [] as unknown[],
-  failAttachmentInsert: false
+  failAttachmentInsert: false,
+  failAttachmentInsertCode: null as string | null
 };
 
 function resetState() {
@@ -36,6 +37,7 @@ function resetState() {
   state.insertedAttachments = [];
   state.deletedMessages = [];
   state.failAttachmentInsert = false;
+  state.failAttachmentInsertCode = null;
 }
 
 // Query builder falso: alcanza para las consultas de addMessage y de la firma.
@@ -55,7 +57,7 @@ function table(name: string) {
       return { data: state.usedPaths.filter((path) => paths.includes(path)).map((path) => ({ storage_path: path })), error: null };
     }
     if (name === "task_attachments" && op === "insert") {
-      if (state.failAttachmentInsert) return { data: null, error: { message: "boom" } };
+      if (state.failAttachmentInsert) return { data: null, error: { message: "boom", code: state.failAttachmentInsertCode } };
       state.insertedAttachments.push(...rows);
       return { data: rows.map((row, index) => ({ id: `att-${index}`, ...row })), error: null };
     }
@@ -391,6 +393,20 @@ describe("POST /tasks/:id/messages", () => {
     expect((await response.json()).message).toBe("No se pudieron guardar los adjuntos.");
     expect(state.deletedMessages).toHaveLength(1);
     expect(state.removed).toEqual([[uploads[0]!.path]]);
+    errorSpy.mockRestore();
+  });
+
+  it("keeps the objects when a concurrent confirmation already linked them", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const uploads = await signAndStore([{ name: "a.png", type: "image/png", size: 10 }]);
+    state.failAttachmentInsert = true;
+    state.failAttachmentInsertCode = "23505";
+    const response = await sendMessage({ attachments: [{ path: uploads[0]!.path, name: "a.png" }] });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toBe("Adjunto inválido. Volvé a adjuntar el archivo.");
+    expect(state.deletedMessages).toHaveLength(1);
+    expect(state.removed).toEqual([]);
     errorSpy.mockRestore();
   });
 

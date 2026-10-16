@@ -573,6 +573,9 @@ export class TasksService {
     }
 
     // 4) Insertar las filas. 5) Rollback si algo falla.
+    // Si otra confirmación concurrente ya vinculó estos paths (unique de
+    // storage_path), los objetos son de esa actividad: se revierte solo el mensaje.
+    let keepStoredFiles = false;
     try {
       const { data: rowsData, error: attachmentsError } = await this.supabase.admin
         .from("task_attachments")
@@ -590,6 +593,10 @@ export class TasksService {
         )
         .select(ATTACHMENT_FIELDS);
 
+      if (attachmentsError?.code === "23505") {
+        keepStoredFiles = true;
+        throw new BadRequestException(INVALID_ATTACHMENT_MESSAGE);
+      }
       if (attachmentsError) {
         throw supabaseError(
           this.logger,
@@ -606,7 +613,9 @@ export class TasksService {
         attachments: rows.map((row) => ({ ...row, url: urlByPath.get(row.storage_path) ?? null }))
       };
     } catch (rollbackCause) {
-      await this.removeStoredFiles("tasks.addMessage.rollback", paths);
+      if (!keepStoredFiles) {
+        await this.removeStoredFiles("tasks.addMessage.rollback", paths);
+      }
       await this.supabase.admin
         .from("task_messages")
         .delete()

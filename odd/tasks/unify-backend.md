@@ -26,7 +26,7 @@ Branch: `feat/unify-backend` (from `develop`). The old backend lives at `../back
 | T4 | S2 S3 | worker C: tasks (without attachment upload), club-plaza-registrations | done | 4ea2e12 |
 | T5 | S5 | inline | done (22 tests) | 5c811b3 |
 | T6 | S1 S4 | inline: wire route table, base URL, remove AI, security headers | done | e18e5e4, 4c4304e |
-| T7 | S1 S2 | inline docs/env + independent verify | in progress | |
+| T7 | S1 S2 | inline docs/env + independent verify | done (verify: S1-S4 pass, S5 security pass) | 8dfa8d5, see L11 |
 
 - T1: `server/` core: env, Supabase clients, HttpError family (Nest-compatible bodies), auth/org context, router with access table, body limits, validation helpers, rate limiter, `app/api/v1/[...path]/route.ts`; vitest + tests.
 - Port conventions (T2–T4): see `## Port conventions` below.
@@ -58,4 +58,5 @@ Branch: `feat/unify-backend` (from `develop`). The old backend lives at `../back
 - L8 (evidence): worker A found Nest applied the 1 MB JSON limit to all `/profile/*`; `/profile/password` now gets 1 MB too.
 - L9 (evidence): `next build` passes; `.next/static` has 0 hits for service-role/server code. 160 server tests pass.
 - L10 (blocker): harness blocks edits to `.env.example`; README documents the new server env vars instead.
+- L11 (verify): no security regression. Fixed finding 1 (concurrent double-confirm deleted linked files on unique violation). Open: orphaned unconfirmed uploads (no cleanup), stale `.env.example` (harness-blocked).
 - L6 (note): `~/.git` (empty home repo, holds `engram-project-identity.json`) — user approved deletion, harness blocked `rm -rf`; user to run it manually.
