@@ -1,0 +1,496 @@
+/* Dashboard (components/views/dashboard-view.tsx, components/dashboard/**).
+   Superficies blancas, borde 1px, radio 12px, sin sombras; el color solo
+   comunica estado. Los hex siguen DESIGN.md. */
+
+.db-page {
+  --db-border: #e1e7ef;
+  --db-border-strong: #cbd5e1;
+  --db-surface-low: #f8fafc;
+  --db-surface-lowest: #eef2f6;
+  --db-text: #181c20;
+  --db-muted: #5b6575;
+  --db-faint: #8a94a6;
+  --db-red: #b42318;
+  --db-red-soft: #fef3f2;
+
+  display: grid;
+  gap: 20px;
+  padding-inline: 0;
+  padding-bottom: 32px;
+  font-family: inherit;
+}
+
+/* Saludo ---------------------------------------------------------------- */
+
+.db-hello {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.db-hello-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.db-hello-text span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--db-faint);
+}
+
+.db-hello-text h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--db-text);
+}
+
+.db-hello-text p {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--db-muted);
+}
+
+.db-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.db-gesti,
+.db-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--db-border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--db-text);
+  font-size: 13px;
+  font-weight: 600;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.db-gesti {
+  padding-left: 6px;
+}
+
+.db-gesti img {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  object-fit: cover;
+}
+
+.db-action svg {
+  color: var(--org-primary);
+}
+
+.db-gesti:hover,
+.db-action:hover {
+  border-color: var(--db-border-strong);
+  background: var(--db-surface-low);
+}
+
+.db-gesti:focus-visible,
+.db-action:focus-visible,
+.db-task:focus-visible,
+.db-link:focus-visible {
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 1px;
+}
+
+/* Estructura ------------------------------------------------------------ */
+
+.db-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.db-aside {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .db-layout {
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  }
+}
+
+.db-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--db-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.db-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.db-card-head h2 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--db-text);
+}
+
+.db-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--org-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.db-link:hover {
+  opacity: 0.8;
+}
+
+/* Mi trabajo ------------------------------------------------------------ */
+
+.db-work {
+  padding: 20px;
+}
+
+.db-group + .db-group {
+  margin-top: 18px;
+}
+
+.db-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--db-muted);
+}
+
+.db-group[data-group="overdue"] h3 {
+  color: var(--db-red);
+}
+
+.db-group h3 b {
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: var(--db-surface-lowest);
+  color: var(--db-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.db-group[data-group="overdue"] h3 b {
+  background: var(--db-red-soft);
+  color: var(--db-red);
+}
+
+.db-group ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.db-task {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--db-border);
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.db-task:hover {
+  border-color: var(--db-border-strong);
+  background: color-mix(in srgb, var(--db-surface-low) 60%, #fff);
+}
+
+.db-task-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.db-task-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--db-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-task-due {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--db-muted);
+}
+
+.db-task-due[data-tone="overdue"] {
+  color: var(--db-red);
+}
+
+.db-task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--db-muted);
+}
+
+.db-chip {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.db-priority {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.db-priority i {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+
+.db-task-context {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--db-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-more {
+  margin-top: 6px;
+}
+
+.db-empty {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 36px 16px;
+  border: 1px dashed var(--db-border-strong);
+  border-radius: 12px;
+  background: var(--db-surface-low);
+  text-align: center;
+  color: var(--db-muted);
+}
+
+.db-empty svg {
+  margin-bottom: 4px;
+  color: #067647;
+}
+
+.db-empty strong {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--db-text);
+}
+
+.db-empty span {
+  max-width: 38ch;
+  font-size: 12.5px;
+}
+
+.db-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.db-note[data-tone="error"] {
+  background: var(--db-red-soft);
+  color: var(--db-red);
+}
+
+.db-skeleton-list {
+  display: grid;
+  gap: 6px;
+}
+
+.db-skeleton-list span {
+  height: 62px;
+  border-radius: 12px;
+  background: var(--db-surface-lowest);
+  animation: db-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes db-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Avisos compactos ------------------------------------------------------ */
+
+.db-notices-lead {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--db-muted);
+}
+
+.db-notices-lead strong {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--db-text);
+}
+
+.db-notices-lead em {
+  font-style: normal;
+}
+
+.db-notices-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.db-notices-stats div {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--db-surface-low);
+}
+
+.db-notices-stats dt {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--db-muted);
+}
+
+.db-notices-stats dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--db-text);
+}
+
+.db-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--db-surface-lowest);
+}
+
+.db-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--org-primary);
+}
+
+.db-notices-foot {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--db-faint);
+}
+
+/* Recuento por etapa: la tarjeta es de globals.css (radio 16, sombra);
+   acá se la alinea con el resto sin tocar ese archivo. */
+.db-aside .sp-task-stats {
+  padding: 16px;
+  border-color: var(--db-border);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+/* Mobile ---------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .db-page {
+    gap: 16px;
+  }
+
+  .db-hello-text h2 {
+    font-size: 22px;
+  }
+
+  .db-actions {
+    width: 100%;
+  }
+
+  .db-gesti {
+    flex: 1 1 100%;
+  }
+
+  .db-action {
+    flex: 1 1 0;
+    justify-content: center;
+    padding: 0 8px;
+  }
+
+  .db-work {
+    padding: 14px;
+  }
+
+  .db-task {
+    padding: 10px;
+  }
+
+  /* El vencimiento baja debajo del título: en 390px el título pierde la mitad
+     del ancho si comparte fila con "Venció hace 12 días". */
+  .db-task-main {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+
+  .db-task-meta {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .db-task-context {
+    flex: 1 1 100%;
+  }
+}

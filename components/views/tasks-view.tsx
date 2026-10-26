@@ -48,6 +48,7 @@ export function TasksView({
   currentUserId,
   canModerate,
   initialArchived = false,
+  initialTaskId = null,
   clients,
   policies,
   notify
@@ -59,6 +60,8 @@ export function TasksView({
   // finalizadas del dashboard). La vista se remonta al cambiar de pestaña, así
   // que alcanza con sembrar el estado inicial.
   initialArchived?: boolean;
+  // Abre el detalle de una tarea al entrar (desde la campana o el dashboard).
+  initialTaskId?: string | null;
   clients: Client[];
   policies: Policy[];
   notify: (message: string, tone?: "success" | "error") => void;
@@ -71,7 +74,7 @@ export function TasksView({
 
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_TASK_FILTERS);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(initialTaskId);
   const [activeStatus, setActiveStatus] = useState<TaskStatus>("pendiente");
   const [isArchivedOpen, setIsArchivedOpen] = useState(initialArchived);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);

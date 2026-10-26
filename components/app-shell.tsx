@@ -61,6 +61,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { LoadingState } from "@/components/ui/states";
 import { ToastViewport, type ToastMessage } from "@/components/ui/toast";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
+import { TaskAlertsBell } from "@/components/notifications/task-alerts-bell";
 
 // Cada vista se carga on-demand (code-split): el usuario solo descarga el chunk
 // de la pestaña que visita, y el de login no viaja a usuarios autenticados.
@@ -139,6 +140,10 @@ export function AppShell() {
   // finalizadas del dashboard va derecho a Archivadas). La navegación normal
   // siempre vuelve al tablero.
   const [tasksArchived, setTasksArchived] = useState(false);
+  // Tarea a abrir al entrar a Tareas. El contador remonta la vista para que
+  // abrir otra tarea funcione aunque ya se esté en Tareas.
+  const [tasksOpenTaskId, setTasksOpenTaskId] = useState<string | null>(null);
+  const [tasksViewKey, setTasksViewKey] = useState(0);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -168,6 +173,18 @@ export function AppShell() {
   const openTasks = useCallback(
     (archived: boolean) => {
       setTasksArchived(archived);
+      setTasksOpenTaskId(null);
+      setTab("tasks");
+    },
+    [setTab]
+  );
+
+  // Entrar a Tareas con el detalle de una tarea abierto.
+  const openTask = useCallback(
+    (taskId: string) => {
+      setTasksArchived(false);
+      setTasksOpenTaskId(taskId);
+      setTasksViewKey((key) => key + 1);
       setTab("tasks");
     },
     [setTab]
@@ -614,6 +631,7 @@ export function AppShell() {
           setOpenPolicyId(null);
           // Desde la navegación, Tareas siempre abre en el tablero.
           setTasksArchived(false);
+          setTasksOpenTaskId(null);
           setTab(next);
         }}
         urgentCount={countUrgentNotices(allNotices)}
@@ -632,7 +650,13 @@ export function AppShell() {
             <p>{subtitleForTab(tab)}</p>
           </div>
           <div className="sp-header-actions">
-            {/* Notificaciones y ayuda ocultas por ahora */}
+            <TaskAlertsBell
+              common={common}
+              currentUserId={auth.user.id}
+              canModerate={canManageOrganization}
+              onOpenTask={openTask}
+              onOpenTasks={() => openTasks(false)}
+            />
             <UserMenu
               userName={auth.user.fullName}
               userEmail={auth.user.email}
@@ -663,6 +687,7 @@ export function AppShell() {
               error={notices.error?.message ?? clients.error?.message ?? policies.error?.message ?? null}
               setTab={setTab}
               onOpenTasks={openTasks}
+              onOpenTask={openTask}
               onCreateClient={(body) => createClient.mutateAsync(body)}
               onCreatePolicy={(values) => createPolicy.mutateAsync(values)}
             />
@@ -692,6 +717,8 @@ export function AppShell() {
           ) : null}
           {tab === "tasks" ? (
             <TasksView
+              key={tasksViewKey}
+              initialTaskId={tasksOpenTaskId}
               common={common}
               currentUserId={auth.user.id}
               canModerate={canManageOrganization}
@@ -867,13 +894,11 @@ function Sidebar({
     { key: "dashboard" as const, name: "Dashboard", icon: LayoutDashboard },
     { key: "notices" as const, name: "Avisos", icon: CalendarDays, count: urgentCount },
     { key: "tasks" as const, name: "Tareas", icon: ListTodo },
+    { key: "gesti" as const, name: "Gesti", icon: GestiNavIcon },
     { key: "policies" as const, name: "Pólizas", icon: FileText },
     { key: "clients" as const, name: "Asegurados", icon: Users },
     // Planilla de Club Plaza: la usan productores y asesores por igual.
-    { key: "clubplaza" as const, name: "Club Plaza", icon: FileSpreadsheet },
-    // Último a propósito: en el celular cae en "Más" y no desplaza a los cuatro
-    // destinos de la barra inferior.
-    { key: "gesti" as const, name: "Gesti", icon: GestiNavIcon }
+    { key: "clubplaza" as const, name: "Club Plaza", icon: FileSpreadsheet }
   ];
 
   // Compañías queda disponible para todo el equipo; el resto pide rol productor.
@@ -892,9 +917,15 @@ function Sidebar({
   // siete había que deslizar de costado, y una barra que se desliza no avisa
   // que esconde algo. Los que sobran se agrupan detrás de "Más", que sí se ve.
   // En escritorio la barra es vertical y hay lugar para todos.
+  // En el celular Gesti va en el centro de la barra: Dashboard, Avisos, Gesti,
+  // Tareas y "Más".
   const isWideNav = useIsWideScreen(900);
-  const primaryNav = isWideNav ? nav : nav.slice(0, 4);
-  const overflowNav = isWideNav ? settingsNav : [...nav.slice(4), ...settingsNav];
+  const mobilePrimaryKeys: Tab[] = ["dashboard", "notices", "gesti", "tasks"];
+  const mobilePrimaryNav = mobilePrimaryKeys.flatMap((key) => nav.filter((item) => item.key === key));
+  const primaryNav = isWideNav ? nav : mobilePrimaryNav;
+  const overflowNav = isWideNav
+    ? settingsNav
+    : [...nav.filter((item) => !mobilePrimaryKeys.includes(item.key)), ...settingsNav];
   const overflowLabel = isWideNav ? "Configuración" : "Más";
   const isOverflowActive = overflowNav.some((item) => item.key === tab);
 
@@ -952,7 +983,7 @@ function Sidebar({
                 <Icon size={20} />
                 <span>{item.name}</span>
                 {"count" in item && typeof item.count === "number" && item.count > 0 ? (
-                  <b>{item.count}</b>
+                  <b aria-label={`${item.count} pendientes`}>{item.count > 99 ? "99+" : item.count}</b>
                 ) : null}
               </button>
             );
