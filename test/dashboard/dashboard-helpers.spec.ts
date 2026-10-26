@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { TaskListItem } from "@/lib/api";
 import {
+  buildAgenda,
+  buildDaySegments,
   buildDaySummary,
+  buildSuggestions,
+  buildWeekList,
   buildWorkGroups,
   firstNameOf,
-  greetingForHour
+  greetingForHour,
+  shortDayLabel,
+  taskContext
 } from "@/components/dashboard/dashboard-helpers";
 
 describe("greetingForHour", () => {
@@ -47,6 +53,14 @@ function task(overrides: Partial<TaskListItem> & { id: string }): TaskListItem {
     attachments_count: 0,
     ...overrides
   } as TaskListItem;
+}
+
+// Relaciones que `task()` no arma: cliente y póliza de la tarea.
+function relations(client: string | null, policyNumber: string | null) {
+  return {
+    clients: client ? { full_name: client } : null,
+    policies: policyNumber ? { policy_number: policyNumber } : null
+  } as unknown as Pick<TaskListItem, "clients" | "policies">;
 }
 
 const groupsOf = (tasks: TaskListItem[], canModerate = false) =>
@@ -107,5 +121,100 @@ describe("buildDaySummary", () => {
     expect(summary([task({ id: "t", due_date: "2026-10-27" })])).toBe("Hoy no hay nada urgente. Mañana tenés 1 tarea.");
     expect(summary([task({ id: "l", due_date: "2026-11-05" })])).toBe("Nada urgente por hoy. Tenés 1 tarea más adelante.");
     expect(summary([])).toBe("Estás al día: no tenés tareas pendientes. ¡Buen momento para adelantar avisos!");
+  });
+});
+
+describe("buildDaySegments", () => {
+  it("highlights the counts, and paints overdue as its own tone", () => {
+    const segments = buildDaySegments(
+      groupsOf([
+        task({ id: "a", due_date: "2026-10-26" }),
+        task({ id: "b", due_date: "2026-10-26" }),
+        task({ id: "c", due_date: "2026-10-20" })
+      ])
+    );
+    expect(segments.filter((segment) => segment.tone).map((segment) => [segment.text, segment.tone])).toEqual([
+      ["2 tareas", "count"],
+      ["1 vencida", "overdue"]
+    ]);
+  });
+
+  it("has no highlighted segment when there is nothing to do", () => {
+    expect(buildDaySegments([]).some((segment) => segment.tone)).toBe(false);
+  });
+});
+
+describe("buildAgenda", () => {
+  const tasks = [
+    task({ id: "tomorrow", due_date: "2026-10-27" }),
+    task({ id: "today", due_date: "2026-10-26" }),
+    task({ id: "late", due_date: "2026-10-24" }),
+    task({ id: "later", due_date: "2026-10-30" })
+  ];
+
+  it("lists overdue, today and tomorrow in that order, with a label per row", () => {
+    const { rows, total } = buildAgenda(groupsOf(tasks), 10);
+    expect(rows.map((row) => [row.item.task.id, row.state, row.dueLabel])).toEqual([
+      ["late", "overdue", "Venció hace 2 días"],
+      ["today", "today", "Hoy"],
+      ["tomorrow", "tomorrow", "Mañana"]
+    ]);
+    expect(total).toBe(3);
+  });
+
+  it("caps the rows but keeps the real total", () => {
+    const { rows, total } = buildAgenda(groupsOf(tasks), 2);
+    expect(rows.map((row) => row.item.task.id)).toEqual(["late", "today"]);
+    expect(total).toBe(3);
+  });
+});
+
+describe("taskContext", () => {
+  it("joins client and policy number, and tolerates missing parts", () => {
+    expect(
+      taskContext(
+        task({ id: "a", ...relations("Ana Pérez", "7781-03") })
+      )
+    ).toBe("Ana Pérez · 7781-03");
+    expect(taskContext(task({ id: "b" }))).toBe("");
+  });
+});
+
+describe("buildSuggestions", () => {
+  it("proposes the most urgent task and a message for the first client on the agenda", () => {
+    const groups = groupsOf([
+      task({ id: "today", title: "Llamar", due_date: "2026-10-26" }),
+      task({ id: "late", title: "Renovar póliza", due_date: "2026-10-24", ...relations("Ana Pérez", null) })
+    ]);
+    expect(buildSuggestions(groups)).toEqual([
+      { kind: "task", taskId: "late", label: "Empezá por “Renovar póliza”" },
+      { kind: "gesti", label: "Redactá un mensaje para Ana Pérez" }
+    ]);
+  });
+
+  it("skips the message when no task on the agenda has a client, and is empty without urgent tasks", () => {
+    expect(buildSuggestions(groupsOf([task({ id: "t", title: "Llamar", due_date: "2026-10-26" })]))).toEqual([
+      { kind: "task", taskId: "t", label: "Empezá por “Llamar”" }
+    ]);
+    expect(buildSuggestions(groupsOf([task({ id: "l", due_date: "2026-11-20" })]))).toEqual([]);
+  });
+});
+
+describe("buildWeekList / shortDayLabel", () => {
+  it("keeps only what is due within the week after tomorrow", () => {
+    const items = buildWeekList(
+      groupsOf([
+        task({ id: "far", due_date: "2026-11-20" }),
+        task({ id: "thursday", due_date: "2026-10-29" }),
+        task({ id: "nodate" })
+      ]),
+      5
+    );
+    expect(items.map((item) => item.task.id)).toEqual(["thursday"]);
+  });
+
+  it("formats a date as weekday and day", () => {
+    expect(shortDayLabel("2026-10-29")).toBe("Jue 29");
+    expect(shortDayLabel("2026-11-01")).toBe("Dom 1");
   });
 });

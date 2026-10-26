@@ -1,8 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Users } from "lucide-react";
-import Image from "next/image";
 import { useMemo, useState } from "react";
 import {
   apiRequest,
@@ -15,15 +13,29 @@ import {
 import { capitalizeFirst } from "@/lib/format";
 import type { PolicyFormValues, Tab } from "@/lib/shell-types";
 import { ClientCreateModal } from "@/components/clients/client-create-modal";
-import { buildDaySummary, buildWorkGroups, firstNameOf, greetingForHour } from "@/components/dashboard/dashboard-helpers";
-import { MyWorkPanel } from "@/components/dashboard/my-work-panel";
-import { NoticesSummary } from "@/components/dashboard/notices-summary";
-import { TaskCalendar } from "@/components/dashboard/task-calendar";
-import { TaskStatsCard } from "@/components/dashboard/task-stats-card";
+import { Briefing } from "@/components/dashboard/briefing";
+import {
+  buildAgenda,
+  buildDaySegments,
+  buildSuggestions,
+  buildWeekList,
+  buildWorkGroups,
+  firstNameOf,
+  greetingForHour,
+  type Suggestion
+} from "@/components/dashboard/dashboard-helpers";
+import { QuickActions } from "@/components/dashboard/quick-actions";
+import { ApprovalsCard, NoticesCard, WeekCard } from "@/components/dashboard/side-cards";
+import { TodayList } from "@/components/dashboard/today-list";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 
 const NO_TASKS: Task[] = [];
+
+// Lo que entra sin scroll en un escritorio de 900px de alto.
+const AGENDA_ROWS = 7;
+const APPROVAL_ROWS = 3;
+const WEEK_ROWS = 4;
 
 export function DashboardView({
   userName,
@@ -83,7 +95,20 @@ export function DashboardView({
     [tasks, currentUserId, canModerate]
   );
   const greeting = greetingForHour(new Date().getHours());
-  const summary = tasksQuery.data ? buildDaySummary(groups) : "Revisando tus tareas…";
+  const segments = tasksQuery.data
+    ? buildDaySegments(groups)
+    : [{ text: "Revisando tus tareas…" }];
+  const suggestions = useMemo(() => buildSuggestions(groups), [groups]);
+  const agenda = useMemo(() => buildAgenda(groups, AGENDA_ROWS), [groups]);
+  const reviewItems = groups.find((group) => group.key === "review")?.items ?? [];
+  const weekItems = useMemo(() => buildWeekList(groups, WEEK_ROWS), [groups]);
+  const toContact = notices.filter((notice) => notice.status === "avisar").length;
+  const showApprovals = canModerate && reviewItems.length > 0;
+
+  function openSuggestion(suggestion: Suggestion) {
+    if (suggestion.kind === "task") onOpenTask(suggestion.taskId);
+    else setTab("gesti");
+  }
 
   return (
     // Sin padding propio: el margen lateral y el aire contra el header ya los
@@ -92,50 +117,46 @@ export function DashboardView({
       {error ? <ErrorState text={error} /> : null}
       {isLoading ? <LoadingState text="Cargando resumen operativo" /> : null}
 
-      <header className="db-hello">
-        <div className="db-hello-text">
-          <span>{todayLabel}</span>
-          <h2>
-            {greeting}, {firstName}
-          </h2>
-          <p>{summary}</p>
-        </div>
-        <div className="db-actions">
-          <button type="button" className="db-gesti" onClick={() => setTab("gesti")}>
-            <Image src="/gesti/gesti-avatar.webp" alt="" width={28} height={28} />
-            Preguntale a Gesti
-          </button>
-          <button type="button" className="db-action" onClick={() => setCreateOpen("policy")}>
-            <FileText size={15} />
-            Nueva póliza
-          </button>
-          <button type="button" className="db-action" onClick={() => setCreateOpen("client")}>
-            <Users size={15} />
-            Nuevo asegurado
-          </button>
-        </div>
-      </header>
+      <Briefing
+        dateLabel={todayLabel}
+        greeting={greeting}
+        firstName={firstName}
+        segments={segments}
+        suggestions={suggestions}
+        onAsk={() => setTab("gesti")}
+        onSuggestion={openSuggestion}
+      />
+
+      <QuickActions
+        toContact={toContact}
+        onNewTask={() => onOpenTasks(false)}
+        onNewPolicy={() => setCreateOpen("policy")}
+        onNewClient={() => setCreateOpen("client")}
+        onOpenNotices={() => setTab("notices")}
+        onOpenGesti={() => setTab("gesti")}
+      />
 
       <div className="db-layout">
-        <MyWorkPanel
-          groups={groups}
+        <TodayList
+          rows={agenda.rows}
+          total={agenda.total}
           isLoading={tasksQuery.isLoading}
           error={tasksQuery.error ? tasksQuery.error.message : null}
           onOpenTask={onOpenTask}
           onOpenTasks={() => onOpenTasks(false)}
         />
 
-        {/* Lo secundario: avisos compactos, recuento por etapa (COUNT en el
-            servidor, /tasks/stats) y calendario de las activas en memoria. */}
         <aside className="db-aside">
-          <NoticesSummary notices={notices} onOpenNotices={() => setTab("notices")} />
-          <TaskStatsCard
-            common={common}
-            currentUserId={currentUserId}
-            canModerate={canModerate}
-            onOpenTasks={onOpenTasks}
-          />
-          <TaskCalendar tasks={tasks} onOpenTasks={() => onOpenTasks(false)} />
+          {showApprovals ? (
+            <ApprovalsCard
+              items={reviewItems.slice(0, APPROVAL_ROWS)}
+              total={reviewItems.length}
+              onOpenTask={onOpenTask}
+              onOpenTasks={() => onOpenTasks(false)}
+            />
+          ) : null}
+          <NoticesCard notices={notices} onOpenNotices={() => setTab("notices")} />
+          {!showApprovals && weekItems.length > 0 ? <WeekCard items={weekItems} onOpenTask={onOpenTask} /> : null}
         </aside>
       </div>
 

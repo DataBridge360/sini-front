@@ -1,6 +1,7 @@
 /* Dashboard (components/views/dashboard-view.tsx, components/dashboard/**).
    Superficies blancas, borde 1px, radio 12px, sin sombras; el color solo
-   comunica estado. Los hex siguen DESIGN.md. */
+   comunica estado (rojo vencida, ámbar hoy, azul mañana, violeta revisión).
+   Los hex siguen DESIGN.md. */
 
 .db-page {
   --db-border: #e1e7ef;
@@ -11,102 +12,233 @@
   --db-muted: #5b6575;
   --db-faint: #8a94a6;
   --db-red: #b42318;
-  --db-red-soft: #fef3f2;
+  --db-amber: #b54708;
+  --db-blue: #0a5fae;
+  --db-violet: #6941c6;
 
   display: grid;
-  gap: 20px;
-  padding-inline: 0;
-  padding-bottom: 32px;
-  font-family: inherit;
-}
-
-/* Saludo ---------------------------------------------------------------- */
-
-.db-hello {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
+  align-content: start;
   gap: 16px;
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  padding-inline: 0;
+  padding-bottom: 0;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
 }
 
-.db-hello-text {
+.db-page button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.db-page button:focus-visible,
+.db-page input:focus-visible {
+  outline: 2px solid var(--org-primary-soft);
+  outline-offset: 1px;
+}
+
+/* Briefing -------------------------------------------------------------- */
+
+.db-briefing {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  align-items: center;
+  gap: 24px;
+  padding: 18px 20px;
+  border: 1px solid var(--db-border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.db-briefing-hello {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   min-width: 0;
 }
 
-.db-hello-text span {
+.db-gesti-avatar {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 9999px;
+  object-fit: cover;
+  animation: db-float 5s ease-in-out infinite;
+}
+
+@keyframes db-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.db-briefing-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.db-briefing-text > span {
   font-size: 12px;
   font-weight: 600;
   color: var(--db-faint);
 }
 
-.db-hello-text h2 {
+.db-briefing-text h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
   color: var(--db-text);
 }
 
-.db-hello-text p {
+.db-briefing-text p {
   margin: 0;
-  max-width: 60ch;
   font-size: 14px;
   line-height: 1.5;
   color: var(--db-muted);
 }
 
-.db-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.db-briefing-text p strong {
+  font-weight: 600;
+  color: var(--db-text);
 }
 
-.db-gesti,
-.db-action {
-  display: inline-flex;
+.db-briefing-text p strong[data-tone="overdue"] {
+  color: var(--db-red);
+}
+
+.db-briefing-ask {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.db-ask {
+  display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 0 14px;
+  height: 40px;
+  padding: 0 5px 0 14px;
+  border: 1px solid var(--db-border);
+  border-radius: 8px;
+  background: var(--db-surface-low);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.db-ask:focus-within {
+  border-color: var(--org-primary);
+  background: #fff;
+}
+
+.db-ask input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--db-text);
+}
+
+.db-ask input::placeholder {
+  color: var(--db-faint);
+}
+
+.db-ask button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--db-surface-lowest);
+  color: var(--db-muted);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.db-ask:focus-within button,
+.db-ask button:hover {
+  background: var(--org-primary);
+  color: var(--org-on-primary, #fff);
+}
+
+.db-suggestions {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Una sola línea: si el título es largo, el chip se recorta con puntos. */
+.db-suggestions button {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 10px;
+  border: 1px solid var(--db-border);
+  border-radius: 9999px;
+  background: #fff;
+  color: var(--db-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.db-suggestions button:hover {
+  border-color: var(--db-border-strong);
+  color: var(--db-text);
+}
+
+/* Accesos rápidos --------------------------------------------------------- */
+
+.db-quick {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.db-quick button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  min-width: 0;
+  padding: 0 12px;
   border: 1px solid var(--db-border);
   border-radius: 12px;
   background: #fff;
   color: var(--db-text);
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
 
-.db-gesti {
-  padding-left: 6px;
-}
-
-.db-gesti img {
-  width: 28px;
-  height: 28px;
-  border-radius: 9999px;
-  object-fit: cover;
-}
-
-.db-action svg {
-  color: var(--org-primary);
-}
-
-.db-gesti:hover,
-.db-action:hover {
+.db-quick button:hover {
   border-color: var(--db-border-strong);
   background: var(--db-surface-low);
 }
 
-.db-gesti:focus-visible,
-.db-action:focus-visible,
-.db-task:focus-visible,
-.db-link:focus-visible {
-  outline: 2px solid var(--org-primary-soft);
-  outline-offset: 1px;
+.db-quick svg {
+  flex: none;
+  color: var(--org-primary);
+}
+
+.db-quick b {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--db-muted);
 }
 
 /* Estructura ------------------------------------------------------------ */
@@ -114,7 +246,7 @@
 .db-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
+  gap: 16px;
   align-items: start;
 }
 
@@ -124,15 +256,15 @@
   min-width: 0;
 }
 
-@media (min-width: 1100px) {
+@media (min-width: 901px) {
   .db-layout {
-    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   }
 }
 
 .db-card {
   min-width: 0;
-  padding: 16px;
+  padding: 14px 4px 6px;
   border: 1px solid var(--db-border);
   border-radius: 12px;
   background: #fff;
@@ -143,21 +275,42 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  padding: 0 16px;
+  margin-bottom: 6px;
 }
 
 .db-card-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  font-size: 14.5px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--db-text);
 }
 
+.db-card-head h2 b {
+  padding: 0 7px;
+  border-radius: 9999px;
+  background: var(--db-surface-lowest);
+  color: var(--db-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.db-card-head h2 b[data-tone="review"] {
+  background: #f5f3ff;
+  color: var(--db-violet);
+}
+
+.sp-shell.app-redesign .db-link,
 .db-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 0;
+  border: 0;
   border-radius: 6px;
   background: none;
   color: var(--org-primary);
@@ -166,197 +319,184 @@
 }
 
 .db-link:hover {
-  opacity: 0.8;
+  text-decoration: underline;
 }
 
-/* Mi trabajo ------------------------------------------------------------ */
+/* Listas ---------------------------------------------------------------- */
 
-.db-work {
-  padding: 20px;
-}
-
-.db-group + .db-group {
-  margin-top: 18px;
-}
-
-.db-group h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--db-muted);
-}
-
-.db-group[data-group="overdue"] h3 {
-  color: var(--db-red);
-}
-
-.db-group h3 b {
-  padding: 1px 7px;
-  border-radius: 9999px;
-  background: var(--db-surface-lowest);
-  color: var(--db-muted);
-  font-size: 10.5px;
-  font-weight: 600;
-}
-
-.db-group[data-group="overdue"] h3 b {
-  background: var(--db-red-soft);
-  color: var(--db-red);
-}
-
-.db-group ul {
+.db-list {
   display: grid;
-  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.db-task {
+.db-divider {
+  display: block;
+  padding: 8px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--db-faint);
+}
+
+.db-divider[data-state="overdue"] {
+  color: var(--db-red);
+}
+
+.db-list > li:first-child > .db-divider {
+  padding-top: 2px;
+}
+
+.db-row {
   display: grid;
-  gap: 6px;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--db-border);
-  border-radius: 12px;
-  background: #fff;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
   text-align: left;
-  transition: border-color 120ms ease, background-color 120ms ease;
+  transition: background-color 120ms ease;
 }
 
-.db-task:hover {
-  border-color: var(--db-border-strong);
-  background: color-mix(in srgb, var(--db-surface-low) 60%, #fff);
+.db-row:hover {
+  background: var(--db-surface-low);
 }
 
-.db-task-main {
+.db-row-stacked,
+.db-row-week {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.db-row-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.db-row-text {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
-.db-task-title {
+.db-row-text strong {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
-  line-height: 1.4;
   color: var(--db-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.db-task-due {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--db-muted);
-}
-
-.db-task-due[data-tone="overdue"] {
-  color: var(--db-red);
-}
-
-.db-task-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--db-muted);
-}
-
-.db-chip {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.db-priority {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.db-priority i {
-  width: 6px;
-  height: 6px;
-  border-radius: 9999px;
-}
-
-.db-task-context {
+.db-row-text span {
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
+  font-size: 12px;
   color: var(--db-faint);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.db-more {
-  margin-top: 6px;
+/* En la columna angosta el contexto va debajo del título. */
+.db-row-stacked .db-row-text {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
 }
+
+.db-row-stacked .db-row-text strong,
+.db-row-stacked .db-row-text span {
+  flex: none;
+}
+
+.db-dot {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--db-border-strong);
+  border-radius: 9999px;
+}
+
+.db-dot[data-status="en_proceso"] {
+  border-color: var(--org-primary);
+  background: linear-gradient(90deg, var(--org-primary) 50%, transparent 50%);
+}
+
+.db-due {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--db-muted);
+  white-space: nowrap;
+}
+
+.db-due[data-state="overdue"] {
+  color: var(--db-red);
+}
+
+.db-due[data-state="today"] {
+  color: var(--db-amber);
+}
+
+.db-due[data-state="tomorrow"] {
+  color: var(--db-blue);
+}
+
+/* Estados ------------------------------------------------------------------ */
 
 .db-empty {
   display: grid;
   justify-items: center;
   gap: 4px;
-  padding: 36px 16px;
-  border: 1px dashed var(--db-border-strong);
-  border-radius: 12px;
-  background: var(--db-surface-low);
+  padding: 32px 16px 28px;
   text-align: center;
   color: var(--db-muted);
 }
 
 .db-empty svg {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   color: #067647;
 }
 
 .db-empty strong {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--db-text);
 }
 
 .db-empty span {
-  max-width: 38ch;
   font-size: 12.5px;
+}
+
+.db-empty .db-link {
+  margin-top: 6px;
 }
 
 .db-note {
-  margin: 0;
+  margin: 0 12px 8px;
   padding: 10px 12px;
   border-radius: 8px;
+  background: #fef3f2;
+  color: var(--db-red);
   font-size: 12.5px;
 }
 
-.db-note[data-tone="error"] {
-  background: var(--db-red-soft);
-  color: var(--db-red);
-}
-
-.db-skeleton-list {
+.db-skeleton {
   display: grid;
   gap: 6px;
+  padding: 0 12px 8px;
 }
 
-.db-skeleton-list span {
-  height: 62px;
-  border-radius: 12px;
+.db-skeleton span {
+  height: 34px;
+  border-radius: 8px;
   background: var(--db-surface-lowest);
   animation: db-pulse 1.4s ease-in-out infinite;
 }
@@ -371,52 +511,37 @@
   }
 }
 
-/* Avisos compactos ------------------------------------------------------ */
+/* Avisos de cuotas ------------------------------------------------------ */
 
-.db-notices-lead {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--db-muted);
-}
-
-.db-notices-lead strong {
-  font-size: 24px;
-  font-weight: 500;
-  color: var(--db-text);
-}
-
-.db-notices-lead em {
-  font-style: normal;
-}
-
-.db-notices-stats {
+.db-figures {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin: 0 0 12px;
+  margin: 4px 0 12px;
+  padding: 0 16px;
 }
 
-.db-notices-stats div {
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--db-surface-low);
+.db-figures div {
+  display: flex;
+  flex-direction: column-reverse;
 }
 
-.db-notices-stats dt {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--db-muted);
-}
-
-.db-notices-stats dd {
-  margin: 2px 0 0;
-  font-size: 16px;
+.db-figures dd {
+  margin: 0;
+  font-size: 22px;
   font-weight: 500;
+  line-height: 1.2;
   color: var(--db-text);
+}
+
+.db-figures dt {
+  font-size: 12px;
+  color: var(--db-muted);
 }
 
 .db-progress {
   height: 4px;
+  margin: 0 16px;
   overflow: hidden;
   border-radius: 9999px;
   background: var(--db-surface-lowest);
@@ -429,68 +554,81 @@
   background: var(--org-primary);
 }
 
-.db-notices-foot {
-  margin: 6px 0 0;
-  font-size: 11.5px;
+.db-progress-note {
+  margin: 6px 16px 8px;
+  font-size: 12px;
   color: var(--db-faint);
-}
-
-/* Recuento por etapa: la tarjeta es de globals.css (radio 16, sombra);
-   acá se la alinea con el resto sin tocar ese archivo. */
-.db-aside .sp-task-stats {
-  padding: 16px;
-  border-color: var(--db-border);
-  border-radius: 12px;
-  box-shadow: none;
 }
 
 /* Mobile ---------------------------------------------------------------- */
 
-@media (max-width: 640px) {
+@media (prefers-reduced-motion: reduce) {
+  .db-gesti-avatar,
+  .db-skeleton span {
+    animation: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .db-briefing {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  /* Una sola fila que se desliza: ocupa una línea en vez de dos o tres. */
+  .db-quick {
+    display: flex;
+    gap: 8px;
+    margin-inline: -16px;
+    padding-inline: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .db-quick::-webkit-scrollbar {
+    display: none;
+  }
+
+  .db-quick button {
+    flex: none;
+    scroll-snap-align: start;
+  }
+
+  /* Deja libre la barra inferior fija (~72px). */
   .db-page {
-    gap: 16px;
+    padding-bottom: 88px;
+  }
+}
+
+@media (max-width: 640px) {
+  .db-briefing {
+    padding: 16px;
   }
 
-  .db-hello-text h2 {
-    font-size: 22px;
+  .db-briefing-text h2 {
+    font-size: 20px;
   }
 
-  .db-actions {
-    width: 100%;
-  }
-
-  .db-gesti {
-    flex: 1 1 100%;
-  }
-
-  .db-action {
-    flex: 1 1 0;
-    justify-content: center;
-    padding: 0 8px;
-  }
-
-  .db-work {
-    padding: 14px;
-  }
-
-  .db-task {
-    padding: 10px;
-  }
-
-  /* El vencimiento baja debajo del título: en 390px el título pierde la mitad
-     del ancho si comparte fila con "Venció hace 12 días". */
-  .db-task-main {
+  /* El contexto baja debajo del título y la fecha de vencimiento no pelea. */
+  .db-row-text {
     flex-direction: column;
     align-items: stretch;
-    gap: 2px;
+    gap: 1px;
   }
 
-  .db-task-meta {
-    flex-wrap: wrap;
-    row-gap: 4px;
+  .db-row-text strong,
+  .db-row-text span {
+    flex: none;
   }
 
-  .db-task-context {
-    flex: 1 1 100%;
+  /* El vencimiento baja bajo el texto: a la derecha le quita el ancho al título. */
+  .db-row-task {
+    grid-template-columns: 16px minmax(0, 1fr);
+    row-gap: 2px;
+  }
+
+  .db-row-task .db-due {
+    grid-column: 2;
   }
 }

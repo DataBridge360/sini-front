@@ -112,27 +112,115 @@ function plural(amount: number, singular: string, many: string) {
   return `${amount} ${amount === 1 ? singular : many}`;
 }
 
-// Una línea con lo que hay para hoy, armada con el recuento real. Sin nada
-// urgente, mira un poco más adelante antes de decir que no hay nada.
-export function buildDaySummary(groups: WorkGroup[]) {
+// Un tramo de la frase de resumen. `count` y `overdue` se resaltan (el segundo
+// en rojo); el resto es texto corrido.
+export type SummarySegment = { text: string; tone?: "count" | "overdue" };
+
+const plain = (text: string): SummarySegment => ({ text });
+const counted = (text: string): SummarySegment => ({ text, tone: "count" });
+const overdueTone = (text: string): SummarySegment => ({ text, tone: "overdue" });
+
+// Una línea con lo que hay para hoy, armada con el recuento real y partida en
+// tramos para poder resaltar los números. Sin nada urgente, mira un poco más
+// adelante antes de decir que no hay nada.
+export function buildDaySegments(groups: WorkGroup[]): SummarySegment[] {
   const overdue = count(groups, "overdue");
   const today = count(groups, "today");
   const tomorrow = count(groups, "tomorrow");
   const review = count(groups, "review");
   const later = count(groups, "later");
 
-  const parts: string[] = [];
-  if (today > 0) parts.push(`${plural(today, "tarea", "tareas")} para hoy`);
+  const parts: SummarySegment[][] = [];
+  if (today > 0) parts.push([counted(plural(today, "tarea", "tareas")), plain(" para hoy")]);
   if (overdue > 0) {
-    parts.push(today > 0 ? plural(overdue, "vencida", "vencidas") : `${plural(overdue, "tarea vencida", "tareas vencidas")}`);
+    parts.push([overdueTone(today > 0 ? plural(overdue, "vencida", "vencidas") : plural(overdue, "tarea vencida", "tareas vencidas"))]);
   }
-  if (review > 0) parts.push(`${plural(review, "tarea", "tareas")} esperando tu aprobación`);
+  if (review > 0) parts.push([counted(plural(review, "tarea", "tareas")), plain(" esperando tu aprobación")]);
 
   if (parts.length > 0) {
-    const head = parts.slice(0, -1).join(", ");
-    return `Tenés ${head ? `${head} y ${parts[parts.length - 1]}` : parts[0]}.`;
+    const segments: SummarySegment[] = [plain("Tenés ")];
+    parts.forEach((part, index) => {
+      if (index > 0) segments.push(plain(index === parts.length - 1 ? " y " : ", "));
+      segments.push(...part);
+    });
+    segments.push(plain("."));
+    return segments;
   }
-  if (tomorrow > 0) return `Hoy no hay nada urgente. Mañana tenés ${plural(tomorrow, "tarea", "tareas")}.`;
-  if (later > 0) return `Nada urgente por hoy. Tenés ${plural(later, "tarea", "tareas")} más adelante.`;
-  return "Estás al día: no tenés tareas pendientes. ¡Buen momento para adelantar avisos!";
+  if (tomorrow > 0) {
+    return [plain("Hoy no hay nada urgente. Mañana tenés "), counted(plural(tomorrow, "tarea", "tareas")), plain(".")];
+  }
+  if (later > 0) {
+    return [plain("Nada urgente por hoy. Tenés "), counted(plural(later, "tarea", "tareas")), plain(" más adelante.")];
+  }
+  return [plain("Estás al día: no tenés tareas pendientes. ¡Buen momento para adelantar avisos!")];
+}
+
+export function buildDaySummary(groups: WorkGroup[]) {
+  return buildDaySegments(groups)
+    .map((segment) => segment.text)
+    .join("");
+}
+
+export type AgendaState = "overdue" | "today" | "tomorrow";
+
+export type AgendaRow = { item: WorkItem; state: AgendaState; dueLabel: string };
+
+const AGENDA_STATES: AgendaState[] = ["overdue", "today", "tomorrow"];
+
+// "Para hoy": vencidas, luego hoy, luego mañana, en una sola lista. `total` es
+// todo lo que hay; `rows` lo que entra en pantalla.
+export function buildAgenda(groups: WorkGroup[], limit: number): { rows: AgendaRow[]; total: number } {
+  const all: AgendaRow[] = [];
+  for (const state of AGENDA_STATES) {
+    const group = groups.find((candidate) => candidate.key === state);
+    for (const item of group?.items ?? []) {
+      all.push({
+        item,
+        state,
+        dueLabel: state === "overdue" ? (item.dueText ?? "Vencida") : state === "today" ? "Hoy" : "Mañana"
+      });
+    }
+  }
+  return { rows: all.slice(0, limit), total: all.length };
+}
+
+export function clientNameOf(task: Task) {
+  return task.clients?.full_name ?? task.policies?.clients?.full_name ?? null;
+}
+
+// "Cliente · póliza", lo que identifica la tarea sin abrirla.
+export function taskContext(task: Task) {
+  return [clientNameOf(task), task.policies?.policy_number].filter(Boolean).join(" · ");
+}
+
+export type Suggestion = { kind: "task"; taskId: string; label: string } | { kind: "gesti"; label: string };
+
+// Hasta dos atajos sacados de los datos: arrancar por lo más urgente (abre esa
+// tarea) y pedirle a Gesti un mensaje para el cliente de esa agenda.
+export function buildSuggestions(groups: WorkGroup[]): Suggestion[] {
+  const { rows } = buildAgenda(groups, Number.POSITIVE_INFINITY);
+  const first = rows[0];
+  if (!first) return [];
+
+  const suggestions: Suggestion[] = [
+    { kind: "task", taskId: first.item.task.id, label: `Empezá por “${first.item.task.title}”` }
+  ];
+  const client = rows.map((row) => clientNameOf(row.item.task)).find(Boolean);
+  if (client) suggestions.push({ kind: "gesti", label: `Redactá un mensaje para ${client}` });
+  return suggestions;
+}
+
+const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+// "Jue 29" para una fecha "YYYY-MM-DD".
+export function shortDayLabel(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const target = new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
+  return `${WEEKDAYS[target.getDay()]} ${target.getDate()}`;
+}
+
+// Lo propio que vence dentro de la semana, después de mañana.
+export function buildWeekList(groups: WorkGroup[], limit: number): WorkItem[] {
+  const later = groups.find((group) => group.key === "later")?.items ?? [];
+  return later.filter((item) => item.daysUntilDue !== null && item.daysUntilDue <= 7).slice(0, limit);
 }
