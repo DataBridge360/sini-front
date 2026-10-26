@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { BrandMark } from "@/components/brand-mark";
 import {
   Building2,
   CalendarDays,
@@ -15,11 +16,10 @@ import {
   LogOut,
   MoreHorizontal,
   Settings,
-  Shield,
   User,
   Users
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiRequest,
   apiUpload,
@@ -118,6 +118,10 @@ const ProfileView = dynamic(() => import("@/components/views/profile-view").then
   loading: viewLoading
 });
 const ClubplazaView = dynamic(() => import("@/components/views/clubplaza-view").then((m) => m.ClubplazaView), {
+  ssr: false,
+  loading: viewLoading
+});
+const GestiView = dynamic(() => import("@/components/views/gesti-view").then((m) => m.GestiView), {
   ssr: false,
   loading: viewLoading
 });
@@ -599,7 +603,10 @@ export function AppShell() {
   });
 
   return (
-    <main className={`sp-shell app-redesign ${tab === "settings" ? "settings-page-mode" : ""}`} style={shellTheme}>
+    <main
+      className={`sp-shell app-redesign ${tab === "settings" ? "settings-page-mode" : ""} ${tab === "gesti" ? "gesti-page-mode" : ""}`}
+      style={shellTheme}
+    >
       <Sidebar
         tab={tab}
         setTab={(next) => {
@@ -615,11 +622,6 @@ export function AppShell() {
           organizationSettings.data?.display_name ??
           selectedOrganization?.displayName ??
           "SiniPro"
-        }
-        logoUrl={
-          organizationSettings.data?.logo_url ??
-          selectedOrganization?.logoUrl ??
-          null
         }
       />
 
@@ -766,6 +768,7 @@ export function AppShell() {
               notify={notify}
             />
           ) : null}
+          {tab === "gesti" ? <GestiView userName={auth.user.fullName} onNavigate={setTab} /> : null}
           {tab === "team" && canManageOrganization ? (
             <TeamView
               currentUserId={auth.user.id}
@@ -843,35 +846,38 @@ export function AppShell() {
   );
 }
 
+type NavIcon = ComponentType<{ size?: number }>;
+
 function Sidebar({
   tab,
   setTab,
   urgentCount,
   canManageOrganization,
-  organizationName,
-  logoUrl
+  organizationName
 }: {
   tab: Tab;
   setTab: (tab: Tab) => void;
   urgentCount: number;
   canManageOrganization: boolean;
   organizationName: string;
-  logoUrl: string | null;
 }) {
   // Navegación principal: Compañías, Equipo y Configuración viven en el grupo
   // "Configuración" anclado al pie, no en la lista principal.
-  const nav: Array<{ key: Tab; name: string; icon: typeof LayoutDashboard; count?: number }> = [
+  const nav: Array<{ key: Tab; name: string; icon: NavIcon; count?: number }> = [
     { key: "dashboard" as const, name: "Dashboard", icon: LayoutDashboard },
     { key: "notices" as const, name: "Avisos", icon: CalendarDays, count: urgentCount },
     { key: "tasks" as const, name: "Tareas", icon: ListTodo },
     { key: "policies" as const, name: "Pólizas", icon: FileText },
     { key: "clients" as const, name: "Asegurados", icon: Users },
     // Planilla de Club Plaza: la usan productores y asesores por igual.
-    { key: "clubplaza" as const, name: "Club Plaza", icon: FileSpreadsheet }
+    { key: "clubplaza" as const, name: "Club Plaza", icon: FileSpreadsheet },
+    // Último a propósito: en el celular cae en "Más" y no desplaza a los cuatro
+    // destinos de la barra inferior.
+    { key: "gesti" as const, name: "Gesti", icon: GestiNavIcon }
   ];
 
   // Compañías queda disponible para todo el equipo; el resto pide rol productor.
-  const settingsNav: Array<{ key: Tab; name: string; icon: typeof LayoutDashboard }> = [
+  const settingsNav: Array<{ key: Tab; name: string; icon: NavIcon }> = [
     ...(canManageOrganization
       ? [
           { key: "settings" as const, name: "Más configuraciones", icon: Settings },
@@ -916,23 +922,18 @@ function Sidebar({
     };
   }, [isSettingsOpen]);
 
+  // En escritorio el sidebar es un riel de íconos que se expande sobre el
+  // contenido al pasar el mouse (ver "Sidebar riel" en globals.css). Mientras
+  // el menú de Configuración está abierto queda fijo expandido: si se cerrara
+  // al salir el puntero, el menú quedaría flotando sobre un riel angosto.
   return (
-      <aside className="sp-sidebar">
-        <div className={logoUrl ? "sp-logo only-logo" : "sp-logo"}>
-          {logoUrl ? (
-            <div className="sp-logo-mark has-image">
-              <Image src={logoUrl} alt={organizationName} width={240} height={108} unoptimized />
-            </div>
-          ) : (
-            <>
-              <div className="sp-logo-mark">
-                <Shield size={17} />
-              </div>
-              <div className="sp-logo-copy">
-                <strong>{organizationName}</strong>
-              </div>
-            </>
-          )}
+      <aside className={isSettingsOpen ? "sp-sidebar is-pinned" : "sp-sidebar"}>
+        <div className="sp-logo sp-brand">
+          <BrandMark className="sp-brand-mark" size={30} />
+          <div className="sp-brand-copy">
+            <strong>{organizationName}</strong>
+            <span>Productor asesor de seguros</span>
+          </div>
         </div>
         <nav className="sp-nav" aria-label="Navegación principal">
           <p>Principal</p>
@@ -941,11 +942,14 @@ function Sidebar({
             return (
               <button
                 key={item.key}
-                className={tab === item.key ? "active" : ""}
+                className={[tab === item.key ? "active" : "", item.key === "gesti" ? "sp-nav-gesti" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
                 type="button"
+                title={item.name}
                 onClick={() => setTab(item.key)}
               >
-                <Icon size={22} />
+                <Icon size={20} />
                 <span>{item.name}</span>
                 {"count" in item && typeof item.count === "number" && item.count > 0 ? (
                   <b>{item.count}</b>
@@ -970,7 +974,7 @@ function Sidebar({
                       setIsSettingsOpen(false);
                     }}
                   >
-                    <Icon size={18} />
+                    <Icon size={17} />
                     <span>{item.name}</span>
                     {"count" in item && typeof item.count === "number" && item.count > 0 ? (
                       <b>{item.count}</b>
@@ -987,12 +991,26 @@ function Sidebar({
             aria-haspopup="menu"
             onClick={() => setIsSettingsOpen((open) => !open)}
           >
-            {isWideNav ? <Settings size={22} /> : <MoreHorizontal size={22} />}
+            {isWideNav ? <Settings size={20} /> : <MoreHorizontal size={20} />}
             <span>{overflowLabel}</span>
             <ChevronDown className="sp-nav-group-caret" size={16} aria-hidden="true" />
           </button>
         </div>
       </aside>
+  );
+}
+
+// Gesti en la navegación: la carita de la mascota en lugar de un ícono de
+// línea. Recibe `size` como los íconos de lucide para entrar en la misma lista.
+function GestiNavIcon({ size = 20 }: { size?: number }) {
+  return (
+    <Image
+      className="sp-nav-gesti-avatar"
+      src="/gesti/gesti-avatar.webp"
+      alt=""
+      width={size}
+      height={size}
+    />
   );
 }
 
@@ -1107,6 +1125,7 @@ function titleForTab(tab: Tab) {
     policies: "Pólizas",
     companies: "Compañías",
     clubplaza: "Club Plaza",
+    gesti: "Gesti",
     team: "Equipo",
     settings: "Configuración",
     profile: "Perfil"
@@ -1123,6 +1142,7 @@ function subtitleForTab(tab: Tab) {
     policies: "Pólizas activas de la organización",
     companies: "Compañías aseguradoras con las que trabajás",
     clubplaza: "Carga masiva de jugadores hacia Club Plaza",
+    gesti: "Tu asistente de seguros con IA",
     team: "Personas con acceso a esta organización",
     settings: "Marca, colores y datos de tu organización",
     profile: "Tus datos personales y contraseña"

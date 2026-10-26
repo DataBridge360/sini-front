@@ -2,7 +2,18 @@
 
 import type { Client, InsuranceCompany, OrganizationSettings, PaymentMethod } from "@/lib/api";
 
-export type Tab = "dashboard" | "notices" | "tasks" | "clients" | "policies" | "companies" | "clubplaza" | "team" | "settings" | "profile";
+export type Tab =
+  | "dashboard"
+  | "notices"
+  | "tasks"
+  | "clients"
+  | "policies"
+  | "companies"
+  | "clubplaza"
+  | "gesti"
+  | "team"
+  | "settings"
+  | "profile";
 
 export const TAB_PATHS = {
   dashboard: "/dashboard",
@@ -12,6 +23,7 @@ export const TAB_PATHS = {
   policies: "/polizas",
   companies: "/companias",
   clubplaza: "/clubplaza",
+  gesti: "/gesti",
   team: "/equipo",
   settings: "/configuracion",
   profile: "/perfil"

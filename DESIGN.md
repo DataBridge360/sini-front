@@ -12,8 +12,8 @@ colors:
   text-muted: "#5b6575"
   text-faint: "#8a94a6"
   org-primary: "#176e64"
-  sidebar-bg: "#f1f4fa"
-  sidebar-text: "#434656"
+  sidebar-bg: "#ffffff"
+  sidebar-text: "#5b6575"
   state-green: "#067647"
   state-green-soft: "#ecfdf3"
   state-amber: "#b54708"
@@ -99,7 +99,7 @@ Paleta neutra fría con un único acento themable y tres colores de estado.
 - **Fondo de shell** (#f7f9ff): fondo general de la app.
 - **Superficie** (#ffffff): cards, paneles, modales, inputs.
 - **Superficie baja** (#f8fafc) y **mínima** (#eef2f6): insets, hovers, cajas grises dentro de cards.
-- **Sidebar** (#f1f4fa) con texto #434656: sidebar claro, esquinas derechas redondeadas (12px).
+- **Sidebar** blanco con texto #5b6575 y hairline #e6eaf0: riel de íconos que se expande al hover.
 - **Borde** (#e1e7ef) y **borde fuerte** (#cbd5e1): 1px en todo; el borde fuerte marca selección/activo.
 - **Texto** (#181c20), **muted** (#5b6575), **faint** (#8a94a6).
 
@@ -133,7 +133,7 @@ Paleta neutra fría con un único acento themable y tres colores de estado.
 
 ## Layout
 
-Shell en grid de dos columnas: sidebar fija de 256px + contenido fluido. Páginas con `sp-page padded`; grids de cards de entidades (`sp-card-grid`) y paneles de lista con encabezados (`sp-list-panel` / `sp-list-header`). Ritmo de espaciado en múltiplos de 4px, con p-3 (12px) dentro de cards y p-4 (16px) en paneles. Los tableros kanban (Avisos, Tareas) usan columnas de ancho mínimo cómodo con scroll horizontal estilo ClickUp; en mobile cada columna ocupa casi toda la pantalla y se navega deslizando. Controles (inputs, selects, search) de ~36–40px de alto.
+Shell en grid de dos columnas: riel de navegación de 72px (se expande a 252px sobre el contenido) + contenido fluido. Páginas con `sp-page padded`; grids de cards de entidades (`sp-card-grid`) y paneles de lista con encabezados (`sp-list-panel` / `sp-list-header`). Ritmo de espaciado en múltiplos de 4px, con p-3 (12px) dentro de cards y p-4 (16px) en paneles. Los tableros kanban (Avisos, Tareas) usan columnas de ancho mínimo cómodo con scroll horizontal estilo ClickUp; en mobile cada columna ocupa casi toda la pantalla y se navega deslizando. Controles (inputs, selects, search) de ~36–40px de alto.
 
 ## Elevation & Depth
 
@@ -144,7 +144,7 @@ Sistema plano: **sin box-shadows**. La profundidad se expresa con bordes de 1px 
 
 ## Shapes
 
-Dos radios: **12px (`rounded-xl`)** para cards, paneles, modales y botones de acción; **8px (`rounded-lg`)** para inputs, chips de acción y cajas internas; **pill (`rounded-full`)** para badges de estado y avatares. Bordes siempre de 1px. El sidebar redondea solo sus esquinas derechas (0 12px 12px 0).
+Dos radios: **12px (`rounded-xl`)** para cards, paneles, modales y botones de acción; **8px (`rounded-lg`)** para inputs, chips de acción y cajas internas; **pill (`rounded-full`)** para badges de estado y avatares. Bordes siempre de 1px.
 
 ## Components
 
@@ -169,8 +169,8 @@ Dos radios: **12px (`rounded-xl`)** para cards, paneles, modales y botones de ac
 - **Focus:** ring 2px `var(--org-primary-soft)`; sin glow.
 
 ### Navigation (Sidebar)
-- **Style:** fondo claro #f1f4fa, texto muted #434656, labels de sección uppercase muted; grupos "Principal" y "Settings" (este último anclado abajo); footer con avatar + nombre + email + logout.
-- **Active:** caja blanca con borde 1px fuerte + texto oscuro (card bordeada, nunca fill de color).
+- **Style (escritorio):** riel blanco de 72px con hairline #e6eaf0 a la derecha; al pasar el mouse (o con foco de teclado, o con el menú de Configuración abierto) se expande a 252px **por encima** del contenido, con una sombra lateral suave como única separación. Arriba, el isotipo (cubo, #0a72d1, `components/brand-mark.tsx`) + nombre de la organización. Ítems de 40px, ícono 20px fijo en su lugar, label "Principal" uppercase muted. Gesti va último en la lista con la carita de la mascota como ícono. En pantallas táctiles anchas queda siempre expandido; debajo de 900px es la barra inferior.
+- **Active:** tinte suave del color de la organización (`--org-primary-soft`) + texto oscurecido del mismo color; el ícono toma el color pleno.
 
 ## Do's and Don'ts
 
