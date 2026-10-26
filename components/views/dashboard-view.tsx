@@ -18,14 +18,14 @@ import {
   buildAgenda,
   buildDaySegments,
   buildSuggestions,
-  buildWeekList,
+  buildUpcomingList,
   buildWorkGroups,
   firstNameOf,
   greetingForHour,
   type Suggestion
 } from "@/components/dashboard/dashboard-helpers";
 import { QuickActions } from "@/components/dashboard/quick-actions";
-import { ApprovalsCard, NoticesCard, WeekCard } from "@/components/dashboard/side-cards";
+import { ApprovalsCard, NoticesCard, UpcomingCard } from "@/components/dashboard/side-cards";
 import { TodayList } from "@/components/dashboard/today-list";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -35,7 +35,7 @@ const NO_TASKS: Task[] = [];
 // Lo que entra sin scroll en un escritorio de 900px de alto.
 const AGENDA_ROWS = 7;
 const APPROVAL_ROWS = 3;
-const WEEK_ROWS = 4;
+const UPCOMING_ROWS = 4;
 
 export function DashboardView({
   userName,
@@ -101,7 +101,7 @@ export function DashboardView({
   const suggestions = useMemo(() => buildSuggestions(groups), [groups]);
   const agenda = useMemo(() => buildAgenda(groups, AGENDA_ROWS), [groups]);
   const reviewItems = groups.find((group) => group.key === "review")?.items ?? [];
-  const weekItems = useMemo(() => buildWeekList(groups, WEEK_ROWS), [groups]);
+  const upcomingItems = useMemo(() => buildUpcomingList(groups, UPCOMING_ROWS), [groups]);
   const toContact = notices.filter((notice) => notice.status === "avisar").length;
   const showApprovals = canModerate && reviewItems.length > 0;
 
@@ -123,7 +123,6 @@ export function DashboardView({
         firstName={firstName}
         segments={segments}
         suggestions={suggestions}
-        onAsk={() => setTab("gesti")}
         onSuggestion={openSuggestion}
       />
 
@@ -155,8 +154,8 @@ export function DashboardView({
               onOpenTasks={() => onOpenTasks(false)}
             />
           ) : null}
+          <UpcomingCard items={upcomingItems} onOpenTask={onOpenTask} onOpenTasks={() => onOpenTasks(false)} />
           <NoticesCard notices={notices} onOpenNotices={() => setTab("notices")} />
-          {!showApprovals && weekItems.length > 0 ? <WeekCard items={weekItems} onOpenTask={onOpenTask} /> : null}
         </aside>
       </div>
 

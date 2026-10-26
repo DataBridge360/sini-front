@@ -5,7 +5,7 @@ import {
   buildDaySegments,
   buildDaySummary,
   buildSuggestions,
-  buildWeekList,
+  buildUpcomingList,
   buildWorkGroups,
   firstNameOf,
   greetingForHour,
@@ -200,17 +200,17 @@ describe("buildSuggestions", () => {
   });
 });
 
-describe("buildWeekList / shortDayLabel", () => {
-  it("keeps only what is due within the week after tomorrow", () => {
-    const items = buildWeekList(
-      groupsOf([
-        task({ id: "far", due_date: "2026-11-20" }),
-        task({ id: "thursday", due_date: "2026-10-29" }),
-        task({ id: "nodate" })
-      ]),
-      5
-    );
-    expect(items.map((item) => item.task.id)).toEqual(["thursday"]);
+describe("buildUpcomingList / shortDayLabel", () => {
+  it("lists every dated task after tomorrow, soonest first, up to the limit", () => {
+    const groups = groupsOf([
+      task({ id: "far", due_date: "2026-11-20" }),
+      task({ id: "thursday", due_date: "2026-10-29" }),
+      task({ id: "friday", due_date: "2026-10-30" }),
+      task({ id: "tomorrow", due_date: "2026-10-27" }),
+      task({ id: "nodate" })
+    ]);
+    expect(buildUpcomingList(groups, 5).map((item) => item.task.id)).toEqual(["thursday", "friday", "far"]);
+    expect(buildUpcomingList(groups, 2).map((item) => item.task.id)).toEqual(["thursday", "friday"]);
   });
 
   it("formats a date as weekday and day", () => {

@@ -219,8 +219,12 @@ export function shortDayLabel(date: string) {
   return `${WEEKDAYS[target.getDay()]} ${target.getDate()}`;
 }
 
-// Lo propio que vence dentro de la semana, después de mañana.
-export function buildWeekList(groups: WorkGroup[], limit: number): WorkItem[] {
+// Lo propio que vence después de mañana, lo más cercano primero. Las tareas
+// sin fecha quedan afuera: no son "próximas".
+export function buildUpcomingList(groups: WorkGroup[], limit: number): WorkItem[] {
   const later = groups.find((group) => group.key === "later")?.items ?? [];
-  return later.filter((item) => item.daysUntilDue !== null && item.daysUntilDue <= 7).slice(0, limit);
+  return later
+    .filter((item) => item.daysUntilDue !== null)
+    .sort((a, b) => (a.daysUntilDue ?? 0) - (b.daysUntilDue ?? 0))
+    .slice(0, limit);
 }

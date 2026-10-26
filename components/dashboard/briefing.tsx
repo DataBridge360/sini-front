@@ -1,19 +1,16 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
 import Image from "next/image";
-import { useState, type FormEvent } from "react";
 import type { Suggestion, SummarySegment } from "@/components/dashboard/dashboard-helpers";
 
-// Arriba de todo: quién saluda (Gesti), una frase con lo que hay hoy y un
-// camino corto hacia el chat. Las sugerencias salen de las tareas reales.
+// Arriba de todo: quién saluda (Gesti), una frase con lo que hay hoy y hasta
+// dos sugerencias armadas con las tareas reales.
 export function Briefing({
   dateLabel,
   greeting,
   firstName,
   segments,
   suggestions,
-  onAsk,
   onSuggestion
 }: {
   dateLabel: string;
@@ -21,17 +18,8 @@ export function Briefing({
   firstName: string;
   segments: SummarySegment[];
   suggestions: Suggestion[];
-  onAsk: () => void;
   onSuggestion: (suggestion: Suggestion) => void;
 }) {
-  const [question, setQuestion] = useState("");
-
-  // Gesti todavía no recibe el texto por parámetro: el input es la puerta al chat.
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    onAsk();
-  }
-
   return (
     <section className="db-briefing" aria-label="Resumen de Gesti">
       <div className="db-briefing-hello">
@@ -55,21 +43,8 @@ export function Briefing({
         </div>
       </div>
 
-      <div className="db-briefing-ask">
-        <form className="db-ask" onSubmit={submit}>
-          <input
-            type="text"
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Preguntale a Gesti…"
-            aria-label="Preguntale a Gesti"
-            autoComplete="off"
-          />
-          <button type="submit" aria-label="Abrir Gesti">
-            <ArrowRight size={15} />
-          </button>
-        </form>
-        {suggestions.length > 0 ? (
+      {suggestions.length > 0 ? (
+        <div className="db-briefing-ask">
           <div className="db-suggestions">
             {suggestions.map((suggestion) => (
               <button key={suggestion.label} type="button" onClick={() => onSuggestion(suggestion)}>
@@ -77,8 +52,8 @@ export function Briefing({
               </button>
             ))}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -4,6 +4,7 @@ import type { Notice } from "@/lib/api";
 import {
   clientNameOf,
   shortDayLabel,
+  taskContext,
   type WorkItem
 } from "@/components/dashboard/dashboard-helpers";
 
@@ -89,24 +90,43 @@ export function NoticesCard({ notices, onOpenNotices }: { notices: Notice[]; onO
 }
 
 // Lo que viene en la semana, para cuando no hay nada que aprobar.
-export function WeekCard({ items, onOpenTask }: { items: WorkItem[]; onOpenTask: (taskId: string) => void }) {
+export function UpcomingCard({
+  items,
+  onOpenTask,
+  onOpenTasks
+}: {
+  items: WorkItem[];
+  onOpenTask: (taskId: string) => void;
+  onOpenTasks: () => void;
+}) {
   return (
-    <section className="db-card" aria-labelledby="db-week-title">
+    <section className="db-card" aria-labelledby="db-upcoming-title">
       <header className="db-card-head">
-        <h2 id="db-week-title">Esta semana</h2>
+        <h2 id="db-upcoming-title">Próximas tareas</h2>
+        <button type="button" className="db-link" onClick={onOpenTasks}>
+          Ver todas
+        </button>
       </header>
-      <ul className="db-list">
-        {items.map(({ task }) => (
-          <li key={task.id}>
-            <button type="button" className="db-row db-row-week" onClick={() => onOpenTask(task.id)}>
-              <span className="db-row-text">
-                <strong>{task.title}</strong>
-              </span>
-              <span className="db-due">{task.due_date ? shortDayLabel(task.due_date) : ""}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {items.length > 0 ? (
+        <ul className="db-list">
+          {items.map(({ task }) => {
+            const context = taskContext(task);
+            return (
+              <li key={task.id}>
+                <button type="button" className="db-row db-row-week db-row-stacked-text" onClick={() => onOpenTask(task.id)}>
+                  <span className="db-row-text">
+                    <strong>{task.title}</strong>
+                    {context ? <span>{context}</span> : null}
+                  </span>
+                  <span className="db-due">{task.due_date ? shortDayLabel(task.due_date) : ""}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="db-card-empty">No tenés tareas con fecha más adelante.</p>
+      )}
     </section>
   );
 }

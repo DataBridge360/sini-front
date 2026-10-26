@@ -121,56 +121,6 @@
   min-width: 0;
 }
 
-.db-ask {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 5px 0 14px;
-  border: 1px solid var(--db-border);
-  border-radius: 8px;
-  background: var(--db-surface-low);
-  transition: border-color 120ms ease, background-color 120ms ease;
-}
-
-.db-ask:focus-within {
-  border-color: var(--org-primary);
-  background: #fff;
-}
-
-.db-ask input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: none;
-  font: inherit;
-  font-size: 13px;
-  color: var(--db-text);
-}
-
-.db-ask input::placeholder {
-  color: var(--db-faint);
-}
-
-.db-ask button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--db-surface-lowest);
-  color: var(--db-muted);
-  transition: background-color 120ms ease, color 120ms ease;
-}
-
-.db-ask:focus-within button,
-.db-ask button:hover {
-  background: var(--org-primary);
-  color: var(--org-on-primary, #fff);
-}
-
 .db-suggestions {
   display: flex;
   gap: 6px;
@@ -406,14 +356,17 @@
 }
 
 /* En la columna angosta el contexto va debajo del título. */
-.db-row-stacked .db-row-text {
+.db-row-stacked .db-row-text,
+.db-row-stacked-text .db-row-text {
   flex-direction: column;
   align-items: stretch;
   gap: 1px;
 }
 
 .db-row-stacked .db-row-text strong,
-.db-row-stacked .db-row-text span {
+.db-row-stacked .db-row-text span,
+.db-row-stacked-text .db-row-text strong,
+.db-row-stacked-text .db-row-text span {
   flex: none;
 }
 
@@ -631,4 +584,11 @@
   .db-row-task .db-due {
     grid-column: 2;
   }
+}
+
+.db-card-empty {
+  margin: 0;
+  padding: 4px 0 2px;
+  font-size: 12.5px;
+  color: var(--db-faint);
 }
