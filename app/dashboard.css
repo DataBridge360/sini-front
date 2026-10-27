@@ -555,32 +555,6 @@
   color: var(--db-red);
 }
 
-.db-skeleton {
-  display: grid;
-  gap: 14px;
-  padding: 20px;
-}
-
-.db-skeleton span {
-  height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(90deg, #f1f4f8, #f8fafc, #f1f4f8);
-  background-size: 200% 100%;
-  animation: db-shimmer 1.4s ease-in-out infinite;
-}
-
-@keyframes db-shimmer {
-  to {
-    background-position: -200% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .db-skeleton span {
-    animation: none;
-  }
-}
-
 /* Mobile ------------------------------------------------------------------ */
 
 @media (max-width: 640px) {

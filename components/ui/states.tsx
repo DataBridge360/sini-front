@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
+import Image from "next/image";
 
 export function EmptyState({ title, text, compact }: { title: string; text?: string; compact?: boolean }) {
   return (
@@ -11,10 +12,11 @@ export function EmptyState({ title, text, compact }: { title: string; text?: str
   );
 }
 
+// Cargando: Gesti pensando, flotando sobre el fondo, sin caja alrededor.
 export function LoadingState({ text }: { text: string }) {
   return (
-    <div className="sp-state sp-loading-state" role="status">
-      <span />
+    <div className="sp-loading" role="status">
+      <Image src="/gesti/poses/gesti-think.webp" alt="" width={88} height={88} unoptimized />
       <strong>{text}</strong>
     </div>
   );

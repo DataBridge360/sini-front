@@ -2,6 +2,7 @@
 
 import { AlertCircle, CalendarDays, CheckCircle2, Clock, ShieldCheck, type LucideIcon } from "lucide-react";
 import { taskContext, type FeedRow, type FeedSection, type FeedState } from "@/components/dashboard/dashboard-helpers";
+import { LoadingState } from "@/components/ui/states";
 
 const STATE_ICON: Record<FeedState, LucideIcon> = {
   overdue: AlertCircle,
@@ -61,17 +62,15 @@ export function TaskFeed({
         </button>
       </header>
 
+      {/* Mientras carga, Gesti pensando sobre el fondo, sin la tarjeta. */}
+      {isLoading && !error ? (
+        <LoadingState text="Cargando tus tareas" />
+      ) : (
       <div className="db-card">
         {error ? (
           <p className="db-note" role="alert">
             {error}
           </p>
-        ) : isLoading ? (
-          <div className="db-skeleton" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
         ) : sections.length === 0 ? (
           <div className="db-empty">
             <CheckCircle2 size={20} aria-hidden="true" />
@@ -97,6 +96,7 @@ export function TaskFeed({
           </>
         )}
       </div>
+      )}
     </section>
   );
 }
