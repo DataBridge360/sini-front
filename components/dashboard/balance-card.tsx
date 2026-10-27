@@ -46,7 +46,17 @@ export function BalanceCard({
         <strong aria-hidden="true">{isLoading ? "–" : summary.count}</strong>
         <span>{summary.label}</span>
       </div>
-      <p className="db-hero-detail">{isLoading ? "Revisando tus tareas…" : summary.detail}</p>
+      {isLoading ? (
+        <p className="db-hero-detail">Revisando tus tareas…</p>
+      ) : (
+        <ul className="db-hero-chips" aria-hidden="true">
+          {summary.chips.map((chip) => (
+            <li key={chip.text} data-tone={chip.tone}>
+              {chip.text}
+            </li>
+          ))}
+        </ul>
+      )}
 
       <button type="button" className="db-hero-notices" onClick={onOpenNotices}>
         <span className="db-hero-notices-text">
@@ -58,6 +68,11 @@ export function BalanceCard({
             </>
           ) : null}
         </span>
+        {notices.collectionPct !== null ? (
+          <span className="db-hero-bar" aria-hidden="true">
+            <span style={{ width: `${notices.collectionPct}%` }} />
+          </span>
+        ) : null}
         <ChevronRight size={18} aria-hidden="true" />
       </button>
     </section>

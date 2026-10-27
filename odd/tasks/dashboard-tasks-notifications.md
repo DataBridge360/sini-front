@@ -24,6 +24,7 @@ Follows `odd/tasks/gesti-module.md` (Gesti chat + hover-rail sidebar, already co
 | T5 | S4 (revision) | gentle-ai-worker: dashboard as proposal A | dropped (L9) |
 | T6 | S4 (revision 2) | gentle-ai-worker: dashboard as refined proposal C | 4003c16 |
 | T7 | S4 (revision 3) | gentle-ai-worker: wallet-style dashboard | 0bf558f |
+| T8 | S4 (revision 4) | inline: pastel visual style (prototype wallet-3) | |
 | T4 | S5 | gentle-ai-worker: notifications bell; parent wires it into the header | 9e67e92 (bell), 38da2b6 (wiring) |
 
 ## Log
@@ -38,3 +39,4 @@ Follows `odd/tasks/gesti-module.md` (Gesti chat + hover-rail sidebar, already co
 - L8 (user decision): "A · Agenda del día". Proposals A/B/C live as scratch prototypes in public/design/ (not committed).
 - L9 (user, verbatim): "perdon me gusta mas el c, pero necesito sea mejor, mas simple, sin ruido visual, bien ordenado y que se pueda ver en una sola pantalla sin hacer mucho scroll, un poco de scroll si es necesario pero en lo posible no mucho, accesos rapidos y demas". T5 (proposal A) cancelled mid-way; its uncommitted changes discarded.
 - L10 (user, verbatim): "sigue sin gustarme el dashboard, que sea mas limpio y un listado en el inicio con las tareas. Que tenga un estilo billetera virtual digamos, un poco"
+- L11 (user, verbatim): "No me gusta cómo sigue estrando el dashboard, así que vamos a tratar de cambiar el diseño. Me gusta cómo está estructurado, pero no me gusta la parte del diseño." Three static prototypes (claro, oscuro, pastel); user picked "3 · Suave con color pastel". Structure kept; hero chips added via buildHeroSummary().chips (RED 3 failing → GREEN).

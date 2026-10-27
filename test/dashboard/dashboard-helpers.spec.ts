@@ -219,14 +219,23 @@ describe("buildHeroSummary", () => {
         task({ id: "c", due_date: "2026-10-19" }),
         task({ id: "d", due_date: "2026-10-27" })
       ])
-    ).toEqual({ count: 3, label: "tareas para hoy", detail: "2 vencidas · 1 para mañana" });
+    ).toEqual({
+      count: 3,
+      label: "tareas para hoy",
+      detail: "2 vencidas · 1 para mañana",
+      chips: [
+        { tone: "overdue", text: "2 vencidas" },
+        { tone: "tomorrow", text: "1 para mañana" }
+      ]
+    });
   });
 
   it("omits the zero parts and uses the singular", () => {
     expect(summary([task({ id: "a", due_date: "2026-10-26" })])).toEqual({
       count: 1,
       label: "tarea para hoy",
-      detail: "Nada vencido"
+      detail: "Nada vencido",
+      chips: [{ tone: "calm", text: "Nada vencido" }]
     });
     expect(summary([task({ id: "a", due_date: "2026-10-26" }), task({ id: "b", due_date: "2026-10-25" })]).detail).toBe(
       "1 vencida"
@@ -234,8 +243,19 @@ describe("buildHeroSummary", () => {
   });
 
   it("says the person is up to date when nothing is due today or overdue", () => {
-    expect(summary([])).toEqual({ count: 0, label: "tareas para hoy", detail: "Estás al día" });
-    expect(summary([task({ id: "t", due_date: "2026-10-27" })]).detail).toBe("Estás al día · 1 para mañana");
+    expect(summary([])).toEqual({
+      count: 0,
+      label: "tareas para hoy",
+      detail: "Estás al día",
+      chips: [{ tone: "calm", text: "Estás al día" }]
+    });
+    expect(summary([task({ id: "t", due_date: "2026-10-27" })])).toMatchObject({
+      detail: "Estás al día · 1 para mañana",
+      chips: [
+        { tone: "calm", text: "Estás al día" },
+        { tone: "tomorrow", text: "1 para mañana" }
+      ]
+    });
   });
 });
 

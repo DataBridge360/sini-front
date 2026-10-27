@@ -271,32 +271,36 @@ export function buildTaskFeed(
   return { sections, shown: limit - Math.max(room, 0), total };
 }
 
+export type HeroChip = { tone: "overdue" | "tomorrow" | "calm"; text: string };
+
 export type HeroSummary = {
   // Lo que hay que atender hoy: vencidas + las de hoy.
   count: number;
   label: string;
+  // Las pastillas de la tarjeta y la misma información en una frase.
   detail: string;
+  chips: HeroChip[];
 };
 
-// El "saldo" de la tarjeta principal: cuántas tareas piden atención hoy y una
-// línea con lo vencido y lo de mañana (sin las partes en cero).
+// El "saldo" de la tarjeta principal: cuántas tareas piden atención hoy y, en
+// pastillas, lo vencido y lo de mañana (sin las partes en cero).
 export function buildHeroSummary(groups: WorkGroup[]): HeroSummary {
   const overdue = count(groups, "overdue");
   const today = count(groups, "today");
   const tomorrow = count(groups, "tomorrow");
   const total = overdue + today;
 
-  const parts: string[] = [];
-  if (overdue > 0) parts.push(plural(overdue, "vencida", "vencidas"));
-  if (tomorrow > 0) parts.push(`${tomorrow} para mañana`);
+  const chips: HeroChip[] = [];
+  if (total === 0) chips.push({ tone: "calm", text: "Estás al día" });
+  if (overdue > 0) chips.push({ tone: "overdue", text: plural(overdue, "vencida", "vencidas") });
+  if (tomorrow > 0) chips.push({ tone: "tomorrow", text: `${tomorrow} para mañana` });
+  if (chips.length === 0) chips.push({ tone: "calm", text: "Nada vencido" });
 
-  if (total === 0) {
-    return { count: 0, label: "tareas para hoy", detail: ["Estás al día", ...parts].join(" · ") };
-  }
   return {
     count: total,
     label: total === 1 ? "tarea para hoy" : "tareas para hoy",
-    detail: parts.length > 0 ? parts.join(" · ") : "Nada vencido"
+    detail: chips.map((chip) => chip.text).join(" · "),
+    chips
   };
 }
 
