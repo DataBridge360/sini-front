@@ -200,6 +200,23 @@ export const TURN_DEADLINE_MS = 240_000;
 export const TURN_TIMEOUT_NOTE = "La respuesta se cortó porque tardó demasiado. Probá con una consulta más acotada.";
 const TURN_TIMEOUT = Symbol("turn-timeout");
 
+/**
+ * Anthropic rechaza el pedido porque se alcanzó el límite de gasto de la cuenta
+ * (platform.claude.com/docs/en/api/rate-limits#spend-limits): 400 "You have
+ * reached your specified … API usage limits", 429 con error_code
+ * enforced_spend_limit_reached, o sin crédito ("credit balance is too low").
+ * Un rate limit común (429 sin ese código) no cuenta.
+ */
+export function isSpendLimitError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status = (error as { status?: unknown }).status;
+  const body = (error as { error?: { error?: { message?: unknown; details?: { error_code?: unknown } } } }).error?.error;
+  const message = typeof body?.message === "string" ? body.message : error instanceof Error ? error.message : "";
+  if (status === 429) return body?.details?.error_code === "enforced_spend_limit_reached";
+  if (status === 400) return /reached your specified (workspace )?API usage limits|credit balance is too low/i.test(message);
+  return false;
+}
+
 type TurnInput = {
   organization: OrganizationContext;
   user: AuthUser;
@@ -403,6 +420,15 @@ export class GestiChatService {
         this.writeText(state, emit, `${state.content.trim() ? "\n\n" : ""}${TURN_TIMEOUT_NOTE}`, false);
       } else if (signal.aborted) {
         aborted = true;
+      } else if (isSpendLimitError(error)) {
+        // El límite de gasto de la API key (o la falta de crédito) llegó antes que
+        // nuestro cálculo: para el usuario es lo mismo, presupuesto agotado.
+        logger.warn("gesti.runTurn: Anthropic spend limit reached");
+        notice = "budget_exhausted";
+        state.content = "";
+        state.visible = 0;
+        state.capped = false;
+        this.writeText(state, emit, budgetExhaustedReply(nextMonthLabel(this.now())));
       } else {
         logger.error("gesti.runTurn", error);
         notice = "error";

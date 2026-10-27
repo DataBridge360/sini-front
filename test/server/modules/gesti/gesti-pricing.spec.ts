@@ -11,9 +11,10 @@ import {
 const NO_USAGE = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, webSearches: 0 };
 
 describe("costUsd", () => {
-  it("prices every kind of token and web search for Sonnet", () => {
-    // 1000 in (3/MTok) + 500 out (15/MTok) + 2000 cache read (0.1x in)
-    // + 1000 cache write (1.25x in) + 2 searches (USD 10 per 1000)
+  // Precios oficiales (platform.claude.com/docs/en/about-claude/pricing, octubre 2026).
+  it("prices every kind of token and web search for Sonnet 5.5", () => {
+    // 1000 in (USD 2/MTok) + 500 out (10) + 2000 cache read (0.10) + 1000 cache write 5 min (2.50)
+    // + 2 searches (USD 10 per 1000)
     const cost = costUsd("claude-sonnet-5-5", {
       inputTokens: 1000,
       outputTokens: 500,
@@ -22,14 +23,20 @@ describe("costUsd", () => {
       webSearches: 2
     });
 
-    expect(cost).toBeCloseTo(0.003 + 0.0075 + 0.0006 + 0.00375 + 0.02, 6);
-    expect(cost).toBe(0.03485);
+    expect(cost).toBe(0.0297);
   });
 
-  it("prices Haiku with its own rates", () => {
-    expect(costUsd("claude-haiku-5-5", { ...NO_USAGE, inputTokens: 10_000, outputTokens: 1000 })).toBe(0.015);
-    expect(costUsd("claude-haiku-5-5", { ...NO_USAGE, cacheReadTokens: 1_000_000 })).toBe(0.1);
-    expect(costUsd("claude-haiku-5-5", { ...NO_USAGE, cacheWriteTokens: 1_000_000 })).toBe(1.25);
+  it("prices Haiku 5.5 at its short-prompt rates up to 100,000 prompt tokens", () => {
+    expect(costUsd("claude-haiku-5-5", { ...NO_USAGE, inputTokens: 10_000, outputTokens: 1000 })).toBe(0.0015);
+    expect(costUsd("claude-haiku-5-5", { ...NO_USAGE, inputTokens: 90_000, cacheReadTokens: 10_000 })).toBe(0.0091);
+    expect(costUsd("claude-haiku-5-5", { ...NO_USAGE, cacheWriteTokens: 100_000 })).toBe(0.0125);
+  });
+
+  it("prices a Haiku 5.5 request over 100,000 prompt tokens (cache reads and writes count) at the long rates, output included", () => {
+    expect(costUsd("claude-haiku-5-5", { ...NO_USAGE, inputTokens: 200_000 })).toBe(0.1);
+    expect(
+      costUsd("claude-haiku-5-5", { ...NO_USAGE, inputTokens: 20_000, cacheReadTokens: 90_000, outputTokens: 2000 })
+    ).toBe(0.0195);
   });
 
   it("charges only the web searches when there are no tokens", () => {
@@ -39,7 +46,7 @@ describe("costUsd", () => {
 
   it("never underestimates an unknown model: it is priced like the most expensive one", () => {
     expect(pricingFor("claude-unknown")).toEqual(MODEL_PRICING["claude-sonnet-5-5"]);
-    expect(costUsd("claude-unknown", { ...NO_USAGE, inputTokens: 1_000_000 })).toBe(3);
+    expect(costUsd("claude-unknown", { ...NO_USAGE, inputTokens: 1_000_000 })).toBe(2);
   });
 });
 

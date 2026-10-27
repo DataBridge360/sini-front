@@ -721,6 +721,28 @@ describe("Gesti chat", () => {
     expect(db.rowsOf("gesti_usage").filter((row) => row.purpose === "data").every((row) => row.model === "claude-haiku-5-5")).toBe(true);
   });
 
+  it.each([
+    ["a spend limit set on the key or workspace (400)", 400, { type: "invalid_request_error", message: "You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC." }],
+    ["the tier spend cap (429)", 429, { type: "rate_limit_error", message: "You have reached your API usage limits", details: { error_code: "enforced_spend_limit_reached" } }],
+    ["no credits left (400)", 400, { type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." }]
+  ])("answers with the friendly budget notice, not an error, when Anthropic rejects the call for %s", async (_label, status, error) => {
+    const failure = Object.assign(new Error(`${status} ${error.message}`), { status, error: { type: "error", error } });
+    const anthropic = createAnthropic({ streams: [{ blocks: [], fail: failure }] });
+    const events = await chat(anthropic.client);
+
+    const reply = lastDone(events);
+    expect(reply.parts.notice).toBe("budget_exhausted");
+    expect(reply.content).toContain("presupuesto");
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  it("keeps the generic error notice for an ordinary rate limit", async () => {
+    const failure = Object.assign(new Error("429 rate limited"), { status: 429, error: { type: "error", error: { type: "rate_limit_error", message: "Number of request tokens has exceeded your per-minute rate limit" } } });
+    const anthropic = createAnthropic({ streams: [{ blocks: [], fail: failure }] });
+
+    expect(lastDone(await chat(anthropic.client)).parts.notice).toBe("error");
+  });
+
   it("stores a generic error notice when the model call fails, without leaking the failure", async () => {
     const anthropic = createAnthropic({ streams: [{ blocks: [], fail: new Error("401 invalid x-api-key sk-ant-secret") }] });
     const events = await chat(anthropic.client);
