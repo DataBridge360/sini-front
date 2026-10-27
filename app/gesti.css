@@ -441,17 +441,6 @@
   text-align: center;
 }
 
-.gesti-preview-badge {
-  display: inline-block;
-  margin-right: 8px;
-  padding: 1px 8px;
-  border-radius: 9999px;
-  background: var(--gesti-blue-soft);
-  color: var(--gesti-blue);
-  font-size: 11px;
-  font-weight: 600;
-}
-
 /* ---------- Adjuntos (compositor y burbuja) ---------- */
 
 .gesti-attachments {
@@ -760,8 +749,44 @@
   overflow-wrap: anywhere;
 }
 
+/* Solo opacidad y corta: con el stream real, el desenfoque se veía como lag. */
 .gesti-word {
-  animation: gesti-word-in 280ms ease-out both;
+  animation: gesti-word-in 120ms ease-out both;
+}
+
+/* Párrafos y listas del texto de Gesti (**negrita**, viñetas, numeradas). */
+.gesti-stream-body > * + * {
+  margin-top: 10px;
+}
+
+.gesti-stream-text strong,
+.gesti-stream-list strong {
+  font-weight: 650;
+}
+
+.gesti-stream-list {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--gesti-ink);
+  font-size: 14.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+ul.gesti-stream-list {
+  list-style: disc;
+}
+
+ol.gesti-stream-list {
+  list-style: decimal;
+}
+
+.gesti-stream-list li + li {
+  margin-top: 4px;
+}
+
+.gesti-stream-list li::marker {
+  color: var(--gesti-ink-3);
 }
 
 /* ---------- Borrador copiable ---------- */
@@ -801,6 +826,11 @@
 
 .gesti-draft-status[data-state="failed"] {
   color: #9b5d14;
+}
+
+.gesti-draft[data-complete="false"] .gesti-draft-body:empty::after {
+  content: "…";
+  color: var(--gesti-ink-3);
 }
 
 .gesti-draft-body {
@@ -1107,6 +1137,552 @@ button.gesti-source-row:hover {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Cita de una fuente web: el número, redondo y chico. */
+.gesti-cite.is-web {
+  min-width: 18px;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 9999px;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+a.gesti-cite.is-web {
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+a.gesti-cite.is-web:hover {
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+/* Fuentes web en la lista de "N fuentes": número, título y dominio. */
+a.gesti-source-row {
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+a.gesti-source-row:hover {
+  background: var(--gesti-hover);
+}
+
+.gesti-source-number {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.gesti-source-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-source-domain {
+  flex: 0 0 auto;
+  max-width: 40%;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--gesti-ink-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Partes de la respuesta: gráficos, pregunta, archivos ---------- */
+
+.gesti-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gesti-stream + .gesti-parts,
+.gesti-thinking + .gesti-parts,
+.gesti-msg-meta + .gesti-parts {
+  margin-top: 14px;
+}
+
+.gesti-parts + .gesti-documents,
+.gesti-parts + .gesti-question,
+.gesti-stream + .gesti-documents,
+.gesti-stream + .gesti-question,
+.gesti-documents + .gesti-question {
+  margin-top: 14px;
+}
+
+.gesti-question {
+  max-width: 520px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--gesti-blue-line);
+  border-radius: 16px;
+  background: var(--gesti-blue-soft);
+}
+
+.gesti-question-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--gesti-ink);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.gesti-question-text svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--gesti-blue);
+}
+
+.gesti-question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gesti-question-options button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--gesti-blue-line);
+  border-radius: 9999px;
+  background: #ffffff;
+  color: var(--gesti-blue-dark);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.gesti-question-options button:hover:not(:disabled) {
+  border-color: var(--gesti-blue);
+  background: var(--gesti-blue);
+  color: #ffffff;
+}
+
+.gesti-question-options button:disabled {
+  border-color: var(--gesti-line-strong);
+  background: transparent;
+  color: var(--gesti-ink-3);
+  cursor: default;
+}
+
+.gesti-question[data-interactive="false"] {
+  border-color: var(--gesti-line-strong);
+  background: var(--gesti-inset);
+}
+
+.gesti-question-hint {
+  margin: 10px 0 0;
+  color: var(--gesti-ink-2);
+  font-size: 12.5px;
+}
+
+.gesti-documents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 520px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gesti-document {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.gesti-document-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+.gesti-document-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.gesti-document-name {
+  overflow: hidden;
+  color: var(--gesti-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-document-size {
+  color: var(--gesti-ink-3);
+  font-size: 12px;
+}
+
+.gesti-document-error {
+  color: #b42318;
+}
+
+.gesti-document-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--gesti-blue-line);
+  border-radius: 9999px;
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue-dark);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.gesti-document-download:hover:not(:disabled) {
+  background: var(--gesti-blue);
+  color: #ffffff;
+}
+
+.gesti-document-download:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.gesti-spin {
+  animation: gesti-spin 0.9s linear infinite;
+}
+
+.gesti-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Respuestas especiales (se agotó el presupuesto, falló): se leen como un aviso, no como una respuesta común. */
+.gesti-msg.is-assistant[data-notice] .gesti-stream-text {
+  color: var(--gesti-ink-2);
+}
+
+.gesti-msg.is-assistant[data-notice="error"] .gesti-stream-body {
+  padding: 10px 14px;
+  border: 1px solid #f1d6d3;
+  border-radius: 12px;
+  background: #fdf3f2;
+}
+
+.gesti-msg.is-assistant[data-notice="budget_exhausted"] .gesti-stream-body,
+.gesti-msg.is-assistant[data-notice="not_configured"] .gesti-stream-body {
+  padding: 10px 14px;
+  border: 1px solid #efe0c4;
+  border-radius: 12px;
+  background: #fdf8ee;
+}
+
+/* Qué está haciendo Gesti ("Buscando en internet…") junto a su loader. */
+.gesti-stream-body + .gesti-thinking {
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+
+.gesti-bubble-error {
+  margin: 0 0 6px;
+  color: #b42318;
+  font-size: 12px;
+}
+
+.gesti-attachment-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gesti-attachment.is-image .gesti-attachment-open {
+  display: block;
+}
+
+/* Estado de carga del chat que se abre. */
+.gesti-thread-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 0;
+  color: var(--gesti-ink-2);
+  font-size: 13.5px;
+}
+
+.gesti-thread-state p {
+  margin: 0;
+}
+
+.gesti-thread-state button,
+.gesti-history-retry,
+.gesti-usage-state button {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 9999px;
+  background: #ffffff;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gesti-thread-state button:hover,
+.gesti-history-retry:hover,
+.gesti-usage-state button:hover {
+  background: var(--gesti-hover);
+}
+
+/* Aviso breve bajo la barra (por ejemplo, no se pudo renombrar). */
+.gesti-flash {
+  margin: 0;
+  padding: 8px 16px;
+  background: #fdf8ee;
+  color: #9b5d14;
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* Subida de adjuntos al enviar. */
+.gesti-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--gesti-ink-2);
+  font-size: 12px;
+}
+
+.gesti-upload-bar {
+  flex: 1 1 auto;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--gesti-hover-2);
+}
+
+.gesti-upload-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gesti-blue);
+  transition: width 160ms linear;
+}
+
+.gesti-upload-label {
+  flex: 0 0 auto;
+}
+
+/* Barra del chat: "Consumo" con texto en pantallas anchas. */
+.gesti-bar-btn.is-labeled {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------- Consumo (gesti-usage-panel.tsx) ---------- */
+
+.gesti-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  color: var(--gesti-ink);
+}
+
+.gesti-usage-month {
+  margin: 0;
+  color: var(--gesti-ink-2);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.gesti-usage-figure {
+  margin: 4px 0 10px;
+  color: var(--gesti-ink-2);
+  font-size: 15px;
+}
+
+.gesti-usage-figure strong {
+  color: var(--gesti-ink);
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.gesti-usage-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--gesti-hover-2);
+}
+
+.gesti-usage-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gesti-blue);
+  transition: width 300ms var(--gesti-ease);
+}
+
+.gesti-usage-bar[data-tone="high"] > span {
+  background: #d9822b;
+}
+
+.gesti-usage-bar[data-tone="full"] > span {
+  background: #c23a31;
+}
+
+.gesti-usage-note {
+  margin: 10px 0 0;
+  color: var(--gesti-ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.gesti-usage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.gesti-usage-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.gesti-usage-head span {
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.gesti-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.gesti-usage-table th,
+.gesti-usage-table td {
+  padding: 9px 0;
+  border-top: 1px solid var(--gesti-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.gesti-usage-table thead th {
+  border-top: 0;
+  color: var(--gesti-ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.gesti-usage-table tbody th {
+  font-weight: 500;
+}
+
+.gesti-usage-table .is-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gesti-usage-table td.is-number {
+  padding-left: 16px;
+}
+
+.gesti-usage-name,
+.gesti-usage-email {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.gesti-usage-email {
+  color: var(--gesti-ink-3);
+  font-size: 12px;
+}
+
+.gesti-usage-empty,
+.gesti-usage-state {
+  margin: 0;
+  color: var(--gesti-ink-2);
+  font-size: 13.5px;
+}
+
+.gesti-usage-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.gesti-usage-state p {
+  margin: 0;
 }
 
 /* ---------- Historial de chats (gesti-history-panel.tsx) ---------- */
@@ -1529,6 +2105,20 @@ button.gesti-source-row:hover {
   .gesti-source-hint {
     display: none;
   }
+
+  .gesti-bar-btn.is-labeled span {
+    display: none;
+  }
+
+  .gesti-bar-btn.is-labeled {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .gesti-source-domain {
+    max-width: 34%;
+  }
 }
 
 /* ---------- Animaciones ---------- */
@@ -1546,11 +2136,9 @@ button.gesti-source-row:hover {
 @keyframes gesti-word-in {
   from {
     opacity: 0;
-    filter: blur(4px);
   }
   to {
     opacity: 1;
-    filter: blur(0);
   }
 }
 
@@ -1611,6 +2199,12 @@ button.gesti-source-row:hover {
   }
   50% {
     transform: scaleY(var(--h));
+  }
+}
+
+@keyframes gesti-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

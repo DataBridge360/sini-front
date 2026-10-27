@@ -1,59 +1,32 @@
-import { z } from "zod";
+import type { GestiConversationSummary } from "@/lib/gesti-contract";
 
-// Historial de chats de Gesti. Por ahora es solo frontend: los chats viven en
-// localStorage, separados por usuario. Acá está la lógica pura (títulos,
-// grupos por fecha, búsqueda y formato guardado); la UI está en
+// Historial de chats de Gesti. Los chats viven en el server (API de Gesti); acá
+// está la lógica pura (títulos, grupos por fecha y búsqueda) que usa la UI de
 // components/ui/gesti-history-panel.tsx.
 
-export const MAX_STORED_CHATS = 50;
 const MAX_TITLE_LENGTH = 48;
 const SNIPPET_RADIUS = 36;
-const STORAGE_VERSION = 1;
 
-const attachmentSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  size: z.number(),
-  /** URL local (blob:) de una imagen; no sobrevive a la recarga y no se guarda. */
-  previewUrl: z.string().nullable()
-});
+/** Un chat de la lista. `messages` solo está en los chats cuyos mensajes ya se cargaron: la búsqueda por contenido llega hasta ahí. */
+export type HistoryChat = {
+  id: string;
+  title: string;
+  pinned: boolean;
+  /** Milisegundos desde epoch. */
+  createdAt: number;
+  updatedAt: number;
+  messages?: Array<{ text: string }> | undefined;
+};
 
-const messageSchema = z.discriminatedUnion("role", [
-  z.object({
-    id: z.string(),
-    role: z.literal("user"),
-    text: z.string(),
-    attachments: z.array(attachmentSchema)
-  }),
-  z.object({
-    id: z.string(),
-    role: z.literal("assistant"),
-    text: z.string(),
-    reasoning: z.boolean(),
-    sources: z.array(z.string()),
-    followUps: z.array(z.string()),
-    /** Hora en que respondió Gesti; los chats guardados antes no la tienen. */
-    sentAt: z.number().optional(),
-    /** Cuerpo del borrador de la respuesta (el bloque copiable); ausente si no lo tiene. */
-    draft: z.string().optional()
-  })
-]);
-
-const chatSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-  pinned: z.boolean(),
-  messages: z.array(messageSchema)
-});
-
-export type StoredAttachment = z.infer<typeof attachmentSchema>;
-export type StoredMessage = z.infer<typeof messageSchema>;
-export type StoredChat = z.infer<typeof chatSchema>;
-
-export function historyStorageKey(userKey: string) {
-  return `gesti.history.v${STORAGE_VERSION}:${userKey}`;
+/** Un chat del server (fechas ISO) a la forma de la lista. */
+export function toHistoryChat(summary: GestiConversationSummary): HistoryChat {
+  return {
+    id: summary.id,
+    title: summary.title,
+    pinned: summary.pinned,
+    createdAt: Date.parse(summary.createdAt),
+    updatedAt: Date.parse(summary.updatedAt)
+  };
 }
 
 export function deriveChatTitle(text: string) {
@@ -76,7 +49,7 @@ export function formatMessageTime(timestamp: number) {
 
 export type ChatGroupKey = "pinned" | "today" | "yesterday" | "week" | "month" | "older";
 
-export type ChatGroup = { key: ChatGroupKey; label: string; chats: StoredChat[] };
+export type ChatGroup = { key: ChatGroupKey; label: string; chats: HistoryChat[] };
 
 const GROUP_LABELS: Record<ChatGroupKey, string> = {
   pinned: "Fijados",
@@ -97,17 +70,17 @@ function startOfDay(now: number, daysAgo: number) {
   return date.getTime();
 }
 
-function newestFirst(a: StoredChat, b: StoredChat) {
+function newestFirst(a: HistoryChat, b: HistoryChat) {
   return b.updatedAt - a.updatedAt;
 }
 
-export function groupChats(chats: StoredChat[], now: number): ChatGroup[] {
+export function groupChats(chats: HistoryChat[], now: number): ChatGroup[] {
   const today = startOfDay(now, 0);
   const yesterday = startOfDay(now, 1);
   const week = startOfDay(now, 6);
   const month = startOfDay(now, 29);
 
-  const keyFor = (chat: StoredChat): ChatGroupKey => {
+  const keyFor = (chat: HistoryChat): ChatGroupKey => {
     if (chat.pinned) return "pinned";
     if (chat.updatedAt >= today) return "today";
     if (chat.updatedAt >= yesterday) return "yesterday";
@@ -116,7 +89,7 @@ export function groupChats(chats: StoredChat[], now: number): ChatGroup[] {
     return "older";
   };
 
-  const buckets = new Map<ChatGroupKey, StoredChat[]>();
+  const buckets = new Map<ChatGroupKey, HistoryChat[]>();
   for (const chat of [...chats].sort(newestFirst)) {
     const key = keyFor(chat);
     buckets.set(key, [...(buckets.get(key) ?? []), chat]);
@@ -130,7 +103,7 @@ export function groupChats(chats: StoredChat[], now: number): ChatGroup[] {
 // ---------- Búsqueda ----------
 
 export type ChatSearchResult = {
-  chat: StoredChat;
+  chat: HistoryChat;
   /** Fragmento del mensaje que coincide; null si coincide el título. */
   snippet: string | null;
 };
@@ -185,88 +158,17 @@ function snippetAround(text: string, query: string): string | null {
   return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
 }
 
-export function searchChats(chats: StoredChat[], query: string): ChatSearchResult[] {
+export function searchChats(chats: HistoryChat[], query: string): ChatSearchResult[] {
   const sorted = [...chats].sort(newestFirst);
   const needle = foldQuery(query);
   if (!needle) return sorted.map((chat) => ({ chat, snippet: null }));
 
   return sorted.flatMap((chat): ChatSearchResult[] => {
     if (fold(chat.title).folded.includes(needle)) return [{ chat, snippet: null }];
-    for (const message of chat.messages) {
+    for (const message of chat.messages ?? []) {
       const snippet = snippetAround(message.text, query);
       if (snippet) return [{ chat, snippet }];
     }
     return [];
   });
-}
-
-// ---------- Persistencia ----------
-
-// Los fijados nunca se descartan; del resto quedan los más recientes.
-function prune(chats: StoredChat[]) {
-  if (chats.length <= MAX_STORED_CHATS) return chats;
-  const pinned = chats.filter((chat) => chat.pinned).length;
-  const room = Math.max(0, MAX_STORED_CHATS - pinned);
-  const keep = new Set(
-    chats
-      .filter((chat) => !chat.pinned)
-      .sort(newestFirst)
-      .slice(0, room)
-      .map((chat) => chat.id)
-  );
-  return chats.filter((chat) => chat.pinned || keep.has(chat.id));
-}
-
-// Campo por campo: los mensajes vivos traen además el `File`, los tokens y el
-// estado de la animación, que no se guardan.
-function storedMessage(message: StoredMessage): StoredMessage {
-  if (message.role === "user") {
-    return {
-      id: message.id,
-      role: "user",
-      text: message.text,
-      attachments: message.attachments.map(({ id, name, size }) => ({ id, name, size, previewUrl: null }))
-    };
-  }
-  const { id, text, reasoning, sources, followUps, sentAt, draft } = message;
-  return {
-    id,
-    role: "assistant",
-    text,
-    reasoning,
-    sources,
-    followUps,
-    ...(sentAt === undefined ? {} : { sentAt }),
-    ...(draft === undefined ? {} : { draft })
-  };
-}
-
-export function serializeChats(chats: StoredChat[]) {
-  const stored = prune(chats).map(({ id, title, createdAt, updatedAt, pinned, messages }) => ({
-    id,
-    title,
-    createdAt,
-    updatedAt,
-    pinned,
-    messages: messages.map(storedMessage)
-  }));
-  return JSON.stringify({ version: STORAGE_VERSION, chats: stored });
-}
-
-export function parseStoredChats(raw: string | null): StoredChat[] {
-  if (!raw) return [];
-  let data: unknown;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  const entries = (data as { chats?: unknown } | null)?.chats;
-  if (!Array.isArray(entries)) return [];
-  // Un chat roto no se lleva puesto al resto del historial.
-  const chats = entries.flatMap((entry) => {
-    const parsed = chatSchema.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
-  });
-  return prune(chats);
 }
