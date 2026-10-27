@@ -25,6 +25,7 @@ Follows `odd/tasks/gesti-module.md` (Gesti chat + hover-rail sidebar, already co
 | T6 | S4 (revision 2) | gentle-ai-worker: dashboard as refined proposal C | 4003c16 |
 | T7 | S4 (revision 3) | gentle-ai-worker: wallet-style dashboard | 0bf558f |
 | T8 | S4 (revision 4) | inline: pastel visual style (prototype wallet-3) | d2bc27a |
+| T9 | S4 (revision 5) | gentle-ai-worker: Gesti pose by state in the balance card | |
 | T4 | S5 | gentle-ai-worker: notifications bell; parent wires it into the header | 9e67e92 (bell), 38da2b6 (wiring) |
 
 ## Log
@@ -40,3 +41,4 @@ Follows `odd/tasks/gesti-module.md` (Gesti chat + hover-rail sidebar, already co
 - L9 (user, verbatim): "perdon me gusta mas el c, pero necesito sea mejor, mas simple, sin ruido visual, bien ordenado y que se pueda ver en una sola pantalla sin hacer mucho scroll, un poco de scroll si es necesario pero en lo posible no mucho, accesos rapidos y demas". T5 (proposal A) cancelled mid-way; its uncommitted changes discarded.
 - L10 (user, verbatim): "sigue sin gustarme el dashboard, que sea mas limpio y un listado en el inicio con las tareas. Que tenga un estilo billetera virtual digamos, un poco"
 - L11 (user, verbatim): "No me gusta cómo sigue estrando el dashboard, así que vamos a tratar de cambiar el diseño. Me gusta cómo está estructurado, pero no me gusta la parte del diseño." Three static prototypes (claro, oscuro, pastel); user picked "3 · Suave con color pastel". Structure kept; hero chips added via buildHeroSummary().chips (RED 3 failing → GREEN).
+- L12 (user, verbatim): "vamos a generar mas imagenes de gesti con codex para no tener las mismas poses o mismas imagenes en todos lados, para cambiar en el dashboard". Generated with codex exec (image_generation) from assets/gesti-thumbs-up-v1.png + the character sheet: wave, review (tablet), celebrate, think; white background removed; 480px webp in public/gesti/poses/gesti-{wave,review,celebrate,think}.webp; 1024px PNG sources in ../assets/gesti-poses/. Use on the dashboard: the balance card shows a full-body pose chosen by state.

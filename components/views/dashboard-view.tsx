@@ -20,7 +20,8 @@ import {
   buildTaskFeed,
   buildWorkGroups,
   firstNameOf,
-  greetingForHour
+  greetingForHour,
+  heroPoseOf
 } from "@/components/dashboard/dashboard-helpers";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { TaskFeed } from "@/components/dashboard/task-feed";
@@ -103,6 +104,7 @@ export function DashboardView({
         firstName={firstName}
         summary={hero}
         notices={noticeSummary}
+        pose={heroPoseOf(groups, tasksQuery.isLoading)}
         isLoading={tasksQuery.isLoading}
         ariaSummary={tasksQuery.data ? buildDaySummary(groups) : "Revisando tus tareas…"}
         onOpenGesti={() => setTab("gesti")}

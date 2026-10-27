@@ -304,6 +304,37 @@ export function buildHeroSummary(groups: WorkGroup[]): HeroSummary {
   };
 }
 
+export type HeroPose = "think" | "review" | "celebrate" | "wave";
+
+// Qué pose de Gesti acompaña la tarjeta principal: pensando mientras carga,
+// revisando si hay algo vencido, festejando si no queda nada para hoy y
+// saludando el resto de los días.
+export function heroPose({
+  isLoading,
+  overdue,
+  today
+}: {
+  isLoading: boolean;
+  overdue: number;
+  today: number;
+}): HeroPose {
+  if (isLoading) return "think";
+  if (overdue > 0) return "review";
+  if (today === 0) return "celebrate";
+  return "wave";
+}
+
+export const HERO_POSES: Record<HeroPose, { src: string; alt: string }> = {
+  wave: { src: "/gesti/poses/gesti-wave.webp", alt: "Gesti saludando" },
+  review: { src: "/gesti/poses/gesti-review.webp", alt: "Gesti revisando tus tareas" },
+  celebrate: { src: "/gesti/poses/gesti-celebrate.webp", alt: "Gesti festejando" },
+  think: { src: "/gesti/poses/gesti-think.webp", alt: "Gesti pensando" }
+};
+
+export function heroPoseOf(groups: WorkGroup[], isLoading: boolean): HeroPose {
+  return heroPose({ isLoading, overdue: count(groups, "overdue"), today: count(groups, "today") });
+}
+
 export type NoticeSummary = {
   toContact: number;
   // Porcentaje pagado sobre el total; null si no hay avisos.

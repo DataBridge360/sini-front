@@ -10,6 +10,9 @@ import {
   buildWorkGroups,
   firstNameOf,
   greetingForHour,
+  HERO_POSES,
+  heroPose,
+  heroPoseOf,
   shortDayLabel,
   taskContext
 } from "@/components/dashboard/dashboard-helpers";
@@ -299,5 +302,43 @@ describe("buildUpcomingList / shortDayLabel", () => {
   it("formats a date as weekday and day", () => {
     expect(shortDayLabel("2026-10-29")).toBe("Jue 29");
     expect(shortDayLabel("2026-11-01")).toBe("Dom 1");
+  });
+});
+
+describe("heroPose", () => {
+  it("thinks while loading, even with overdue or due-today work", () => {
+    expect(heroPose({ isLoading: true, overdue: 0, today: 0 })).toBe("think");
+    expect(heroPose({ isLoading: true, overdue: 3, today: 2 })).toBe("think");
+  });
+
+  it("reviews whenever something is overdue, even if there is work for today", () => {
+    expect(heroPose({ isLoading: false, overdue: 1, today: 0 })).toBe("review");
+    expect(heroPose({ isLoading: false, overdue: 2, today: 5 })).toBe("review");
+  });
+
+  it("celebrates when nothing is overdue and nothing is due today", () => {
+    expect(heroPose({ isLoading: false, overdue: 0, today: 0 })).toBe("celebrate");
+  });
+
+  it("waves when there is work for today but nothing overdue", () => {
+    expect(heroPose({ isLoading: false, overdue: 0, today: 1 })).toBe("wave");
+  });
+
+  it("maps every pose to its image and Spanish alt text", () => {
+    expect(HERO_POSES).toEqual({
+      wave: { src: "/gesti/poses/gesti-wave.webp", alt: "Gesti saludando" },
+      review: { src: "/gesti/poses/gesti-review.webp", alt: "Gesti revisando tus tareas" },
+      celebrate: { src: "/gesti/poses/gesti-celebrate.webp", alt: "Gesti festejando" },
+      think: { src: "/gesti/poses/gesti-think.webp", alt: "Gesti pensando" }
+    });
+  });
+});
+
+describe("heroPoseOf", () => {
+  it("reads the overdue and today counts from the work groups", () => {
+    expect(heroPoseOf(groupsOf([task({ id: "a", due_date: "2026-10-20" })]), false)).toBe("review");
+    expect(heroPoseOf(groupsOf([task({ id: "a", due_date: "2026-10-26" })]), false)).toBe("wave");
+    expect(heroPoseOf(groupsOf([task({ id: "a", due_date: "2026-10-27" })]), false)).toBe("celebrate");
+    expect(heroPoseOf(groupsOf([]), true)).toBe("think");
   });
 });
