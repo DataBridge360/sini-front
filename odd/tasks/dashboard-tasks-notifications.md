@@ -24,7 +24,7 @@ Follows `odd/tasks/gesti-module.md` (Gesti chat + hover-rail sidebar, already co
 | T5 | S4 (revision) | gentle-ai-worker: dashboard as proposal A | dropped (L9) |
 | T6 | S4 (revision 2) | gentle-ai-worker: dashboard as refined proposal C | 4003c16 |
 | T7 | S4 (revision 3) | gentle-ai-worker: wallet-style dashboard | 0bf558f |
-| T8 | S4 (revision 4) | inline: pastel visual style (prototype wallet-3) | |
+| T8 | S4 (revision 4) | inline: pastel visual style (prototype wallet-3) | d2bc27a |
 | T4 | S5 | gentle-ai-worker: notifications bell; parent wires it into the header | 9e67e92 (bell), 38da2b6 (wiring) |
 
 ## Log
