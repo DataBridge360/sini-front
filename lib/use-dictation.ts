@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-// Dictado de prueba con la Web Speech API del navegador: gratis y sin backend.
-// Ojo (privacidad, a revisar antes de salir de la vista previa): Chrome procesa
-// el audio en servidores de Google, no en el equipo del usuario.
+// Dictado con la Web Speech API del navegador: gratis y sin backend (la API de
+// Claude no transcribe audio). Ojo (privacidad): Chrome procesa el audio en
+// servidores de Google y Safari en los de Apple, no en el equipo del usuario.
+// Firefox no la tiene: ahí el botón del micrófono no aparece.
 
 type RecognitionAlternative = { readonly transcript: string };
 
@@ -89,6 +90,26 @@ export type DictationPhase = "idle" | "starting" | "listening" | "finishing";
 
 export type DictationEvent = "start" | "started" | "stop" | "end" | "fail";
 
+/** Tope de reanudaciones en un mismo dictado, para no entrar en un bucle. */
+export const MAX_DICTATION_RESTARTS = 20;
+
+/**
+ * Chrome y Safari cortan la sesión solos (silencio largo, ~1 minuto de audio)
+ * aunque se pida `continuous`. Si el usuario no pidió cortar y no hubo error,
+ * se abre otra sesión y el dictado sigue sin que se note.
+ */
+export function shouldResumeDictation({
+  phase,
+  error,
+  restarts
+}: {
+  phase: DictationPhase;
+  error: string | null;
+  restarts: number;
+}) {
+  return phase === "listening" && error === null && restarts < MAX_DICTATION_RESTARTS;
+}
+
 /** Transición de fase; los eventos que no corresponden a la fase actual no la cambian. */
 export function nextDictationPhase(phase: DictationPhase, event: DictationEvent): DictationPhase {
   switch (event) {
@@ -161,50 +182,85 @@ export function useDictation({
     recognition.abort();
   }, []);
 
+  // Lo confirmado en sesiones anteriores del mismo dictado (ver shouldResumeDictation).
+  const carriedRef = useRef("");
+  const restartsRef = useRef(0);
+  const errorRef = useRef<string | null>(null);
+
+  const openSession = useCallback(
+    (Recognition: RecognitionConstructor) => {
+      // Recursiva: al reanudar, abre la siguiente sesión con los mismos callbacks.
+      const open = () => {
+        const recognition = new Recognition();
+        let sessionFinals = "";
+        recognition.lang = lang;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        // Algunos navegadores solo avisan con `onaudiostart`; el primer resultado también cuenta.
+        recognition.onstart = () => transition("started");
+        recognition.onaudiostart = () => transition("started");
+        // Cada evento trae todos los resultados de la sesión: se reconstruye desde cero.
+        recognition.onresult = (event) => {
+          transition("started");
+          const finals: string[] = [];
+          let interim = "";
+          for (let index = 0; index < event.results.length; index += 1) {
+            const result = event.results[index];
+            const transcript = result?.[0]?.transcript ?? "";
+            if (result?.isFinal) finals.push(transcript);
+            else interim = joinParts(interim, transcript);
+          }
+          sessionFinals = joinParts(...finals);
+          onTextRef.current(joinParts(carriedRef.current, sessionFinals), interim);
+        };
+        recognition.onerror = (event) => {
+          // "aborted" es cortar a propósito, no un fallo.
+          if (event.error === "aborted") return;
+          errorRef.current = event.error;
+          setError(event.error);
+          transition("fail");
+        };
+        recognition.onend = () => {
+          if (recognitionRef.current !== recognition) return;
+          recognitionRef.current = null;
+          carriedRef.current = joinParts(carriedRef.current, sessionFinals);
+          const resume = shouldResumeDictation({
+            phase: phaseRef.current,
+            error: errorRef.current,
+            restarts: restartsRef.current
+          });
+          if (resume) {
+            restartsRef.current += 1;
+            open();
+            return;
+          }
+          transition("end");
+        };
+        recognitionRef.current = recognition;
+        try {
+          recognition.start();
+        } catch {
+          recognitionRef.current = null;
+          errorRef.current = "unknown";
+          setError("unknown");
+          transition("fail");
+        }
+      };
+      open();
+    },
+    [lang, transition]
+  );
+
   const start = useCallback(() => {
     const Recognition = recognitionConstructor();
     if (!Recognition || phaseRef.current !== "idle") return;
     setError(null);
-    const recognition = new Recognition();
-    recognition.lang = lang;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    // Algunos navegadores solo avisan con `onaudiostart`; el primer resultado también cuenta.
-    recognition.onstart = () => transition("started");
-    recognition.onaudiostart = () => transition("started");
-    // Cada evento trae todos los resultados de la sesión: se reconstruye desde cero.
-    recognition.onresult = (event) => {
-      transition("started");
-      const finals: string[] = [];
-      let interim = "";
-      for (let index = 0; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const transcript = result?.[0]?.transcript ?? "";
-        if (result?.isFinal) finals.push(transcript);
-        else interim = joinParts(interim, transcript);
-      }
-      onTextRef.current(joinParts(...finals), interim);
-    };
-    recognition.onerror = (event) => {
-      // "aborted" es cortar a propósito, no un fallo.
-      if (event.error === "aborted") return;
-      setError(event.error);
-      transition("fail");
-    };
-    recognition.onend = () => {
-      if (recognitionRef.current === recognition) recognitionRef.current = null;
-      transition("end");
-    };
-    recognitionRef.current = recognition;
+    errorRef.current = null;
+    carriedRef.current = "";
+    restartsRef.current = 0;
     transition("start");
-    try {
-      recognition.start();
-    } catch {
-      recognitionRef.current = null;
-      setError("unknown");
-      transition("fail");
-    }
-  }, [lang, transition]);
+    openSession(Recognition);
+  }, [openSession, transition]);
 
   /** Corte normal: todavía llegan las últimas palabras que ya se dijeron. */
   const stop = useCallback(() => {
