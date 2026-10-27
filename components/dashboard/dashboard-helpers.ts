@@ -161,29 +161,6 @@ export function buildDaySummary(groups: WorkGroup[]) {
     .join("");
 }
 
-export type AgendaState = "overdue" | "today" | "tomorrow";
-
-export type AgendaRow = { item: WorkItem; state: AgendaState; dueLabel: string };
-
-const AGENDA_STATES: AgendaState[] = ["overdue", "today", "tomorrow"];
-
-// "Para hoy": vencidas, luego hoy, luego mañana, en una sola lista. `total` es
-// todo lo que hay; `rows` lo que entra en pantalla.
-export function buildAgenda(groups: WorkGroup[], limit: number): { rows: AgendaRow[]; total: number } {
-  const all: AgendaRow[] = [];
-  for (const state of AGENDA_STATES) {
-    const group = groups.find((candidate) => candidate.key === state);
-    for (const item of group?.items ?? []) {
-      all.push({
-        item,
-        state,
-        dueLabel: state === "overdue" ? (item.dueText ?? "Vencida") : state === "today" ? "Hoy" : "Mañana"
-      });
-    }
-  }
-  return { rows: all.slice(0, limit), total: all.length };
-}
-
 export function clientNameOf(task: Task) {
   return task.clients?.full_name ?? task.policies?.clients?.full_name ?? null;
 }
@@ -191,23 +168,6 @@ export function clientNameOf(task: Task) {
 // "Cliente · póliza", lo que identifica la tarea sin abrirla.
 export function taskContext(task: Task) {
   return [clientNameOf(task), task.policies?.policy_number].filter(Boolean).join(" · ");
-}
-
-export type Suggestion = { kind: "task"; taskId: string; label: string } | { kind: "gesti"; label: string };
-
-// Hasta dos atajos sacados de los datos: arrancar por lo más urgente (abre esa
-// tarea) y pedirle a Gesti un mensaje para el cliente de esa agenda.
-export function buildSuggestions(groups: WorkGroup[]): Suggestion[] {
-  const { rows } = buildAgenda(groups, Number.POSITIVE_INFINITY);
-  const first = rows[0];
-  if (!first) return [];
-
-  const suggestions: Suggestion[] = [
-    { kind: "task", taskId: first.item.task.id, label: `Empezá por “${first.item.task.title}”` }
-  ];
-  const client = rows.map((row) => clientNameOf(row.item.task)).find(Boolean);
-  if (client) suggestions.push({ kind: "gesti", label: `Redactá un mensaje para ${client}` });
-  return suggestions;
 }
 
 const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -227,4 +187,130 @@ export function buildUpcomingList(groups: WorkGroup[], limit: number): WorkItem[
     .filter((item) => item.daysUntilDue !== null)
     .sort((a, b) => (a.daysUntilDue ?? 0) - (b.daysUntilDue ?? 0))
     .slice(0, limit);
+}
+
+export type FeedState = "overdue" | "today" | "tomorrow" | "upcoming" | "review";
+
+export type FeedRow = {
+  task: Task;
+  state: FeedState;
+  // Lo que se lee a la derecha, como un monto: "Hace 2 días", "Hoy", "Jue 29".
+  dueLabel: string;
+  statusLabel: string;
+};
+
+export type FeedSection = { state: FeedState; title: string; rows: FeedRow[] };
+
+const FEED_TITLES: Record<FeedState, string> = {
+  overdue: "Vencidas",
+  today: "Hoy",
+  tomorrow: "Mañana",
+  upcoming: "Próximas",
+  review: "Esperan tu aprobación"
+};
+
+// Del grupo de trabajo al tramo del listado; "later" son las próximas.
+const FEED_ORDER: [WorkGroupKey, FeedState][] = [
+  ["overdue", "overdue"],
+  ["today", "today"],
+  ["tomorrow", "tomorrow"],
+  ["later", "upcoming"],
+  ["review", "review"]
+];
+
+const STATUS_LABELS: Partial<Record<Task["status"], string>> = {
+  pendiente: "Pendiente",
+  en_proceso: "En proceso",
+  revision: "En revisión"
+};
+
+export function taskStatusLabel(status: Task["status"]) {
+  return STATUS_LABELS[status] ?? "Pendiente";
+}
+
+function feedDueLabel(item: WorkItem) {
+  const days = item.daysUntilDue;
+  const date = item.task.due_date;
+  if (days === null || !date) return null;
+  if (days < 0) return days === -1 ? "Ayer" : `Hace ${Math.abs(days)} días`;
+  if (days === 0) return "Hoy";
+  if (days === 1) return "Mañana";
+  return shortDayLabel(date);
+}
+
+// El listado del inicio, como los movimientos de una billetera: tramos por
+// fecha (vencidas, hoy, mañana, próximas y, para quien modera, lo que espera
+// aprobación) con hasta `limit` filas entre todos. Lo que no tiene fecha no
+// entra: vive en Tareas. `total` es todo lo que cabría; `shown`, lo listado.
+export function buildTaskFeed(
+  groups: WorkGroup[],
+  limit: number
+): { sections: FeedSection[]; shown: number; total: number } {
+  const sections: FeedSection[] = [];
+  let total = 0;
+  let room = limit;
+
+  for (const [groupKey, state] of FEED_ORDER) {
+    const items =
+      state === "upcoming"
+        ? buildUpcomingList(groups, Number.POSITIVE_INFINITY)
+        : (groups.find((group) => group.key === groupKey)?.items ?? []);
+    total += items.length;
+    if (room <= 0 || items.length === 0) continue;
+
+    const rows = items.slice(0, room).map((item): FeedRow => ({
+      task: item.task,
+      state,
+      dueLabel: feedDueLabel(item) ?? "Por aprobar",
+      statusLabel: taskStatusLabel(item.task.status)
+    }));
+    room -= rows.length;
+    sections.push({ state, title: FEED_TITLES[state], rows });
+  }
+
+  return { sections, shown: limit - Math.max(room, 0), total };
+}
+
+export type HeroSummary = {
+  // Lo que hay que atender hoy: vencidas + las de hoy.
+  count: number;
+  label: string;
+  detail: string;
+};
+
+// El "saldo" de la tarjeta principal: cuántas tareas piden atención hoy y una
+// línea con lo vencido y lo de mañana (sin las partes en cero).
+export function buildHeroSummary(groups: WorkGroup[]): HeroSummary {
+  const overdue = count(groups, "overdue");
+  const today = count(groups, "today");
+  const tomorrow = count(groups, "tomorrow");
+  const total = overdue + today;
+
+  const parts: string[] = [];
+  if (overdue > 0) parts.push(plural(overdue, "vencida", "vencidas"));
+  if (tomorrow > 0) parts.push(`${tomorrow} para mañana`);
+
+  if (total === 0) {
+    return { count: 0, label: "tareas para hoy", detail: ["Estás al día", ...parts].join(" · ") };
+  }
+  return {
+    count: total,
+    label: total === 1 ? "tarea para hoy" : "tareas para hoy",
+    detail: parts.length > 0 ? parts.join(" · ") : "Nada vencido"
+  };
+}
+
+export type NoticeSummary = {
+  toContact: number;
+  // Porcentaje pagado sobre el total; null si no hay avisos.
+  collectionPct: number | null;
+};
+
+export function buildNoticeSummary(notices: { status: string }[]): NoticeSummary {
+  const toContact = notices.filter((notice) => notice.status === "avisar").length;
+  const paid = notices.filter((notice) => notice.status === "pagado").length;
+  return {
+    toContact,
+    collectionPct: notices.length > 0 ? Math.round((paid / notices.length) * 100) : null
+  };
 }

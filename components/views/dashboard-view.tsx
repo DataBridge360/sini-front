@@ -10,32 +10,27 @@ import {
   type Notice,
   type Task
 } from "@/lib/api";
-import { capitalizeFirst } from "@/lib/format";
 import type { PolicyFormValues, Tab } from "@/lib/shell-types";
+import { BalanceCard } from "@/components/dashboard/balance-card";
 import { ClientCreateModal } from "@/components/clients/client-create-modal";
-import { Briefing } from "@/components/dashboard/briefing";
 import {
-  buildAgenda,
-  buildDaySegments,
-  buildSuggestions,
-  buildUpcomingList,
+  buildDaySummary,
+  buildHeroSummary,
+  buildNoticeSummary,
+  buildTaskFeed,
   buildWorkGroups,
   firstNameOf,
-  greetingForHour,
-  type Suggestion
+  greetingForHour
 } from "@/components/dashboard/dashboard-helpers";
 import { QuickActions } from "@/components/dashboard/quick-actions";
-import { ApprovalsCard, NoticesCard, UpcomingCard } from "@/components/dashboard/side-cards";
-import { TodayList } from "@/components/dashboard/today-list";
+import { TaskFeed } from "@/components/dashboard/task-feed";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 
 const NO_TASKS: Task[] = [];
 
-// Lo que entra sin scroll en un escritorio de 900px de alto.
-const AGENDA_ROWS = 7;
-const APPROVAL_ROWS = 3;
-const UPCOMING_ROWS = 4;
+// Filas del listado de tareas; el resto se ve en Tareas.
+const FEED_ROWS = 10;
 
 export function DashboardView({
   userName,
@@ -76,9 +71,6 @@ export function DashboardView({
 }) {
   const [createOpen, setCreateOpen] = useState<"client" | "policy" | null>(null);
   const firstName = firstNameOf(userName);
-  const todayLabel = capitalizeFirst(
-    new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date())
-  );
 
   // Misma queryKey que la vista de tareas: comparten caché y no se duplica el fetch.
   const tasksQuery = useQuery({
@@ -95,20 +87,9 @@ export function DashboardView({
     [tasks, currentUserId, canModerate]
   );
   const greeting = greetingForHour(new Date().getHours());
-  const segments = tasksQuery.data
-    ? buildDaySegments(groups)
-    : [{ text: "Revisando tus tareas…" }];
-  const suggestions = useMemo(() => buildSuggestions(groups), [groups]);
-  const agenda = useMemo(() => buildAgenda(groups, AGENDA_ROWS), [groups]);
-  const reviewItems = groups.find((group) => group.key === "review")?.items ?? [];
-  const upcomingItems = useMemo(() => buildUpcomingList(groups, UPCOMING_ROWS), [groups]);
-  const toContact = notices.filter((notice) => notice.status === "avisar").length;
-  const showApprovals = canModerate && reviewItems.length > 0;
-
-  function openSuggestion(suggestion: Suggestion) {
-    if (suggestion.kind === "task") onOpenTask(suggestion.taskId);
-    else setTab("gesti");
-  }
+  const hero = useMemo(() => buildHeroSummary(groups), [groups]);
+  const feed = useMemo(() => buildTaskFeed(groups, FEED_ROWS), [groups]);
+  const noticeSummary = useMemo(() => buildNoticeSummary(notices), [notices]);
 
   return (
     // Sin padding propio: el margen lateral y el aire contra el header ya los
@@ -117,17 +98,19 @@ export function DashboardView({
       {error ? <ErrorState text={error} /> : null}
       {isLoading ? <LoadingState text="Cargando resumen operativo" /> : null}
 
-      <Briefing
-        dateLabel={todayLabel}
+      <BalanceCard
         greeting={greeting}
         firstName={firstName}
-        segments={segments}
-        suggestions={suggestions}
-        onSuggestion={openSuggestion}
+        summary={hero}
+        notices={noticeSummary}
+        isLoading={tasksQuery.isLoading}
+        ariaSummary={tasksQuery.data ? buildDaySummary(groups) : "Revisando tus tareas…"}
+        onOpenGesti={() => setTab("gesti")}
+        onOpenNotices={() => setTab("notices")}
       />
 
       <QuickActions
-        toContact={toContact}
+        toContact={noticeSummary.toContact}
         onNewTask={() => onOpenTasks(false)}
         onNewPolicy={() => setCreateOpen("policy")}
         onNewClient={() => setCreateOpen("client")}
@@ -135,29 +118,15 @@ export function DashboardView({
         onOpenGesti={() => setTab("gesti")}
       />
 
-      <div className="db-layout">
-        <TodayList
-          rows={agenda.rows}
-          total={agenda.total}
-          isLoading={tasksQuery.isLoading}
-          error={tasksQuery.error ? tasksQuery.error.message : null}
-          onOpenTask={onOpenTask}
-          onOpenTasks={() => onOpenTasks(false)}
-        />
-
-        <aside className="db-aside">
-          {showApprovals ? (
-            <ApprovalsCard
-              items={reviewItems.slice(0, APPROVAL_ROWS)}
-              total={reviewItems.length}
-              onOpenTask={onOpenTask}
-              onOpenTasks={() => onOpenTasks(false)}
-            />
-          ) : null}
-          <UpcomingCard items={upcomingItems} onOpenTask={onOpenTask} onOpenTasks={() => onOpenTasks(false)} />
-          <NoticesCard notices={notices} onOpenNotices={() => setTab("notices")} />
-        </aside>
-      </div>
+      <TaskFeed
+        sections={feed.sections}
+        shown={feed.shown}
+        total={feed.total}
+        isLoading={tasksQuery.isLoading}
+        error={tasksQuery.error ? tasksQuery.error.message : null}
+        onOpenTask={onOpenTask}
+        onOpenTasks={() => onOpenTasks(false)}
+      />
 
       <ClientCreateModal
         isOpen={createOpen === "client"}
