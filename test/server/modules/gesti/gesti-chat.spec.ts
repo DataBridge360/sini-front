@@ -6,6 +6,7 @@ import type { AuthUser, OrganizationContext } from "@/server/core/context";
 import { MemoryRateLimiter } from "@/server/core/rate-limit";
 import { createApiHandler } from "@/server/core/router";
 import type { SupabaseService } from "@/server/core/supabase";
+import { MAX_DOCUMENT_PROMPT_CHARS } from "@/server/modules/gesti/agents";
 import { buildHistory, GestiChatService, HISTORY_MESSAGES, TURN_DEADLINE_MS, TURN_TIMEOUT_NOTE } from "@/server/modules/gesti/chat";
 import { gestiRoutes } from "@/server/modules/gesti/routes";
 import { costUsd } from "@/server/modules/gesti/pricing";
@@ -512,7 +513,6 @@ describe("Gesti chat", () => {
     const { params } = anthropic.streamCalls[0]!;
     expect(params.model).toBe("claude-sonnet-5-5");
     expect(params.max_tokens).toBe(4096);
-    expect(params.thinking).toBeUndefined();
     expect(params.system[0]).toMatchObject({ cache_control: { type: "ephemeral" } });
     expect(params.system[0].text).not.toMatch(/Hoy es/);
     expect(params.system[1].text).toMatch(/^Hoy es .*2026/);
@@ -521,7 +521,7 @@ describe("Gesti chat", () => {
     expect(params.tools[0]).toEqual({
       type: "web_search_20250305",
       name: "web_search",
-      max_uses: 3,
+      max_uses: 2,
       user_location: { type: "approximate", country: "AR", timezone: "America/Argentina/Buenos_Aires" }
     });
     expect(params.tools.map((tool: { name: string }) => tool.name)).toEqual([
@@ -535,8 +535,46 @@ describe("Gesti chat", () => {
     ]);
     expect(params.tools.at(-1).cache_control).toEqual({ type: "ephemeral" });
 
-    // Haiku titula con un tope de tokens bajo.
-    expect(anthropic.createCalls[0]).toMatchObject({ model: "claude-haiku-5-5", max_tokens: 30 });
+    // Costo: Sonnet sin razonamiento previo (lo trae activado por defecto), esfuerzo
+    // medio y caché automático del historial, que se reenvía en cada ronda.
+    expect(params.thinking).toEqual({ type: "between_tools" });
+    expect(params.output_config).toEqual({ effort: "medium" });
+    expect(params.cache_control).toEqual({ type: "ephemeral" });
+
+    // Haiku titula con un tope de tokens bajo y sin razonar (el razonamiento cuenta en max_tokens).
+    expect(anthropic.createCalls[0]).toMatchObject({
+      model: "claude-haiku-5-5",
+      max_tokens: 30,
+      thinking: { type: "disabled" },
+      output_config: { effort: "low" }
+    });
+  });
+
+  it("never lets Haiku think and caches its prompts, so long documents and data rounds stay cheap", async () => {
+    const conversationId = seedConversation(db);
+    const file = seedFile(db, { conversation_id: conversationId, extracted_text: "Cláusula de la póliza. ".repeat(25_000) });
+    const anthropic = createAnthropic({
+      streams: [
+        { blocks: [{ type: "tool_use", name: "read_document", input: { file_id: file.id, pregunta: "¿Qué cubre?" } }] },
+        { blocks: [{ type: "tool_use", name: "consultar_cartera", input: { pregunta: "¿Cuántas pólizas activas hay?" } }] },
+        { blocks: [{ type: "text", text: "Listo." }] }
+      ],
+      creates: [
+        { blocks: [{ type: "text", text: "Cubre robo." }] },
+        { blocks: [{ type: "text", text: "Hay 3." }] }
+      ]
+    });
+    await chat(anthropic.client, { conversationId });
+
+    expect(anthropic.createCalls).toHaveLength(2);
+    for (const call of anthropic.createCalls) {
+      expect(call).toMatchObject({ model: "claude-haiku-5-5", thinking: { type: "disabled" }, cache_control: { type: "ephemeral" } });
+    }
+    // El documento entra recortado para que el prompt quede debajo de los 100.000 tokens
+    // (arriba de eso Haiku 5.5 cobra 5 veces más todo el pedido).
+    const readPrompt = JSON.stringify(anthropic.createCalls[0]?.messages);
+    expect(readPrompt.length).toBeLessThan(MAX_DOCUMENT_PROMPT_CHARS + 2_000);
+    expect(readPrompt).toContain("El texto se cortó");
   });
 
   it("answers with a friendly notice and no model call when the monthly budget is spent", async () => {

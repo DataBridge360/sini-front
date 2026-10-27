@@ -111,7 +111,8 @@ const CLIENT_TOOLS: Anthropic.Tool[] = [
 const WEB_SEARCH_TOOL: Anthropic.WebSearchTool20250305 = {
   type: "web_search_20250305",
   name: "web_search",
-  max_uses: 3,
+  // Cada búsqueda cuesta USD 0,01 y sus resultados suman miles de tokens de entrada.
+  max_uses: 2,
   user_location: { type: "approximate", country: "AR", timezone: "America/Argentina/Buenos_Aires" }
 };
 
@@ -547,6 +548,15 @@ export class GestiChatService {
       {
         model: MODEL_MAIN,
         max_tokens: MAX_TOKENS,
+        // Sonnet 5.5 razona por defecto con esfuerzo alto, y el razonamiento se cobra
+        // como salida. between_tools es lo mínimo: sin razonar antes de responder,
+        // solo notas breves entre herramientas. El esfuerzo no puede cambiar a
+        // mitad de conversación con between_tools: queda fijo.
+        thinking: { type: "between_tools" },
+        output_config: { effort: "medium" },
+        // Caché automático: el historial y los resultados de herramientas se
+        // reenvían en cada ronda; así se cobran a 0,05x en vez de entero.
+        cache_control: EPHEMERAL,
         system: request.system,
         tools: SONNET_TOOLS,
         messages: request.messages

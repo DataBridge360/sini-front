@@ -33,7 +33,13 @@ export const MAX_DATA_ROUNDS = 6;
 export const MAX_SUBAGENT_ANSWER_CHARS = 3000;
 /** Un PDF con menos texto que esto se considera escaneado y se lee como PDF/imagen. */
 export const SCANNED_PDF_TEXT_CHARS = 200;
-const MAX_INLINE_READ_CHARS = 300_000;
+/**
+ * Tope del texto de un documento que lee o edita Haiku. Haiku 5.5 cobra 5 veces
+ * más todo el pedido (salida incluida) si el prompt pasa los 100.000 tokens;
+ * 240.000 caracteres son unos 70.000 tokens en español, con margen para el
+ * resto del prompt. Un PDF de 36 páginas ronda los 100.000 caracteres.
+ */
+export const MAX_DOCUMENT_PROMPT_CHARS = 240_000;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const EPHEMERAL = { type: "ephemeral" as const };
@@ -46,6 +52,12 @@ function cappedText(content: Anthropic.ContentBlock[], max = MAX_SUBAGENT_ANSWER
     .trim();
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+/**
+ * Haiku 5.5 razona por defecto (esfuerzo medio) y ese razonamiento se cobra y
+ * cuenta en max_tokens. Para estas tareas cortas no hace falta: se apaga.
+ */
+const HAIKU_NO_THINKING = { thinking: { type: "disabled" as const }, output_config: { effort: "low" as const } };
 
 function cachedSystem(prompt: string): Anthropic.TextBlockParam[] {
   return [{ type: "text", text: prompt, cache_control: EPHEMERAL }];
@@ -65,6 +77,9 @@ export async function runDataAgent(
       {
         model: MODEL_FAST,
         max_tokens: 1500,
+        ...HAIKU_NO_THINKING,
+        // Caché automático: cada ronda reenvía las anteriores con sus resultados.
+        cache_control: EPHEMERAL,
         system: cachedSystem(DATA_AGENT_PROMPT),
         tools: DATA_TOOL_DEFINITIONS,
         messages
@@ -114,7 +129,7 @@ function escapeAttribute(value: string) {
 }
 
 function documentText(file: AgentFile) {
-  const text = (file.text ?? "").slice(0, MAX_INLINE_READ_CHARS);
+  const text = (file.text ?? "").slice(0, MAX_DOCUMENT_PROMPT_CHARS);
   const note = file.textTruncated || (file.text ?? "").length > text.length ? "\n[El texto se cortó por su extensión.]" : "";
   return `<documento nombre="${escapeAttribute(file.name)}">\n${text}${note}\n</documento>`;
 }
@@ -158,6 +173,10 @@ export async function readDocument(
     {
       model: MODEL_FAST,
       max_tokens: 1500,
+      ...HAIKU_NO_THINKING,
+      // El documento queda en caché: otra pregunta sobre el mismo archivo en los
+      // próximos 5 minutos lo lee a 0,1x.
+      cache_control: EPHEMERAL,
       system: cachedSystem(DOCUMENT_READER_PROMPT),
       messages: [{ role: "user", content }]
     },
@@ -193,6 +212,8 @@ export async function editDocument(
     {
       model: MODEL_FAST,
       max_tokens: 16_000,
+      ...HAIKU_NO_THINKING,
+      cache_control: EPHEMERAL,
       system: cachedSystem(DOCUMENT_EDITOR_PROMPT),
       tools: [
         {
@@ -258,6 +279,7 @@ export async function generateTitle(context: AgentContext, firstMessage: string)
     {
       model: MODEL_FAST,
       max_tokens: 30,
+      ...HAIKU_NO_THINKING,
       system: TITLE_PROMPT,
       messages: [{ role: "user", content: firstMessage.slice(0, 1000) }]
     },
