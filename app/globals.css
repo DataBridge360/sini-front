@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "./gesti.css";
+@import "./dashboard.css";
+@import "./notifications.css";
 
 :root {
   --sp-bg: #f4f7f6;
@@ -2902,21 +2905,39 @@ button {
     border-color: var(--sp-border);
   }
 
-  .sp-loading-state {
-    @apply flex-col justify-center gap-3 border-dashed py-12 text-sm font-medium;
+  .sp-loading {
+    @apply flex flex-col items-center justify-center gap-2 py-10 text-sm font-medium;
     color: var(--sp-text-muted);
   }
 
-  .sp-loading-state span {
-    @apply h-7 w-7 rounded-full border-[3px] border-slate-200;
-    border-top-color: var(--org-primary);
-    animation: sp-spin 0.7s linear infinite;
+  .sp-loading img {
+    width: 88px;
+    height: 88px;
+    animation: sp-think-float 1.8s ease-in-out infinite;
   }
 
   .sp-error-state {
     background: var(--sp-red-soft);
     border-color: #fecdca;
     color: var(--sp-red);
+  }
+}
+
+/* Gesti pensando: flota y se balancea apenas mientras carga. */
+@keyframes sp-think-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+
+  50% {
+    transform: translateY(-6px) rotate(2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-loading img {
+    animation: none;
   }
 }
 
@@ -8258,6 +8279,15 @@ a.sp-client-field-value:hover {
     flex: 0 0 auto;
   }
 
+  /* En fila: un bloque mobile anterior (~línea 3043) la apila con
+     `flex-col`, y con la campana al lado del usuario quedaban uno arriba
+     del otro. Va en una regla aparte: fusionada con la de arriba, el
+     minificador descartaba `flex-direction` y `gap`. */
+  .sp-shell.app-redesign .sp-header-actions:has(.sp-bell) {
+    flex-flow: row nowrap;
+    column-gap: 8px;
+  }
+
   .sp-shell.app-redesign .sp-header > div:first-child {
     min-width: 0;
   }
@@ -9022,5 +9052,503 @@ a.sp-client-field-value:hover {
   .sp-install-actions button {
     flex: 1 1 0;
     min-height: 44px;
+  }
+}
+
+/* ============================================================
+   Sidebar riel (escritorio, > 900px)
+   Riel de íconos de 72px que se expande a 252px al pasar el mouse.
+   Se expande POR ENCIMA del contenido: la columna de la grilla queda
+   fija en 72px, así la página no se reacomoda en cada hover. También
+   se expande con foco de teclado (:focus-visible) y mientras el menú
+   de Configuración está abierto (.is-pinned).
+   En pantallas táctiles anchas (sin hover) queda expandido siempre.
+   Debajo de 900px sigue la barra inferior definida más arriba.
+   ============================================================ */
+@media (min-width: 901px) {
+  .sp-shell.app-redesign {
+    --sp-rail: 72px;
+    --sp-rail-open: 252px;
+    grid-template-columns: var(--sp-rail-open) minmax(0, 1fr);
+  }
+
+  .sp-shell.app-redesign .sp-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: var(--sp-rail-open);
+    height: 100vh;
+    padding: 14px 12px 12px;
+    overflow: hidden;
+    border-radius: 0;
+    border-right: 1px solid #e6eaf0;
+    background: #ffffff;
+    color: #5b6575;
+  }
+
+  /* Marca: isotipo + nombre de la organización */
+  .sp-shell.app-redesign .sp-logo.sp-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    margin: 0 0 18px;
+    padding: 0 9px;
+    border: 0;
+  }
+
+  .sp-brand-mark {
+    flex: 0 0 auto;
+    color: #0a72d1;
+  }
+
+  .sp-brand-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    line-height: 1.2;
+  }
+
+  .sp-shell.app-redesign .sp-brand-copy strong {
+    overflow: hidden;
+    color: #181c20;
+    font-size: 14.5px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sp-brand-copy span {
+    overflow: hidden;
+    margin-top: 2px;
+    color: #8a94a6;
+    font-size: 11px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sp-shell.app-redesign .sp-nav {
+    gap: 2px;
+  }
+
+  .sp-shell.app-redesign .sp-nav p {
+    display: block;
+    height: 22px;
+    margin: 0;
+    padding: 0 14px;
+    overflow: hidden;
+    color: #98a2b3;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 22px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .sp-shell.app-redesign .sp-nav button,
+  .sp-shell.app-redesign .sp-nav-group-trigger {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 10px;
+    color: #5b6575;
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    scale: none;
+    transition:
+      background-color 140ms ease,
+      color 140ms ease;
+  }
+
+  .sp-shell.app-redesign .sp-nav button:active,
+  .sp-shell.app-redesign .sp-nav-group-trigger:active {
+    scale: 0.98;
+  }
+
+  .sp-shell.app-redesign .sp-nav button > svg,
+  .sp-shell.app-redesign .sp-nav-group-trigger > svg:first-child {
+    flex: 0 0 auto;
+    color: #8a94a6;
+    transition: color 140ms ease;
+  }
+
+  .sp-shell.app-redesign .sp-nav button:hover,
+  .sp-shell.app-redesign .sp-nav-group-trigger:hover,
+  .sp-shell.app-redesign .sp-nav-group-trigger[aria-expanded="true"]:not(.active) {
+    background: #f2f5fa;
+    color: #181c20;
+  }
+
+  .sp-shell.app-redesign .sp-nav button:hover > svg,
+  .sp-shell.app-redesign .sp-nav-group-trigger:hover > svg:first-child {
+    color: #434656;
+  }
+
+  /* Activo: tinte suave del color de la organización, sin bloque sólido. */
+  .sp-shell.app-redesign .sp-nav button.active,
+  .sp-shell.app-redesign .sp-nav-group-trigger.active,
+  .sp-shell.app-redesign .sp-nav button.active:hover,
+  .sp-shell.app-redesign .sp-nav-group-trigger.active:hover {
+    background: var(--org-primary-soft);
+    color: color-mix(in srgb, var(--org-primary) 70%, #0b1220);
+    font-weight: 600;
+  }
+
+  .sp-shell.app-redesign .sp-nav button.active > svg,
+  .sp-shell.app-redesign .sp-nav-group-trigger.active > svg:first-child {
+    color: var(--org-primary);
+  }
+
+  /* Contador: arriba a la derecha del ícono en el riel, a la derecha del
+     ítem con el panel abierto. En el riel se ancla por la DERECHA del botón
+     (48px): `.sp-nav` tiene overflow-y:auto, que también recorta en x, y
+     anclado a la izquierda un "68" se salía del botón y quedaba cortado. */
+  .sp-shell.app-redesign .sp-nav button b,
+  .sp-shell.app-redesign .sp-nav button.active b {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    display: grid;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    place-items: center;
+    border: 2px solid #ffffff;
+    border-radius: 9999px;
+    background: #e8552f;
+    color: #ffffff;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 1;
+    box-sizing: content-box;
+  }
+
+  .sp-shell.app-redesign .sp-nav-group {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px solid #eef1f5;
+  }
+
+  .sp-nav-gesti-avatar {
+    flex: 0 0 auto;
+    border-radius: 9999px;
+    background: #e8f2fd;
+    box-shadow: 0 0 0 1px #d6e7fb;
+  }
+
+  .sp-shell.app-redesign .sp-nav-sub {
+    border-color: #e6eaf0;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, 0.1);
+  }
+
+  .sp-shell.app-redesign .sp-nav-sub button {
+    gap: 10px;
+    font-weight: 500;
+  }
+
+  .sp-shell.app-redesign .sp-nav-sub button.active {
+    border: 0;
+    background: var(--org-primary-soft);
+    font-weight: 600;
+  }
+}
+
+/* Colapso al riel: solo donde hay hover real (mouse/trackpad). */
+@media (min-width: 901px) and (hover: hover) {
+  .sp-shell.app-redesign {
+    grid-template-columns: var(--sp-rail) minmax(0, 1fr);
+  }
+
+  .sp-shell.app-redesign .sp-sidebar {
+    width: var(--sp-rail);
+    transition:
+      width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 220ms ease;
+  }
+
+  .sp-shell.app-redesign .sp-sidebar:is(:hover, .is-pinned, :has(:focus-visible)) {
+    width: var(--sp-rail-open);
+    box-shadow: 16px 0 40px -12px rgba(16, 24, 40, 0.14);
+  }
+
+  /* Textos: invisibles en el riel, aparecen apenas empieza a abrirse. */
+  .sp-shell.app-redesign .sp-brand-copy,
+  .sp-shell.app-redesign .sp-nav p,
+  .sp-shell.app-redesign .sp-nav button > span,
+  .sp-shell.app-redesign .sp-nav-group-trigger > span,
+  .sp-shell.app-redesign .sp-nav-group-caret {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .sp-shell.app-redesign .sp-sidebar:is(:hover, .is-pinned, :has(:focus-visible)) :is(
+      .sp-brand-copy,
+      .sp-nav p,
+      .sp-nav button > span,
+      .sp-nav-group-trigger > span,
+      .sp-nav-group-caret
+    ) {
+    opacity: 1;
+    transition-delay: 70ms;
+  }
+
+  .sp-shell.app-redesign .sp-sidebar:is(:hover, .is-pinned, :has(:focus-visible)) .sp-nav button b {
+    top: 50%;
+    right: 10px;
+    border-color: transparent;
+    translate: 0 -50%;
+  }
+}
+
+@media (min-width: 901px) and (hover: none) {
+  .sp-shell.app-redesign .sp-nav button b {
+    top: 50%;
+    right: 10px;
+    border-color: transparent;
+    translate: 0 -50%;
+  }
+}
+
+/* ============================================================
+   Gesti loader (components/ui/gesti-loader.tsx): la nube gira,
+   la cara flota y parpadea. Con reduced-motion queda quieto.
+   ============================================================ */
+.gesti-loader {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.gesti-loader svg {
+  overflow: visible;
+}
+
+.gesti-loader-cloud {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+  animation: gesti-loader-spin 2.4s linear infinite;
+}
+
+.gesti-loader-face {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+  animation: gesti-loader-bob 1.2s ease-in-out infinite alternate;
+}
+
+.gesti-loader-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gesti-loader-blink 3.2s ease-in-out infinite;
+}
+
+@keyframes gesti-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gesti-loader-bob {
+  from {
+    transform: translateY(-1.5px);
+  }
+  to {
+    transform: translateY(1.5px);
+  }
+}
+
+@keyframes gesti-loader-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+
+/* Demo pública de Gesti (app/demo/gesti): mismo fondo y tipografía que el CRM.
+   Sin padding: el historial y la barra del chat van pegados a los bordes de la ventana. */
+.gesti-demo-page {
+  min-height: 100vh;
+  padding: 0;
+  background: #f7f9ff;
+  color: #181c20;
+  font-family: "Plus Jakarta Sans", Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ============================================================
+   Barra inferior (celular, <= 900px)
+   Cinco celdas parejas: Dashboard, Avisos, Gesti (centro), Tareas y
+   "Más". El activo es una píldora suave detrás del ícono (no un bloque
+   sólido) y el contador se ancla al ícono. Respeta el safe-area de iOS.
+   ============================================================ */
+@media (max-width: 900px) {
+  .sp-shell.app-redesign .sp-sidebar {
+    display: grid;
+    grid-template-columns: 4fr 1fr;
+    align-items: stretch;
+    padding: 0 4px env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid #e6eaf0;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: none;
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
+
+  .sp-shell.app-redesign .sp-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 0;
+  }
+
+  .sp-shell.app-redesign .sp-nav-group {
+    width: auto;
+    padding: 0;
+    border-left: 0;
+  }
+
+  .sp-shell.app-redesign .sp-nav button,
+  .sp-shell.app-redesign .sp-nav-group-trigger {
+    position: relative;
+    min-height: 62px;
+    gap: 4px;
+    padding: 8px 2px 6px;
+    border-radius: 0;
+    background: transparent;
+    color: #667085;
+    font-size: 10.5px;
+    font-weight: 500;
+    scale: none;
+  }
+
+  /* Píldora del estado activo, detrás del ícono. */
+  .sp-shell.app-redesign .sp-nav button::before,
+  .sp-shell.app-redesign .sp-nav-group-trigger::before {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 52px;
+    height: 30px;
+    border-radius: 9999px;
+    background: transparent;
+    content: "";
+    translate: -50% 0;
+    scale: 0.7 1;
+    transition:
+      background-color 160ms ease,
+      scale 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .sp-shell.app-redesign .sp-nav button > *,
+  .sp-shell.app-redesign .sp-nav-group-trigger > * {
+    position: relative;
+  }
+
+  .sp-shell.app-redesign .sp-nav button > svg,
+  .sp-shell.app-redesign .sp-nav-group-trigger > svg:first-child {
+    height: 30px;
+    color: #8a94a6;
+  }
+
+  .sp-shell.app-redesign .sp-nav button:hover,
+  .sp-shell.app-redesign .sp-nav-group-trigger:hover,
+  .sp-shell.app-redesign .sp-nav-group-trigger[aria-expanded="true"]:not(.active) {
+    background: transparent;
+    color: #181c20;
+  }
+
+  .sp-shell.app-redesign .sp-nav button:active::before,
+  .sp-shell.app-redesign .sp-nav-group-trigger:active::before {
+    background: #eef1f5;
+    scale: 1;
+  }
+
+  .sp-shell.app-redesign .sp-nav button.active,
+  .sp-shell.app-redesign .sp-nav-group-trigger.active,
+  .sp-shell.app-redesign .sp-nav button.active:hover,
+  .sp-shell.app-redesign .sp-nav-group-trigger.active:hover {
+    background: transparent;
+    color: color-mix(in srgb, var(--org-primary) 72%, #0b1220);
+    font-weight: 600;
+  }
+
+  .sp-shell.app-redesign .sp-nav button.active::before,
+  .sp-shell.app-redesign .sp-nav-group-trigger.active::before {
+    background: var(--org-primary-soft);
+    scale: 1;
+  }
+
+  .sp-shell.app-redesign .sp-nav button.active > svg,
+  .sp-shell.app-redesign .sp-nav-group-trigger.active > svg:first-child {
+    color: var(--org-primary);
+  }
+
+  /* Gesti: la carita un poco más grande, con aro de marca al estar activa. */
+  .sp-shell.app-redesign .sp-nav-gesti .sp-nav-gesti-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 9999px;
+    background: #e8f2fd;
+    box-shadow: 0 0 0 1px #d6e7fb;
+    transition: box-shadow 160ms ease;
+  }
+
+  .sp-shell.app-redesign .sp-nav button.sp-nav-gesti.active::before {
+    background: transparent;
+  }
+
+  .sp-shell.app-redesign .sp-nav-gesti.active .sp-nav-gesti-avatar {
+    box-shadow:
+      0 0 0 2px #ffffff,
+      0 0 0 3.5px #0a72d1;
+  }
+
+  .sp-shell.app-redesign .sp-nav button.sp-nav-gesti.active {
+    color: #0a5bab;
+  }
+
+  /* Contador anclado al ícono, sin empujar la celda. */
+  .sp-shell.app-redesign .sp-nav button b,
+  .sp-shell.app-redesign .sp-nav button.active b {
+    position: absolute;
+    top: 4px;
+    left: calc(50% + 6px);
+    right: auto;
+    display: grid;
+    min-width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0 4px;
+    place-items: center;
+    border: 2px solid #ffffff;
+    border-radius: 9999px;
+    background: #e8552f;
+    color: #ffffff;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 1;
+    box-sizing: content-box;
+  }
+
+  .sp-shell.app-redesign .sp-nav-sub {
+    right: 6px;
+    bottom: calc(100% + 8px);
+    border-color: #e6eaf0;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, 0.12);
+  }
+
+  .sp-shell.app-redesign .sp-nav-sub .sp-nav-gesti-avatar {
+    border-radius: 9999px;
   }
 }
