@@ -23,6 +23,17 @@ describe("apiRoutes", () => {
     expect(userRoutes).toEqual(["GET /profile", "PATCH /profile", "PATCH /profile/password"]);
   });
 
+  it("serves every Gesti route at organization level", () => {
+    const gestiRoutes = apiRoutes.filter((route) => route.path.startsWith("/gesti"));
+
+    expect(gestiRoutes.length).toBeGreaterThan(0);
+    expect(gestiRoutes.map((route) => route.access)).toEqual(gestiRoutes.map(() => "organization"));
+  });
+
+  it("has no DELETE route under /gesti: chats are never deleted", () => {
+    expect(apiRoutes.filter((route) => route.path.startsWith("/gesti") && route.method === "DELETE")).toEqual([]);
+  });
+
   it("does not serve the removed AI policy analysis", () => {
     expect(apiRoutes.some((route) => route.path === "/policies/analyze")).toBe(false);
   });

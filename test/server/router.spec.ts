@@ -401,6 +401,49 @@ describe("createApiHandler", () => {
     expect(authenticate).not.toHaveBeenCalled();
   });
 
+  it("passes a Response returned by a handler through unchanged (status, headers, streamed body)", async () => {
+    const { handle } = setup([
+      route({
+        method: "POST",
+        path: "/stream",
+        access: "organization",
+        handler: ({ setHeader }) => {
+          setHeader("x-ignored", "1");
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode('{"n":1}\n'));
+              controller.enqueue(encoder.encode('{"n":2}\n'));
+              controller.close();
+            }
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" }
+          });
+        }
+      })
+    ]);
+    const response = await handle(call("/stream", { method: "POST", headers: authed }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/x-ndjson; charset=utf-8");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-ignored")).toBeNull();
+    expect(await response.text()).toBe('{"n":1}\n{"n":2}\n');
+  });
+
+  it("keeps the 201 JSON envelope for handlers that return plain objects", async () => {
+    const { handle } = setup([
+      route({ method: "POST", path: "/things", access: "organization", handler: () => ({ ok: true }) })
+    ]);
+    const response = await handle(call("/things", { method: "POST", headers: authed }));
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
   it("applies the global 300 requests per minute limit by default", async () => {
     const { handle } = setup([route({ method: "GET", path: "/ping", access: "public", handler: () => ({}) })]);
     let last = 0;
