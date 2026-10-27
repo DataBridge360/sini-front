@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function GestiDemoPage() {
   return (
     <main className="gesti-demo-page">
-      <AIAssistantInterface userName="Lucas" />
+      <AIAssistantInterface userName="Lucas" historyKey="demo" />
     </main>
   );
 }

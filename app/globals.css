@@ -9379,10 +9379,11 @@ a.sp-client-field-value:hover {
   }
 }
 
-/* Demo pública de Gesti (app/demo/gesti): mismo fondo y tipografía que el CRM. */
+/* Demo pública de Gesti (app/demo/gesti): mismo fondo y tipografía que el CRM.
+   Sin padding: el historial y la barra del chat van pegados a los bordes de la ventana. */
 .gesti-demo-page {
   min-height: 100vh;
-  padding: 24px 20px 0;
+  padding: 0;
   background: #f7f9ff;
   color: #181c20;
   font-family: "Plus Jakarta Sans", Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
