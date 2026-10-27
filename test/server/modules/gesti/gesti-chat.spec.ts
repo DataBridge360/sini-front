@@ -6,7 +6,7 @@ import type { AuthUser, OrganizationContext } from "@/server/core/context";
 import { MemoryRateLimiter } from "@/server/core/rate-limit";
 import { createApiHandler } from "@/server/core/router";
 import type { SupabaseService } from "@/server/core/supabase";
-import { buildHistory, GestiChatService, HISTORY_MESSAGES } from "@/server/modules/gesti/chat";
+import { buildHistory, GestiChatService, HISTORY_MESSAGES, TURN_DEADLINE_MS, TURN_TIMEOUT_NOTE } from "@/server/modules/gesti/chat";
 import { gestiRoutes } from "@/server/modules/gesti/routes";
 import { costUsd } from "@/server/modules/gesti/pricing";
 import { monthSpendUsd, UsageRecorder } from "@/server/modules/gesti/usage";
@@ -240,6 +240,8 @@ type Script = {
   stop?: string;
   usage?: Usage;
   fail?: Error;
+  /** Después de sus bloques, el stream queda colgado hasta que lo abortan. */
+  hang?: boolean;
 };
 
 function sdkUsage(usage: Usage = {}) {
@@ -324,6 +326,13 @@ function createAnthropic(options: { streams?: Script[]; creates?: CreateReply[];
             for (const event of streamEvents(script.blocks)) {
               if (requestOptions?.signal?.aborted) throw new Error("aborted");
               yield event;
+            }
+            if (script.hang) {
+              await new Promise<void>((resolve) => {
+                if (requestOptions?.signal?.aborted) resolve();
+                requestOptions?.signal?.addEventListener("abort", () => resolve(), { once: true });
+              });
+              throw new Error("aborted");
             }
           },
           finalMessage: async () => messageOf(params.model, script)
@@ -416,19 +425,20 @@ function seedFile(db: Db, overrides: Row = {}) {
 
 let db: Db;
 
-function chatService(client: unknown, overrides: { budget?: number } = {}) {
+function chatService(client: unknown, overrides: { budget?: number; turnDeadlineMs?: number } = {}) {
   return new GestiChatService({
     supabase: db.supabase,
     getClient: () => client as never,
     now: () => NOW,
-    budgetUsd: () => overrides.budget ?? 100
+    budgetUsd: () => overrides.budget ?? 100,
+    ...(overrides.turnDeadlineMs === undefined ? {} : { turnDeadlineMs: overrides.turnDeadlineMs })
   });
 }
 
 async function chat(
   client: unknown,
   payload: { message?: string; conversationId?: string | null; fileIds?: string[] } = {},
-  overrides: { budget?: number } = {}
+  overrides: { budget?: number; turnDeadlineMs?: number } = {}
 ) {
   const response = await chatService(client, overrides).start({
     organization: organization(),
@@ -720,6 +730,20 @@ describe("Gesti chat", () => {
     expect(reply.content).toBe("No pude responder ahora. Probá de nuevo en un momento.");
     expect(JSON.stringify(events)).not.toMatch(/sk-ant|x-api-key/);
     expect(db.rowsOf("gesti_messages").map((message) => message.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("stores what was written plus a timeout note when the turn passes its deadline, before the platform kills it", async () => {
+    const anthropic = createAnthropic({ streams: [{ blocks: [{ type: "text", text: "Empiezo a revisar la póliza." }], hang: true }] });
+    const events = await chat(anthropic.client, {}, { turnDeadlineMs: 30 });
+
+    const reply = lastDone(events);
+    expect(reply.content).toMatch(/^Empiezo a revisar la póliza\./);
+    expect(reply.content).toContain(TURN_TIMEOUT_NOTE);
+    expect(db.rowsOf("gesti_messages").map((message) => message.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("keeps the turn deadline under the route's maxDuration", () => {
+    expect(TURN_DEADLINE_MS).toBeLessThan(300_000 - 30_000);
   });
 
   it("creates a document through create_document, stores it as generated and emits a document event", async () => {

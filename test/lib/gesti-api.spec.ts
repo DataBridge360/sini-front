@@ -5,6 +5,7 @@ import {
   formatUsageMonth,
   formatUsd,
   usagePercent,
+  uploadContentType,
   validateGestiFile
 } from "@/lib/gesti-api";
 import { MAX_GESTI_FILE_BYTES, type GestiStreamEvent } from "@/lib/gesti-contract";
@@ -108,5 +109,18 @@ describe("usage formatting", () => {
     expect(usagePercent(150, 100)).toBe(100);
     expect(usagePercent(-5, 100)).toBe(0);
     expect(usagePercent(10, 0)).toBe(0);
+  });
+});
+
+describe("uploadContentType", () => {
+  it("falls back to the extension when the browser reports a type Gesti does not take (Windows .csv)", () => {
+    const file = { name: "cartera.csv", type: "application/vnd.ms-excel", size: 10 };
+    expect(uploadContentType(file)).toBe("text/csv");
+    expect(validateGestiFile(file)).toBeNull();
+  });
+
+  it("keeps an allowed browser type and still rejects unknown files", () => {
+    expect(uploadContentType({ name: "poliza.pdf", type: "application/pdf" })).toBe("application/pdf");
+    expect(validateGestiFile({ name: "virus.exe", type: "application/x-msdownload", size: 10 })).toMatch(/no se puede adjuntar/);
   });
 });

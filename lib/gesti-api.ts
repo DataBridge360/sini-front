@@ -146,7 +146,7 @@ export function createGestiApiBackend({
     async uploadFiles(files, onProgress) {
       if (files.length === 0) return [];
       const signBody: SignGestiUploadsPayload = {
-        files: files.map((file) => ({ name: file.name, size: file.size, contentType: file.type || contentTypeFor(file.name) }))
+        files: files.map((file) => ({ name: file.name, size: file.size, contentType: uploadContentType(file) }))
       };
       const signed = await request<GestiSignedUpload[]>("/files/uploads", { method: "POST", body: signBody });
       const total = files.reduce((sum, file) => sum + file.size, 0) || 1;
@@ -202,9 +202,17 @@ export function contentTypeFor(name: string): string {
 
 const isAllowedType = (type: string): boolean => (GESTI_UPLOAD_MIME_TYPES as readonly string[]).includes(type);
 
+/**
+ * Tipo con el que se sube el archivo: el del navegador si Gesti lo acepta y si
+ * no, el de la extensión (Windows informa los .csv como application/vnd.ms-excel).
+ */
+export function uploadContentType(file: { name: string; type: string }): string {
+  return isAllowedType(file.type) ? file.type : contentTypeFor(file.name);
+}
+
 /** Por qué un archivo no se puede adjuntar; null si está bien. */
 export function validateGestiFile(file: { name: string; type: string; size: number }): string | null {
-  const type = file.type || contentTypeFor(file.name);
+  const type = uploadContentType(file);
   if (!isAllowedType(type)) {
     return `«${file.name}» no se puede adjuntar: Gesti lee PDF, Word, Excel, CSV, texto e imágenes.`;
   }

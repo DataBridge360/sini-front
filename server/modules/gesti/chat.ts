@@ -187,7 +187,18 @@ export type ChatDependencies = {
   getClient: () => GestiAnthropic | null;
   now?: () => Date;
   budgetUsd?: () => number;
+  /** Tope del turno completo; los tests lo achican. */
+  turnDeadlineMs?: number;
 };
+
+/**
+ * Tope de un turno entero (todas las rondas del modelo y las herramientas). La
+ * ruta tiene maxDuration 300 s: si Vercel corta la función antes, la respuesta
+ * no llega a guardarse. Así se corta antes y se guarda lo escrito.
+ */
+export const TURN_DEADLINE_MS = 240_000;
+export const TURN_TIMEOUT_NOTE = "La respuesta se cortó porque tardó demasiado. Probá con una consulta más acotada.";
+const TURN_TIMEOUT = Symbol("turn-timeout");
 
 type TurnInput = {
   organization: OrganizationContext;
@@ -278,6 +289,7 @@ export class GestiChatService {
 
     const abort = new AbortController();
     input.signal?.addEventListener("abort", () => abort.abort(), { once: true });
+    const deadline = setTimeout(() => abort.abort(TURN_TIMEOUT), this.deps.turnDeadlineMs ?? TURN_DEADLINE_MS);
     const encoder = new TextEncoder();
     let closed = false;
 
@@ -308,6 +320,7 @@ export class GestiChatService {
             emit({ type: "error", message: ERROR_REPLY });
           })
           .finally(() => {
+            clearTimeout(deadline);
             if (closed) return;
             closed = true;
             try {
@@ -386,7 +399,9 @@ export class GestiChatService {
         }
       }
     } catch (error) {
-      if (signal.aborted) {
+      if (signal.aborted && signal.reason === TURN_TIMEOUT) {
+        this.writeText(state, emit, `${state.content.trim() ? "\n\n" : ""}${TURN_TIMEOUT_NOTE}`, false);
+      } else if (signal.aborted) {
         aborted = true;
       } else {
         logger.error("gesti.runTurn", error);
