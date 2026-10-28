@@ -312,6 +312,24 @@ export function recordLinkLabel(kind: keyof typeof LINK_LABELS, cell: ChartCell 
   return name ? `Abrir ${LINK_LABELS[kind]}: ${name}` : `Abrir ${LINK_LABELS[kind]}`;
 }
 
+// ---------- Cards ----------
+
+export type BadgeTone = "danger" | "warning" | "ok" | "neutral";
+
+// Sobre el texto sin tildes y en minúsculas. Primero lo grave: "no pagado" no es "pagado".
+const TONE_PATTERNS: ReadonlyArray<readonly [Exclude<BadgeTone, "neutral">, RegExp]> = [
+  ["danger", /\b(vencid[oa]s?|impag[oa]s?|atrasad[oa]s?|rechazad[oa]s?|no (pagad|cobrad)[oa]s?)\b/],
+  ["warning", /\b(pendientes?|por (avisar|vencer|cobrar))\b/],
+  ["ok", /\b(pagad[oa]s?|cobrad[oa]s?|al dia|completad[oa]s?|resuelt[oa]s?|vigentes?)\b/]
+];
+
+/** Color de la insignia de una card según suene a estado: vencida, pendiente, pagado... Sin match, neutro. */
+export function badgeTone(text: string): BadgeTone {
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  for (const [tone, pattern] of TONE_PATTERNS) if (pattern.test(normalized)) return tone;
+  return "neutral";
+}
+
 // ---------- Torta ----------
 
 export type Slice = { label: string; value: number; sourceIndexes: number[] };
