@@ -26,35 +26,35 @@ export const noticesRoutes: Route[] = [
     method: "PATCH",
     path: "/notices/:id/notified",
     access: "organization",
-    handler: ({ organization, user, params }) =>
-      service().markNotified(organization.id, params.id as string, user.id)
+    handler: ({ organization, user, uuidParam }) =>
+      service().markNotified(organization.id, uuidParam("id"), user.id)
   }),
   route({
     method: "PATCH",
     path: "/notices/:id/pay",
     access: "organization",
-    handler: async ({ organization, user, params, body }) =>
-      service().pay(organization.id, params.id as string, user.id, await body(payNoticeSchema))
+    handler: async ({ organization, user, uuidParam, body }) =>
+      service().pay(organization.id, uuidParam("id"), user.id, await body(payNoticeSchema))
   }),
   route({
     method: "PATCH",
     path: "/notices/:id/revert",
     access: "organization",
-    handler: ({ organization, user, params }) =>
-      service().revert(organization.id, params.id as string, user.id)
+    handler: ({ organization, user, uuidParam }) =>
+      service().revert(organization.id, uuidParam("id"), user.id)
   }),
   route({
     method: "POST",
     path: "/notices/:id/notes",
     access: "organization",
-    handler: async ({ organization, user, params, body }) =>
-      service().addNote(organization.id, params.id as string, user.id, await body(createNoticeNoteSchema))
+    handler: async ({ organization, user, uuidParam, body }) =>
+      service().addNote(organization.id, uuidParam("id"), user.id, await body(createNoticeNoteSchema))
   }),
   route({
     method: "DELETE",
     path: "/notices/:id/notes/:noteId",
     access: "organization",
-    handler: ({ organization, user, params }) =>
-      service().deleteNote(organization.id, params.id as string, params.noteId as string, user.id)
+    handler: ({ organization, user, uuidParam }) =>
+      service().deleteNote(organization.id, uuidParam("id"), uuidParam("noteId"), user.id)
   })
 ];

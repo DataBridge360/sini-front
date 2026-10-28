@@ -94,6 +94,7 @@ beforeEach(() => {
 
 const DEFAULT = { limit: 300, ttlMs: 60_000 };
 const NOTICE_ID = "3f2b8c1e-5a4d-4e6f-9b7a-1c2d3e4f5a6b";
+const NOTE_ID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
 
 describe("noticesRoutes table", () => {
   it("matches the Nest NoticesController (AuthGuard + OrganizationGuard at class level)", () => {
@@ -166,12 +167,30 @@ describe("notices handlers", () => {
 
   it("DELETE note: 404 Note not found, then { ok: true }", async () => {
     results.push({ data: { id: NOTICE_ID } }, { data: null });
-    const missing = await setup()(call(`/notices/${NOTICE_ID}/notes/n1`, { method: "DELETE" }));
+    const missing = await setup()(call(`/notices/${NOTICE_ID}/notes/${NOTE_ID}`, { method: "DELETE" }));
     expect(missing.status).toBe(404);
     expect((await missing.json()).message).toBe("Note not found");
 
     results.push({ data: { id: NOTICE_ID } }, { data: { id: "n1" } });
-    const ok = await setup()(call(`/notices/${NOTICE_ID}/notes/n1`, { method: "DELETE" }));
+    const ok = await setup()(call(`/notices/${NOTICE_ID}/notes/${NOTE_ID}`, { method: "DELETE" }));
     expect(await ok.json()).toEqual({ ok: true });
+  });
+
+  // S4: los ids se validan como UUID antes de leer el body o tocar la base.
+  it.each([
+    ["PATCH", "/notices/not-a-uuid/notified"],
+    ["PATCH", "/notices/not-a-uuid/pay"],
+    ["PATCH", "/notices/not-a-uuid/revert"],
+    ["POST", "/notices/not-a-uuid/notes"],
+    ["DELETE", "/notices/not-a-uuid/notes/" + NOTE_ID],
+    ["DELETE", `/notices/${NOTICE_ID}/notes/not-a-uuid`]
+  ])("%s %s answers 400 uuid-expected without reading the body or querying", async (method, path) => {
+    const response = await setup()(
+      call(path, { method, headers: { "content-type": "application/json" }, body: method === "DELETE" ? null : "{not json" })
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toBe("Validation failed (uuid is expected)");
+    expect(calls).toEqual([]);
+    expect(rpcCalls).toEqual([]);
   });
 });

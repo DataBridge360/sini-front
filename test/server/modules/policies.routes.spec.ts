@@ -192,4 +192,19 @@ describe("policies handlers", () => {
     const response = await setup()(call(`/policies/${UUID}`, { method: "DELETE" }));
     expect(await response.json()).toEqual({ ok: true });
   });
+
+  // S4: el id se valida como UUID antes de leer el body o tocar la base.
+  it.each([
+    ["GET", "/policies/not-a-uuid/notices"],
+    ["PATCH", "/policies/not-a-uuid"],
+    ["DELETE", "/policies/not-a-uuid"]
+  ])("%s %s answers 400 uuid-expected without reading the body or querying", async (method, path) => {
+    const response = await setup()(
+      call(path, { method, headers: { "content-type": "application/json" }, body: method === "PATCH" ? "{not json" : null })
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toBe("Validation failed (uuid is expected)");
+    expect(calls).toEqual([]);
+    expect(results).toEqual([]);
+  });
 });

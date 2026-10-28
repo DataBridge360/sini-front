@@ -70,6 +70,8 @@ function json(method: string, path: string, body: unknown) {
   });
 }
 
+const CLIENT_ID = "3f2b8c1e-5a4d-4e6f-9b7a-1c2d3e4f5a6b";
+
 beforeEach(() => {
   results.length = 0;
   calls.length = 0;
@@ -149,15 +151,28 @@ describe("clients handlers", () => {
 
   it("404 when updating a client that does not exist", async () => {
     results.push({ data: null });
-    const response = await setup()(json("PATCH", "/clients/abc", { phone: "1" }));
+    const response = await setup()(json("PATCH", `/clients/${CLIENT_ID}`, { phone: "1" }));
     expect(response.status).toBe(404);
     expect((await response.json()).message).toBe("Client not found");
   });
 
   it("DELETE soft-deletes and answers { ok: true }", async () => {
     results.push({ data: { id: "abc" } }, { data: [] }, { data: null });
-    const response = await setup()(call("/clients/abc", { method: "DELETE" }));
+    const response = await setup()(call(`/clients/${CLIENT_ID}`, { method: "DELETE" }));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
+  });
+
+  // S4: el id se valida como UUID antes de leer el body o tocar la base.
+  it.each([
+    ["PATCH", "/clients/not-a-uuid"],
+    ["DELETE", "/clients/not-a-uuid"]
+  ])("%s %s answers 400 uuid-expected without reading the body or querying", async (method, path) => {
+    const response = await setup()(
+      call(path, { method, headers: { "content-type": "application/json" }, body: method === "PATCH" ? "{not json" : null })
+    );
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toBe("Validation failed (uuid is expected)");
+    expect(calls).toEqual([]);
   });
 });
