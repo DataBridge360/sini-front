@@ -48,7 +48,7 @@ import {
   toolInputSchema,
   type ChatDto
 } from "./schemas";
-import { callUsageFromSdk, monthSpendUsd, nextMonthLabel, UsageRecorder } from "./usage";
+import { cachedMonthSpendUsd, callUsageFromSdk, nextMonthLabel, UsageRecorder } from "./usage";
 
 const logger = new Logger("GestiChat");
 
@@ -398,7 +398,7 @@ export class GestiChatService {
         this.writeText(state, emit, NOT_CONFIGURED_REPLY);
       } else {
         const now = this.now();
-        const spent = await monthSpendUsd(this.deps.supabase, now);
+        const spent = await cachedMonthSpendUsd(this.deps.supabase, now);
         const budget = (this.deps.budgetUsd ?? monthlyBudgetUsd)();
         if (spent >= budget) {
           notice = "budget_exhausted";

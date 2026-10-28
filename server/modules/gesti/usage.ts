@@ -99,6 +99,32 @@ export async function monthSpendUsd(supabase: SupabaseService, now: Date): Promi
   return roundUsd(rows.reduce((sum, row) => sum + Number(row.cost_usd), 0));
 }
 
+// El tope se controla en cada mensaje y sumar el mes lee todas sus filas de
+// gesti_usage (varias por respuesta): el total se guarda un minuto por cliente
+// de Supabase y lo que registra este proceso se le suma al momento. Lo que
+// gasten otras instancias se ve al minuto; el tope puede pasarse por eso, no más.
+const SPEND_CACHE_MS = 60_000;
+
+type CachedSpend = { month: string; value: number; fetchedAt: number };
+
+const spendCache = new WeakMap<SupabaseService, CachedSpend>();
+
+/** Gastado en el mes, con el caché de arriba. Para el chequeo del tope; el panel lee directo. */
+export async function cachedMonthSpendUsd(supabase: SupabaseService, now: Date): Promise<number> {
+  const { month } = argentinaMonthBounds(now);
+  const hit = spendCache.get(supabase);
+  if (hit && hit.month === month && now.getTime() - hit.fetchedAt < SPEND_CACHE_MS) return hit.value;
+  const value = await monthSpendUsd(supabase, now);
+  spendCache.set(supabase, { month, value, fetchedAt: now.getTime() });
+  return value;
+}
+
+// Si el mes ya cambió, la próxima lectura descarta esta entrada igual.
+function addToCachedSpend(supabase: SupabaseService, cost: number) {
+  const hit = spendCache.get(supabase);
+  if (hit) hit.value = roundUsd(hit.value + cost);
+}
+
 export type UsageScope = {
   organizationId: string;
   userId: string;
@@ -117,6 +143,7 @@ export class UsageRecorder {
   }
 
   async record(purpose: UsagePurpose, model: string, usage: CallUsage) {
+    const cost = costUsd(model, usage);
     const { error } = await this.supabase.admin.from("gesti_usage").insert({
       organization_id: this.scope.organizationId,
       user_id: this.scope.userId,
@@ -128,11 +155,13 @@ export class UsageRecorder {
       cache_read_tokens: usage.cacheReadTokens,
       cache_write_tokens: usage.cacheWriteTokens,
       web_searches: usage.webSearches,
-      cost_usd: costUsd(model, usage)
+      cost_usd: cost
     });
     if (error) {
       logger.error(`record(${purpose}): ${error.message}`, error.code ?? undefined);
+      return;
     }
+    addToCachedSpend(this.supabase, cost);
   }
 }
 
