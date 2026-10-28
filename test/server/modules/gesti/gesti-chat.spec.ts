@@ -1083,6 +1083,222 @@ describe("Gesti chat", () => {
 
 // ----- Historial -----
 
+describe("Gesti cards, stats and round text join", () => {
+  const CARDS = {
+    kind: "cards",
+    title: "Tarea asignada",
+    cards: [
+      { title: "Llamar a Ana", subtitle: "Renovación", badge: "Pendiente", fields: [{ label: "Vence", value: "20/10" }], ref: "#Rtn01-1" },
+      { title: "Fantasma", ref: "#Rtn01-9" },
+      { title: "Otro turno", ref: "#Rold1-1" },
+      { title: "Sin referencia", ref: null }
+    ]
+  };
+  const STORED_CARDS = CARDS.cards.map(({ ref: _ref, ...card }) => card);
+  const STATS = { kind: "stats", title: "Resumen", items: [{ label: "Pólizas", value: 42, hint: "activas" }, { label: "Prima", value: "$1.200" }] };
+
+  const chartEvents = (events: GestiStreamEvent[]) =>
+    events.filter((event): event is Extract<GestiStreamEvent, { type: "chart" }> => event.type === "chart").map((event) => event.chart);
+  const textOf = (events: GestiStreamEvent[]) =>
+    events.map((event) => (event.type === "text" ? event.delta : "")).join("");
+
+  function seedTask() {
+    const taskId = randomUUID();
+    db.rowsOf("tasks").push({ id: taskId, organization_id: ORG, title: "Llamar a Ana", status: "pendiente", priority: "alta", due_date: "2026-10-20" });
+    return taskId;
+  }
+
+  it("resolves card refs against this turn only, emits per-card links with the position and never the refs", async () => {
+    const taskId = seedTask();
+    const before = "Esta es la tarea:\n\n";
+    const anthropic = createAnthropic({
+      streams: [
+        { blocks: [{ type: "text", text: before }, { type: "tool_use", name: "consultar_cartera", input: { pregunta: "¿Qué tarea tiene Agustín?" } }] },
+        { blocks: [{ type: "tool_use", name: "show_chart", input: CARDS }] },
+        { blocks: [{ type: "text", text: "Ya está." }] }
+      ],
+      creates: [
+        { blocks: [{ type: "text", text: "Tarea de Agustín" }] },
+        { blocks: [{ type: "tool_use", name: "listar_tareas", input: {} }] },
+        { blocks: [{ type: "text", text: "Ref | Tarea\n#Rtn01-1 | Llamar a Ana" }] }
+      ]
+    });
+    const events = await chat(anthropic.client, { message: "¿Qué tarea hay asignada a Agustín?" });
+
+    const expected = { ...{ kind: "cards", title: "Tarea asignada" }, cards: STORED_CARDS, links: [{ kind: "task", id: taskId }, null, null, null], position: before.length };
+    expect(chartEvents(events)).toEqual([expected]);
+    expect(JSON.stringify(chartEvents(events))).not.toContain("#R");
+
+    const reply = lastDone(events);
+    expect(reply.parts.charts).toEqual([expected]);
+    expect(db.rowsOf("gesti_messages").at(-1)?.parts).toMatchObject({ charts: [{ links: expected.links }] });
+
+    const sonnetSaw = JSON.stringify(anthropic.streamCalls.map((call) => call.messagesAtCall));
+    expect(sonnetSaw).not.toContain(taskId);
+  });
+
+  it("stores no links when no card ref resolves, and ignores links injected in the cards", async () => {
+    const injected = {
+      kind: "cards",
+      title: "Cards",
+      cards: [{ title: "Una", ref: "#Rold1-1", link: { kind: "task", id: randomUUID() } }],
+      links: [{ kind: "task", id: randomUUID() }]
+    };
+    const anthropic = createAnthropic({
+      streams: [{ blocks: [{ type: "tool_use", name: "show_chart", input: injected }] }, { blocks: [{ type: "text", text: "Listo." }] }]
+    });
+    const events = await chat(anthropic.client);
+
+    const [chart] = chartEvents(events);
+    expect(chart).toBeDefined();
+    expect(chart).not.toHaveProperty("links");
+    expect(chart?.cards).toEqual([{ title: "Una" }]);
+    expect(JSON.stringify(events)).not.toContain(injected.links[0]!.id);
+    expect(JSON.stringify(events)).not.toContain(injected.cards[0]!.link.id);
+    expect(lastDone(events).parts.charts?.[0]).not.toHaveProperty("links");
+  });
+
+  it("returns invalid cards as an is_error tool_result so the model can fix them", async () => {
+    const anthropic = createAnthropic({
+      streams: [
+        { blocks: [{ type: "tool_use", name: "show_chart", input: { kind: "cards", title: "Vacío", cards: [] } }] },
+        { blocks: [{ type: "text", text: "Listo." }] }
+      ]
+    });
+    const events = await chat(anthropic.client);
+
+    expect(chartEvents(events)).toHaveLength(0);
+    const result = JSON.stringify(anthropic.streamCalls[1]!.messagesAtCall);
+    expect(result).toContain("is_error");
+  });
+
+  it("emits and stores a stats block without links", async () => {
+    const anthropic = createAnthropic({
+      streams: [{ blocks: [{ type: "text", text: "Resumen:\n\n" }, { type: "tool_use", name: "show_chart", input: STATS }] }, { blocks: [{ type: "text", text: "Fin." }] }]
+    });
+    const events = await chat(anthropic.client);
+
+    expect(chartEvents(events)).toEqual([{ ...STATS, position: "Resumen:\n\n".length }]);
+    expect(lastDone(events).parts.charts).toEqual([{ ...STATS, position: "Resumen:\n\n".length }]);
+  });
+
+  it("keeps ids and links out of the rebuilt history for cards and stats", async () => {
+    const taskId = randomUUID();
+    const conversationId = seedConversation(db);
+    seedMessage(db, conversationId, "user", "¿Qué tarea hay?", 1);
+    seedMessage(db, conversationId, "assistant", "Esta.", 2, {
+      charts: [
+        { kind: "cards", title: "Tarea asignada", cards: STORED_CARDS, links: [{ kind: "task", id: taskId }, null, null, null], position: 2 },
+        { ...STATS, position: 4 }
+      ]
+    });
+    const anthropic = createAnthropic({ streams: [{ blocks: [{ type: "text", text: "Dale." }] }] });
+    await chat(anthropic.client, { conversationId, message: "Gracias" });
+
+    const sent = JSON.stringify(anthropic.streamCalls[0]!.messagesAtCall);
+    expect(sent).toContain("[Gráfico mostrado: Tarea asignada]");
+    expect(sent).toContain("[Gráfico mostrado: Resumen]");
+    expect(sent).not.toContain(taskId);
+    expect(sent).not.toMatch(/"links"|"position"|"cards"|clientId|policyId|Llamar a Ana/);
+  });
+
+  describe("text join between model rounds (S6)", () => {
+    const toolRound = (text: string): Script => ({
+      blocks: [{ type: "text", text }, { type: "tool_use", name: "consultar_cartera", input: { pregunta: "¿Qué hay?" } }]
+    });
+    const dataAgent: { creates: Script[] } = {
+      creates: [
+        { blocks: [{ type: "tool_use", name: "listar_tareas", input: {} }] },
+        { blocks: [{ type: "text", text: "Sin tareas." }] }
+      ]
+    };
+
+    it("inserts a paragraph break when the new round starts after text that does not end in whitespace", async () => {
+      const anthropic = createAnthropic({ streams: [toolRound("Vence el 16/10."), { blocks: [{ type: "text", text: "Ninguna más." }] }], ...dataAgent });
+      const events = await chat(anthropic.client);
+
+      expect(textOf(events)).toBe("Vence el 16/10.\n\nNinguna más.");
+      expect(lastDone(events).content).toBe("Vence el 16/10.\n\nNinguna más.");
+      expect(db.rowsOf("gesti_messages").at(-1)?.content).toBe("Vence el 16/10.\n\nNinguna más.");
+    });
+
+    it("keeps writing on the same line when the model resumes after pause_turn (no tool ran in between)", async () => {
+      const anthropic = createAnthropic({
+        streams: [{ blocks: [{ type: "text", text: "Según la norma" }], stop: "pause_turn" }, { blocks: [{ type: "text", text: " vigente, sí." }] }]
+      });
+      const events = await chat(anthropic.client);
+
+      expect(textOf(events)).toBe("Según la norma vigente, sí.");
+      expect(lastDone(events).content).toBe("Según la norma vigente, sí.");
+    });
+
+    it("still opens a paragraph when a tool round is followed by a pause_turn round that wrote nothing", async () => {
+      const anthropic = createAnthropic({
+        streams: [toolRound("Vence el 16/10."), { blocks: [], stop: "pause_turn" }, { blocks: [{ type: "text", text: "Ninguna más." }] }],
+        ...dataAgent
+      });
+      const events = await chat(anthropic.client);
+
+      expect(lastDone(events).content).toBe("Vence el 16/10.\n\nNinguna más.");
+    });
+
+    it("adds no extra break when the previous text already ends in whitespace", async () => {
+      for (const previous of ["Vence el 16/10. ", "Vence el 16/10.\n", "Vence el 16/10.\n\n"]) {
+        db = createDb();
+        hoisted.db = db.supabase;
+        const anthropic = createAnthropic({ streams: [toolRound(previous), { blocks: [{ type: "text", text: "Ninguna más." }] }], ...dataAgent });
+        const events = await chat(anthropic.client);
+
+        expect(textOf(events), JSON.stringify(previous)).toBe(`${previous}Ninguna más.`);
+        expect(lastDone(events).content).toBe(`${previous}Ninguna más.`.trim());
+      }
+    });
+
+    it("adds nothing when there was no previous text, or when the round writes no text", async () => {
+      const first = createAnthropic({ streams: [toolRound(""), { blocks: [{ type: "text", text: "Hola." }] }], ...dataAgent });
+      expect(textOf(await chat(first.client))).toBe("Hola.");
+
+      const silent = createAnthropic({ streams: [toolRound("Uno."), { blocks: [{ type: "text", text: "" }] }], ...dataAgent });
+      expect(textOf(await chat(silent.client))).toBe("Uno.");
+    });
+
+    it("joins only once per round, not between deltas of the same round", async () => {
+      const anthropic = createAnthropic({
+        streams: [toolRound("A."), { blocks: [{ type: "text", text: "B " }, { type: "text", text: "C." }] }],
+        ...dataAgent
+      });
+      expect(textOf(await chat(anthropic.client))).toBe("A.\n\nB C.");
+    });
+
+    it("joins after a round that ends in a chart call and keeps the chart position consistent with the stored text", async () => {
+      const anthropic = createAnthropic({
+        streams: [
+          toolRound("Vence el 16/10"),
+          { blocks: [{ type: "tool_use", name: "show_chart", input: STATS }] },
+          { blocks: [{ type: "text", text: "Ninguna más." }] }
+        ],
+        ...dataAgent
+      });
+      const events = await chat(anthropic.client);
+
+      const reply = lastDone(events);
+      expect(reply.content).toBe("Vence el 16/10\n\nNinguna más.");
+      expect(chartEvents(events)[0]?.position).toBe("Vence el 16/10".length);
+      expect(reply.parts.charts?.[0]?.position).toBe("Vence el 16/10".length);
+    });
+
+    it("counts the break toward the reply cap", async () => {
+      const anthropic = createAnthropic({
+        streams: [toolRound("a".repeat(MAX_REPLY_CHARS - 1)), { blocks: [{ type: "text", text: "zzzz" }] }],
+        ...dataAgent
+      });
+      const reply = lastDone(await chat(anthropic.client));
+      expect(reply.content.length).toBeLessThanOrEqual(MAX_REPLY_CHARS);
+      expect(reply.content.endsWith("…")).toBe(true);
+    });
+  });
+});
+
 describe("MAIN_SYSTEM_PROMPT", () => {
   it("prefers short replies but allows a long one when the question needs it", () => {
     expect(MAIN_SYSTEM_PROMPT).toMatch(/Si la consulta lo amerita/);
@@ -1091,10 +1307,23 @@ describe("MAIN_SYSTEM_PROMPT", () => {
     expect(MAIN_SYSTEM_PROMPT).toContain(String(MAX_REPLY_CHARS));
   });
 
-  it("asks for a table, not a bullet list, when a reply lists several portfolio records", () => {
-    expect(MAIN_SYSTEM_PROMPT).toMatch(/4 o más registros/);
-    expect(MAIN_SYSTEM_PROMPT).toMatch(/show_chart con kind "table"/);
-    expect(MAIN_SYSTEM_PROMPT).toMatch(/no repitas la lista en el texto/);
+  it("asks for a visual block, not bullets, for any structured data and picks the kind by shape (S5)", () => {
+    expect(MAIN_SYSTEM_PROMPT).not.toMatch(/4 o más registros/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/cualquier dato estructurado/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/de la cartera o no/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/un registro o el detalle de un ítem: show_chart con kind "cards"/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/varios ítems comparables: kind "table"/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/2 o 3 ítems con varios campos: kind "cards"/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/cifras destacadas: kind "stats"/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/tendencias o proporciones: kind "bar", "line", "area" o "pie"/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca listas de viñetas "Campo: valor"/i);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/no repitas los datos en el texto/);
+  });
+
+  it("keeps the reference rules for table rows and cards and never allows them in the text", () => {
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/ref de cada card/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/refs de show_chart/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca las escribas en el texto/);
   });
 
   it("has the data agent return one record per line so it can become a table", () => {

@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
+  badgeTone,
   donutSlicePath,
   formatNumber,
   formatPercent,
@@ -11,6 +12,7 @@ import {
   isNumericColumn,
   niceTicks,
   planXLabels,
+  recordDestination,
   recordLinkLabel,
   shouldCompact,
   shouldIncludeZero,
@@ -20,7 +22,7 @@ import {
   type ChartCell,
   type SortDirection
 } from "@/lib/gesti-chart-format";
-import type { ChartLink, ChartSpec } from "@/lib/gesti-parts";
+import type { ChartCard, ChartLink, ChartSpec } from "@/lib/gesti-parts";
 
 // Gráficos de Gesti dentro de un mensaje del asistente (S6). SVG propio, sin
 // librerías de gráficos. Estilos en app/gesti-chart.css.
@@ -80,7 +82,15 @@ export function GestiChart({
         <span className="gesti-chart-title">{chart.title}</span>
         {chart.subtitle ? <span className="gesti-chart-subtitle">{chart.subtitle}</span> : null}
       </figcaption>
-      {chart.kind === "table" ? <ChartTable chart={chart} onOpenRecord={onOpenRecord} /> : <ChartBody chart={chart} />}
+      {chart.kind === "table" ? (
+        <ChartTable chart={chart} onOpenRecord={onOpenRecord} />
+      ) : chart.kind === "cards" ? (
+        <ChartCards chart={chart} onOpenRecord={onOpenRecord} />
+      ) : chart.kind === "stats" ? (
+        <ChartStats chart={chart} />
+      ) : (
+        <ChartBody chart={chart} />
+      )}
     </figure>
   );
 }
@@ -95,7 +105,7 @@ function ChartBody({ chart }: { chart: ChartSpec }) {
       return typeof value === "number" && Number.isFinite(value) ? value : 0;
     })
   }));
-  if (labels.length === 0 || series.length === 0 || chart.kind === "table") {
+  if (labels.length === 0 || series.length === 0 || chart.kind === "table" || chart.kind === "cards" || chart.kind === "stats") {
     return <p className="gesti-chart-empty">Sin datos para mostrar.</p>;
   }
   const data: ChartData = { kind: chart.kind, title: chart.title, unit: chart.unit, labels, series };
@@ -574,5 +584,101 @@ function ChartTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+// ---------- Cards ----------
+
+function CardContent({ card, openLabel }: { card: ChartCard; openLabel: string | null }) {
+  const fields = card.fields ?? [];
+  return (
+    <>
+      <span className="gesti-card-head">
+        <span className="gesti-card-title">{card.title}</span>
+        {card.badge ? (
+          <span className="gesti-card-badge" data-tone={badgeTone(card.badge)}>
+            {card.badge}
+          </span>
+        ) : null}
+      </span>
+      {card.subtitle ? <span className="gesti-card-subtitle">{card.subtitle}</span> : null}
+      {fields.length > 0 ? (
+        <span className="gesti-card-fields">
+          {fields.map((field, position) => (
+            <span key={position} className="gesti-card-field">
+              <span className="gesti-card-label">{field.label}</span>
+              <span className="gesti-card-value">{typeof field.value === "number" ? formatNumber(field.value) : field.value}</span>
+            </span>
+          ))}
+        </span>
+      ) : null}
+      {openLabel ? (
+        <span className="gesti-card-open" aria-hidden="true">
+          {openLabel}
+          <ChevronRight size={14} />
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function ChartCards({
+  chart,
+  onOpenRecord
+}: {
+  chart: ChartSpec;
+  onOpenRecord: ((link: ChartLink) => void) | undefined;
+}) {
+  const cards = chart.cards ?? [];
+  if (cards.length === 0) return <p className="gesti-chart-empty">Sin datos para mostrar.</p>;
+
+  return (
+    <ul className="gesti-cards">
+      {cards.map((card, index) => {
+        const link = chart.links?.[index] ?? null;
+        // Sin callback (demo pública) o sin destino posible, la card es solo lectura.
+        const open = onOpenRecord && link && recordDestination(link) ? { link, onOpenRecord } : null;
+        return (
+          <li key={index}>
+            {open ? (
+              <button
+                type="button"
+                className="gesti-card"
+                data-interactive="true"
+                // Sin aria-label: el lector lee la card entera, con "Abrir …" al final.
+                onClick={() => open.onOpenRecord(open.link)}
+              >
+                <CardContent card={card} openLabel={recordLinkLabel(open.link.kind, null)} />
+              </button>
+            ) : (
+              <div className="gesti-card">
+                <CardContent card={card} openLabel={null} />
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// ---------- Cifras ----------
+
+function ChartStats({ chart }: { chart: ChartSpec }) {
+  const items = chart.items ?? [];
+  if (items.length === 0) return <p className="gesti-chart-empty">Sin datos para mostrar.</p>;
+
+  return (
+    <ul className="gesti-stats">
+      {items.map((item, index) => (
+        <li key={index} className="gesti-stat">
+          <span className="gesti-stat-label">{item.label}</span>
+          <span className="gesti-stat-value">
+            {typeof item.value === "number" ? formatValue(item.value, chart.unit) : item.value}
+          </span>
+          {item.hint ? <span className="gesti-stat-hint">{item.hint}</span> : null}
+        </li>
+      ))}
+    </ul>
   );
 }

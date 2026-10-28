@@ -5,12 +5,16 @@ import { z } from "zod";
 // gesti_messages.parts) y por el chat (las dibuja). Todo con topes: lo escribe
 // un modelo y no puede crecer sin límite.
 
-export const CHART_KINDS = ["bar", "line", "area", "pie", "table"] as const;
+export const CHART_KINDS = ["bar", "line", "area", "pie", "table", "cards", "stats"] as const;
 
 export const MAX_CHART_LABELS = 60;
 export const MAX_CHART_SERIES = 6;
 export const MAX_TABLE_COLUMNS = 12;
 export const MAX_TABLE_ROWS = 100;
+export const MAX_CARDS = 12;
+export const MAX_CARD_FIELDS = 8;
+export const MIN_STATS = 2;
+export const MAX_STATS = 6;
 /** Tope de `position`: la respuesta guardada nunca pasa de este largo. */
 export const MAX_CHART_POSITION = 20_000;
 
@@ -36,6 +40,37 @@ export const chartLinkSchema = z.object({
 
 export type ChartLink = z.infer<typeof chartLinkSchema>;
 
+/** Un dato de una card: etiqueta y valor ("Vence" / "20/10"). */
+const cardFieldSchema = z.object({
+  label: shortText(40),
+  value: z.union([shortText(200), z.number().finite()])
+});
+
+const cardShape = {
+  title: shortText(120),
+  subtitle: z.string().trim().max(160).optional(),
+  /** Estado corto ("Vencida", "Pendiente"); el color sale del texto. */
+  badge: z.string().trim().min(1).max(30).optional(),
+  fields: z.array(cardFieldSchema).max(MAX_CARD_FIELDS).optional()
+};
+
+/** La card tal como la escribe el modelo: `ref` es la referencia opaca del registro que muestra. */
+const cardInputSchema = z.object({ ...cardShape, ref: z.string().max(40).nullable().optional() });
+
+/** La card guardada: sin `ref`; su enlace resuelto va en `links` del gráfico, en el mismo orden. */
+const cardSchema = z.object(cardShape);
+
+export type ChartCard = z.infer<typeof cardSchema>;
+
+/** Una cifra destacada de `stats`. */
+const statSchema = z.object({
+  label: shortText(60),
+  value: z.union([shortText(40), z.number().finite()]),
+  hint: z.string().trim().max(100).optional()
+});
+
+export type ChartStat = z.infer<typeof statSchema>;
+
 const chartShape = {
   kind: z.enum(CHART_KINDS),
   title: shortText(120),
@@ -59,7 +94,9 @@ const chartShape = {
   rows: z
     .array(z.array(z.union([z.string().max(200), z.number().finite(), z.null()])).max(MAX_TABLE_COLUMNS))
     .max(MAX_TABLE_ROWS)
-    .optional()
+    .optional(),
+  /** Stats: de 2 a 6 cifras destacadas. */
+  items: z.array(statSchema).min(MIN_STATS).max(MAX_STATS).optional()
 };
 
 function checkChart(
@@ -69,9 +106,21 @@ function checkChart(
     series?: Array<{ values: number[] }> | undefined;
     columns?: string[] | undefined;
     rows?: unknown[][] | undefined;
+    cards?: unknown[] | undefined;
+    items?: unknown[] | undefined;
   },
   context: z.RefinementCtx
 ) {
+  if (chart.kind === "cards") {
+    if (!chart.cards?.length) context.addIssue({ code: "custom", message: "Cards need at least one card" });
+    return;
+  }
+  if (chart.kind === "stats") {
+    if (!chart.items || chart.items.length < MIN_STATS) {
+      context.addIssue({ code: "custom", message: `Stats need between ${MIN_STATS} and ${MAX_STATS} items` });
+    }
+    return;
+  }
   if (chart.kind === "table") {
     if (!chart.columns?.length || !chart.rows) {
       context.addIssue({ code: "custom", message: "A table needs columns and rows" });
@@ -98,12 +147,15 @@ function checkChart(
 
 /**
  * Lo que el modelo le pasa a show_chart. Para tablas, `refs` trae una
- * referencia opaca (`#Rk7q2-3`, la que vio junto al registro) por fila, o null.
+ * referencia opaca (`#Rk7q2-3`, la que vio junto al registro) por fila, o null;
+ * para cards, cada card trae la suya en `ref`.
  * No acepta enlaces ni posición: eso lo pone el server.
  */
 export const chartInputSchema = z
   .object({
     ...chartShape,
+    /** Cards: de 1 a 12. */
+    cards: z.array(cardInputSchema).min(1).max(MAX_CARDS).optional(),
     /** Tablas: la referencia (`#Rk7q2-3`) del registro que lista cada fila, en el mismo orden que `rows`. */
     refs: z.array(z.string().max(40).nullable()).max(MAX_TABLE_ROWS).optional()
   })
@@ -114,12 +166,13 @@ export type ChartInput = z.infer<typeof chartInputSchema>;
 /**
  * El gráfico tal como se guarda y se manda al navegador. Además de lo que
  * armó el modelo lleva lo que resolvió el server: `links` (uno por fila de una
- * tabla, null si esa fila no abre nada) y `position` (cuántos caracteres de
+ * tabla o por card, null si no abre nada) y `position` (cuántos caracteres de
  * texto se habían escrito cuando Gesti lo mostró; sin ella, después del texto).
  */
 export const chartSpecSchema = z
   .object({
     ...chartShape,
+    cards: z.array(cardSchema).min(1).max(MAX_CARDS).optional(),
     links: z.array(chartLinkSchema.nullable()).max(MAX_TABLE_ROWS).optional(),
     position: z.number().int().min(0).max(MAX_CHART_POSITION).optional()
   })

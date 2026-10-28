@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { GestiChart } from "@/components/ui/gesti-chart";
 import {
+  badgeTone,
   donutSlicePath,
   formatNumber,
   formatPercent,
@@ -487,5 +488,132 @@ describe("recordDestination", () => {
     expect(recordDestination({ kind: "policy", id: "p1" })).toBeNull();
     expect(recordDestination({ kind: "notice", id: "n1", clientId: "c1" })).toBeNull();
     expect(recordDestination({ kind: "notice", id: "n1", policyId: "p1" })).toBeNull();
+  });
+});
+
+describe("badgeTone", () => {
+  it.each([
+    ["Vencida", "danger"],
+    ["vencido", "danger"],
+    ["VENCIDA HACE 3 DÍAS", "danger"],
+    ["Impago", "danger"],
+    ["No pagado", "danger"],
+    ["Pendiente", "warning"],
+    ["Por avisar", "warning"],
+    ["por vencer", "warning"],
+    ["Pagado", "ok"],
+    ["Pagada", "ok"],
+    ["Al día", "ok"],
+    ["Al dia", "ok"],
+    ["Completada", "ok"],
+    ["Alta", "neutral"],
+    ["En revisión", "neutral"],
+    ["", "neutral"]
+  ])("reads %j as %s", (text, tone) => {
+    expect(badgeTone(text)).toBe(tone);
+  });
+});
+
+describe("GestiChart cards", () => {
+  const cards: ChartSpec = {
+    kind: "cards",
+    title: "Tarea asignada",
+    subtitle: "Agustín",
+    cards: [
+      {
+        title: "Llamar a Ana",
+        subtitle: "Renovación",
+        badge: "Vencida",
+        fields: [
+          { label: "Vence", value: "20/10" },
+          { label: "Prima", value: 1500 }
+        ]
+      },
+      { title: "Sin registro", badge: "Pagado" },
+      { title: "Renovar póliza", badge: "Pendiente" }
+    ],
+    links: [{ kind: "task", id: "t1" }, null, { kind: "policy", id: "p1", clientId: "c1" }]
+  };
+  const render = (chart: ChartSpec, onOpenRecord?: (link: ChartLink) => void) =>
+    renderToStaticMarkup(createElement(GestiChart, { chart, ...(onOpenRecord ? { onOpenRecord } : {}) }));
+  const count = (html: string, text: string) => html.split(text).length - 1;
+
+  it("renders the title, fields, formatted numbers and a badge with its tone", () => {
+    const html = render(cards);
+
+    expect(html).toContain("Tarea asignada");
+    expect(html).toContain("Agustín");
+    expect(html).toContain("Llamar a Ana");
+    expect(html).toContain("Renovación");
+    expect(html).toContain("Vence");
+    expect(html).toContain("20/10");
+    expect(html).toContain("1.500");
+    expect(html).toContain('data-tone="danger"');
+    expect(html).toContain('data-tone="ok"');
+    expect(html).toContain('data-tone="warning"');
+    expect(count(html, 'class="gesti-card"')).toBe(3);
+  });
+
+  it("makes only the cards with a link interactive: a button whose accessible name is the whole card plus its Abrir affordance", () => {
+    const html = render(cards, () => undefined);
+
+    expect(count(html, "<button")).toBe(2);
+    // Sin aria-label: el lector de pantalla también lee el estado y los campos.
+    expect(html).not.toMatch(/<button[^>]*aria-label/);
+    expect(html).toContain("Abrir tarea");
+    expect(html).toContain("Abrir póliza");
+    expect(count(html, 'data-interactive="true"')).toBe(2);
+  });
+
+  it("keeps every card inert without a navigation callback (public demo)", () => {
+    const html = render(cards);
+
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("data-interactive");
+    expect(html).not.toContain("Abrir ");
+  });
+
+  it("keeps cards inert when none has a link, or the link cannot be opened", () => {
+    const { links: _links, ...plain } = cards;
+    expect(render(plain, () => undefined)).not.toContain("<button");
+    const broken: ChartSpec = { ...cards, links: [{ kind: "policy", id: "p1" }, null, null] };
+    expect(render(broken, () => undefined)).not.toContain("<button");
+  });
+
+  it("does not throw on odd cards", () => {
+    const odd: ChartSpec = { kind: "cards", title: "Vacío" };
+    expect(() => render(odd)).not.toThrow();
+    expect(render(odd)).toContain("Sin datos para mostrar.");
+  });
+});
+
+describe("GestiChart stats", () => {
+  const stats: ChartSpec = {
+    kind: "stats",
+    title: "Resumen de cartera",
+    unit: "$",
+    items: [
+      { label: "Pólizas activas", value: 1240, hint: "12 por vencer" },
+      { label: "Prima mensual", value: 2_500_000 },
+      { label: "Estado", value: "Al día" }
+    ]
+  };
+
+  it("renders each figure as a tile with label, value and hint, and no links or buttons", () => {
+    const html = renderToStaticMarkup(createElement(GestiChart, { chart: stats, onOpenRecord: () => undefined }));
+
+    expect(html).toContain("Resumen de cartera");
+    expect(html).toContain("Pólizas activas");
+    expect(html).toContain("$1.240");
+    expect(html).toContain("12 por vencer");
+    expect(html).toContain("$2.500.000");
+    expect(html).toContain("Al día");
+    expect(html.split('class="gesti-stat"').length - 1).toBe(3);
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("Abrir ");
+  });
+
+  it("does not throw without items", () => {
+    expect(() => renderToStaticMarkup(createElement(GestiChart, { chart: { kind: "stats", title: "Nada" } }))).not.toThrow();
   });
 });

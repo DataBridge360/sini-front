@@ -100,7 +100,7 @@ const CLIENT_TOOLS: Anthropic.Tool[] = [
   {
     name: "show_chart",
     description:
-      "Muestra un gráfico interactivo (bar, line, area, pie) o una tabla al usuario, en el punto del texto donde la llamás. Máximo 4 por respuesta. Úsalo solo cuando ayude a entender datos reales. En tablas de registros de la cartera, pasá en refs la referencia (como #Rk7q2-1) que viste junto a cada registro, una por fila y en el mismo orden que rows (null si la fila no tiene); así cada fila abre su registro. Las referencias son internas: nunca las escribas en las celdas ni en el texto.",
+      "Muestra un bloque visual al usuario, en el punto del texto donde lo llamás. Máximo 4 por respuesta. Úsalo para cualquier dato estructurado (de la cartera o no), con datos reales, en lugar de viñetas \"Campo: valor\". kind \"cards\": un registro o el detalle de un ítem, o 2 o 3 ítems con varios campos (cards, de 1 a 12, cada una con title, subtitle y badge opcionales y fields con label y value). kind \"table\": varios ítems comparables (columns y rows). kind \"stats\": cifras destacadas (items, de 2 a 6, con label, value y hint opcional). kind \"bar\", \"line\", \"area\" o \"pie\": tendencias o proporciones (labels y series). En tablas de registros de la cartera, pasá en refs la referencia (como #Rk7q2-1) que viste junto a cada registro, una por fila y en el mismo orden que rows (null si la fila no tiene); en cards, la referencia va en el ref de cada card. Así cada fila o card abre su registro. Las referencias son internas: nunca las escribas en las celdas, en los campos ni en el texto.",
     input_schema: toolInputSchema(chartInputSchema)
   },
   {
@@ -501,10 +501,14 @@ export class GestiChatService {
       { type: "text", text: todayBlock(this.now()) }
     ];
 
+    // Después de una herramienta el modelo arranca otra idea; después de
+    // pause_turn sigue la misma, quizás a mitad de una oración.
+    let afterTool = false;
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       if (signal.aborted) return;
 
-      const message = await this.streamRound(client, { system, messages }, agent, state, emit);
+      const written = state.content.length;
+      const message = await this.streamRound(client, { system, messages }, agent, state, emit, afterTool);
       if (state.capped) return;
 
       const assistantContent = message.content
@@ -512,6 +516,8 @@ export class GestiChatService {
 
       if (message.stop_reason === "pause_turn") {
         messages.push({ role: "assistant", content: assistantContent });
+        // Si la ronda pausada no escribió nada, el próximo texto sigue viniendo de la herramienta.
+        if (state.content.length > written) afterTool = false;
         continue;
       }
       if (message.stop_reason !== "tool_use") return;
@@ -543,6 +549,7 @@ export class GestiChatService {
         });
       }
       messages.push({ role: "assistant", content: assistantContent }, { role: "user", content: results });
+      afterTool = true;
     }
   }
 
@@ -552,7 +559,9 @@ export class GestiChatService {
     request: { system: Anthropic.TextBlockParam[]; messages: Anthropic.MessageParam[] },
     agent: AgentContext,
     state: TurnState,
-    emit: Emit
+    emit: Emit,
+    /** La ronda anterior terminó en una herramienta: el texto nuevo abre párrafo. */
+    afterTool: boolean
   ): Promise<Anthropic.Message> {
     const stream = client.messages.stream(
       {
@@ -574,6 +583,10 @@ export class GestiChatService {
     );
 
     const blocks = new Map<number, Set<number>>();
+    // Si viene de una herramienta, la primera vez que esta ronda escribe texto y
+    // lo anterior no terminó en espacio se abre un párrafo: sin esto "16/10." y
+    // "Ninguna" quedan pegados.
+    let wroteText = false;
     for await (const event of stream) {
       if (event.type === "content_block_start") {
         blocks.set(event.index, new Set());
@@ -583,7 +596,9 @@ export class GestiChatService {
       } else if (event.type === "content_block_delta") {
         const delta = event.delta;
         if (delta.type === "text_delta") {
-          this.writeText(state, emit, delta.text);
+          const joint = afterTool && !wroteText && delta.text.length > 0 && state.content !== "" && !/\s$/.test(state.content) ? "\n\n" : "";
+          if (delta.text.length > 0) wroteText = true;
+          this.writeText(state, emit, joint + delta.text);
         } else if (delta.type === "citations_delta" && delta.citation.type === "web_search_result_location") {
           const position = this.addSource(state, emit, delta.citation.url, delta.citation.title);
           if (position !== null) blocks.get(event.index)?.add(position);
@@ -668,10 +683,17 @@ export class GestiChatService {
           }
           // Las referencias solo valen contra los registros que las herramientas
           // de datos devolvieron en ESTE turno; el resto se descarta sin error.
-          const { refs, ...spec } = input.data;
-          const links = spec.kind === "table" ? resolveRowLinks(agent.records, refs, spec.rows?.length ?? 0) : undefined;
+          // Las cards lo mismo: su `ref` se resuelve y no se guarda.
+          const { refs, cards, ...spec } = input.data;
+          const links =
+            spec.kind === "table"
+              ? resolveRowLinks(agent.records, refs, spec.rows?.length ?? 0)
+              : spec.kind === "cards" && cards
+                ? resolveRowLinks(agent.records, cards.map((card) => card.ref ?? null), cards.length)
+                : undefined;
           const chart: ChartSpec = {
             ...spec,
+            ...(cards ? { cards: cards.map(({ ref: _ref, ...card }) => card) } : {}),
             ...(links ? { links } : {}),
             // Dónde del texto lo mostró Gesti: el navegador lo ubica ahí.
             position: Math.min(state.content.length, MAX_CHART_POSITION)
