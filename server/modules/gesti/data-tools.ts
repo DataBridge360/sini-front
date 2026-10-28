@@ -1,9 +1,10 @@
 import "server-only";
 import { z } from "zod";
-import type { AppSource } from "@/lib/gesti-parts";
+import type { AppSource, ChartLink } from "@/lib/gesti-parts";
 import { Logger } from "@/server/core/logger";
 import { escapeLikePattern, isIsoDate, pgrstQuote } from "@/server/core/postgrest";
 import type { SupabaseService } from "@/server/core/supabase";
+import type { RecordRegistry } from "./references";
 import { toolInputSchema } from "./schemas";
 import { addDays, argentinaToday, fetchAllRows } from "./usage";
 
@@ -12,8 +13,11 @@ import { addDays, argentinaToday, fetchAllRows } from "./usage";
 // pregunta: el modelo no escribe SQL ni elige tablas, columnas ni filtros
 // arbitrarios. Lo que devuelven son objetos planos con claves en español, sin
 // ids ni uuids, sin nombres de columnas ni DNI (el DNI solo sirve para
-// buscar). Un error de la base nunca llega al modelo: se registra acá y el
-// modelo recibe un mensaje genérico.
+// buscar). Lo único que identifica a un registro es una referencia opaca
+// (`ref: "#Rk7q2-3"`) anotada en el registro del turno (references.ts): sirve para
+// que show_chart abra el registro desde una tabla y no dice nada de la base.
+// Un error de la base nunca llega al modelo: se registra acá y el modelo recibe
+// un mensaje genérico.
 
 const logger = new Logger("GestiDataTools");
 
@@ -21,6 +25,8 @@ export type DataToolContext = {
   supabase: SupabaseService;
   organizationId: string;
   now: Date;
+  /** Referencias opacas de este turno (compartido con el chat y el sub-agente). */
+  records: RecordRegistry;
 };
 
 export type DataToolResult = {
@@ -103,6 +109,33 @@ function nested(row: Row, key: string): Row {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Row) : {};
 }
 
+/**
+ * `{ ref }` para el registro, o nada si le falta algún id para poder abrirlo
+ * (el modelo lista el registro igual, pero la fila no será clickeable).
+ */
+function referenceFor(context: DataToolContext, link: ChartLink, requires: Array<keyof ChartLink> = []): { ref?: string } {
+  if (!link.id || requires.some((key) => !link[key])) return {};
+  const ref = context.records.register(link);
+  return ref ? { ref } : {};
+}
+
+const idOf = (value: unknown) => str(value) ?? "";
+
+function clientRef(context: DataToolContext, id: unknown) {
+  return referenceFor(context, { kind: "client", id: idOf(id) });
+}
+
+function policyRef(context: DataToolContext, id: unknown, clientId: unknown) {
+  return referenceFor(context, { kind: "policy", id: idOf(id), clientId: idOf(clientId) }, ["clientId"]);
+}
+
+function noticeRef(context: DataToolContext, id: unknown, policyId: unknown, clientId: unknown) {
+  return referenceFor(context, { kind: "notice", id: idOf(id), policyId: idOf(policyId), clientId: idOf(clientId) }, [
+    "policyId",
+    "clientId"
+  ]);
+}
+
 function paymentLabel(value: unknown) {
   return value === "debito_automatico" ? "débito automático" : "manual";
 }
@@ -128,7 +161,7 @@ async function buscarAsegurados({ texto: term }: z.infer<typeof buscarAsegurados
     "buscar_asegurados",
     context.supabase.admin
       .from("clients")
-      .select("full_name,phone,email,locality,policies(count)")
+      .select("id,full_name,phone,email,locality,policies(count)")
       .eq("organization_id", context.organizationId)
       .eq("is_active", true)
       .eq("policies.is_active", true)
@@ -138,6 +171,7 @@ async function buscarAsegurados({ texto: term }: z.infer<typeof buscarAsegurados
   );
 
   const data = rows.map((row) => ({
+    ...clientRef(context, row.id),
     nombre: str(row.full_name),
     telefono: str(row.phone),
     email: str(row.email),
@@ -188,7 +222,7 @@ async function fichaAsegurado({ nombre }: z.infer<typeof fichaAseguradoInput>, c
           "ficha_asegurado.notices",
           context.supabase.admin
             .from("policy_notices")
-            .select("policy_id,due_date,status")
+            .select("id,policy_id,due_date,status")
             .eq("organization_id", context.organizationId)
             .in("policy_id", policyIds)
             .is("deleted_at", null)
@@ -197,15 +231,21 @@ async function fichaAsegurado({ nombre }: z.infer<typeof fichaAseguradoInput>, c
             .limit(100)
         );
 
-  const noticesByPolicy = new Map<string, Array<{ vence: string | null; estado: string | null }>>();
+  const clientByPolicy = new Map(policies.rows.map((policy) => [String(policy.id), String(policy.client_id)] as const));
+  const noticesByPolicy = new Map<string, Array<{ ref?: string; vence: string | null; estado: string | null }>>();
   for (const notice of notices.rows) {
     const key = String(notice.policy_id);
     const list = noticesByPolicy.get(key) ?? [];
-    list.push({ vence: str(notice.due_date), estado: str(notice.status) });
+    list.push({
+      ...noticeRef(context, notice.id, notice.policy_id, clientByPolicy.get(key)),
+      vence: str(notice.due_date),
+      estado: str(notice.status)
+    });
     noticesByPolicy.set(key, list);
   }
 
   const fichas = clients.rows.map((client) => ({
+    ...clientRef(context, client.id),
     nombre: str(client.full_name),
     telefono: str(client.phone),
     email: str(client.email),
@@ -216,6 +256,7 @@ async function fichaAsegurado({ nombre }: z.infer<typeof fichaAseguradoInput>, c
     polizas: policies.rows
       .filter((policy) => policy.client_id === client.id)
       .map((policy) => ({
+        ...policyRef(context, policy.id, policy.client_id),
         ...toPolicy(policy),
         avisosPendientes: noticesByPolicy.get(String(policy.id)) ?? []
       }))
@@ -235,7 +276,7 @@ async function listarAvisos(input: z.infer<typeof listarAvisosInput>, context: D
   let query = context.supabase.admin
     .from("policy_notices")
     .select(
-      `due_date,status,policies!policy_notices_policy_fk${join}(policy_number,branch,vehicle_plate,clients!policies_client_fk(full_name),insurance_companies!policies_insurance_company_fk${join}(name))`,
+      `id,due_date,status,policies!policy_notices_policy_fk${join}(id,client_id,policy_number,branch,vehicle_plate,clients!policies_client_fk(full_name),insurance_companies!policies_insurance_company_fk${join}(name))`,
       { count: "exact" }
     )
     .eq("organization_id", context.organizationId)
@@ -255,6 +296,7 @@ async function listarAvisos(input: z.infer<typeof listarAvisosInput>, context: D
   const avisos = rows.map((row) => {
     const policy = nested(row, "policies");
     return {
+      ...noticeRef(context, row.id, policy.id, policy.client_id),
       vence: str(row.due_date),
       estado: str(row.status),
       compania: str(nested(policy, "insurance_companies").name),
@@ -279,7 +321,7 @@ async function listarPolizas(input: z.infer<typeof listarPolizasInput>, context:
   let query = context.supabase.admin
     .from("policies")
     .select(
-      `branch,policy_number,vehicle_plate,payment_interval_months,payment_method,first_payment_date,clients!policies_client_fk(full_name),insurance_companies!policies_insurance_company_fk${join}(name)`,
+      `id,client_id,branch,policy_number,vehicle_plate,payment_interval_months,payment_method,first_payment_date,clients!policies_client_fk(full_name),insurance_companies!policies_insurance_company_fk${join}(name)`,
       { count: "exact" }
     )
     .eq("organization_id", context.organizationId)
@@ -315,6 +357,7 @@ async function listarPolizas(input: z.infer<typeof listarPolizasInput>, context:
   );
 
   const polizas = rows.map((row) => ({
+    ...policyRef(context, row.id, row.client_id),
     asegurado: str(nested(row, "clients").full_name),
     ...toPolicy(row)
   }));
@@ -351,7 +394,7 @@ async function resumenCartera(_input: z.infer<typeof resumenCarteraInput>, conte
       (from, to) =>
         supabase.admin
           .from("policies")
-          .select("branch,insurance_companies!policies_insurance_company_fk(name)")
+          .select("branch,insurance_companies!policies_insurance_company_fk(id,name)")
           .eq("organization_id", organizationId)
           .eq("is_active", true)
           .order("created_at", { ascending: true })
@@ -378,17 +421,25 @@ async function resumenCartera(_input: z.infer<typeof resumenCarteraInput>, conte
   const capped = policyRows.slice(0, MAX_POLICY_ROWS_FOR_SUMMARY);
   const byBranch = new Map<string, number>();
   const byCompany = new Map<string, number>();
+  const companyIds = new Map<string, string>();
   for (const policy of capped) {
     const branch = str(policy.branch) ?? "Sin rama";
-    const company = str(nested(policy, "insurance_companies").name) ?? "Sin compañía";
+    const companyRow = nested(policy, "insurance_companies");
+    const company = str(companyRow.name) ?? "Sin compañía";
+    const companyId = str(companyRow.id);
+    if (companyId) companyIds.set(company, companyId);
     byBranch.set(branch, (byBranch.get(branch) ?? 0) + 1);
     byCompany.set(company, (byCompany.get(company) ?? 0) + 1);
   }
-  const ranked = (map: Map<string, number>) =>
+  const ranked = (map: Map<string, number>, refs?: Map<string, string>) =>
     [...map.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 30)
-      .map(([nombre, polizas]) => ({ nombre, polizas }));
+      .map(([nombre, polizas]) => ({
+        ...(refs ? referenceFor(context, { kind: "company", id: refs.get(nombre) ?? "" }) : {}),
+        nombre,
+        polizas
+      }));
 
   return {
     data: {
@@ -396,7 +447,7 @@ async function resumenCartera(_input: z.infer<typeof resumenCarteraInput>, conte
       asegurados: clientCount,
       polizasActivas: capped.length,
       polizasPorRama: ranked(byBranch),
-      polizasPorCompania: ranked(byCompany),
+      polizasPorCompania: ranked(byCompany, companyIds),
       avisosPorEstado: { avisar, avisado, pagado },
       avisosVencidosSinPagar: vencidos,
       avisosSinPagarProximos7Dias: proximos7,
@@ -412,7 +463,7 @@ async function listarTareas(input: z.infer<typeof listarTareasInput>, context: D
   let query = context.supabase.admin
     .from("tasks")
     .select(
-      "title,status,priority,due_date,assigned_to:user_profiles!tasks_assigned_to_user_id_fkey(full_name),clients!tasks_client_fk(full_name)",
+      "id,title,status,priority,due_date,assigned_to:user_profiles!tasks_assigned_to_user_id_fkey(full_name),clients!tasks_client_fk(full_name)",
       { count: "exact" }
     )
     .eq("organization_id", context.organizationId);
@@ -434,6 +485,7 @@ async function listarTareas(input: z.infer<typeof listarTareasInput>, context: D
   );
 
   const tareas = rows.map((row) => ({
+    ...referenceFor(context, { kind: "task", id: idOf(row.id) }),
     titulo: str(row.title),
     estado: str(row.status),
     prioridad: str(row.priority),

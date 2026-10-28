@@ -115,30 +115,48 @@ export function parseInline(line: string, complete = true): InlineSpan[] {
   return spans;
 }
 
+export type BlockRange = { start: number; end: number };
+
 /**
- * El texto (completo o a medias) en bloques. Un `:::borrador` sin cerrar es un
- * borrador abierto: se muestra lo que lleva y sigue creciendo.
+ * El texto (completo o a medias) en bloques, cada uno con dónde empieza y
+ * termina en el texto original (también si usa saltos CRLF). Un `:::borrador`
+ * sin cerrar es un borrador abierto: se muestra lo que lleva y sigue creciendo.
  */
-export function parseBlocks(text: string, options: { complete?: boolean } = {}): TextBlock[] {
-  const complete = options.complete ?? true;
-  const blocks: TextBlock[] = [];
-  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+function parseBlockRanges(text: string, complete: boolean): Array<{ block: TextBlock } & BlockRange> {
+  const entries: Array<{ block: TextBlock } & BlockRange> = [];
+  // Líneas y separadores alternados: el desplazamiento se cuenta sobre el texto original.
+  const pieces = text.split(/(\r\n?|\n)/);
 
   let paragraph: InlineSpan[][] | null = null;
   let bullets: InlineSpan[][] | null = null;
   let numbered: Extract<TextBlock, { kind: "numbered" }> | null = null;
   let draft: string[] | null = null;
+  let draftStart = 0;
 
   const flush = () => {
     paragraph = null;
     bullets = null;
     numbered = null;
   };
+  // El bloque en curso siempre es el último: lo extiende hasta el final de esta línea.
+  const extend = (end: number) => {
+    const last = entries[entries.length - 1];
+    if (last) last.end = end;
+  };
+  const open = (block: TextBlock, start: number, end: number) => {
+    entries.push({ block, start, end });
+  };
 
-  for (const line of lines) {
+  let offset = 0;
+  for (let index = 0; index < pieces.length; index += 2) {
+    const line = pieces[index] ?? "";
+    const lineStart = offset;
+    const lineEnd = lineStart + line.trimEnd().length;
+    offset += line.length + (pieces[index + 1]?.length ?? 0);
+
     if (draft) {
       if (DRAFT_CLOSE.test(line)) {
-        blocks.push({ kind: "draft", body: draft.join("\n").trim(), complete: true });
+        open({ kind: "draft", body: draft.join("\n").trim(), complete: true }, draftStart, lineEnd);
         draft = null;
       } else {
         draft.push(line);
@@ -148,6 +166,7 @@ export function parseBlocks(text: string, options: { complete?: boolean } = {}):
     if (DRAFT_OPEN.test(line)) {
       flush();
       draft = [];
+      draftStart = lineStart;
       continue;
     }
     if (line.trim() === "") {
@@ -161,9 +180,10 @@ export function parseBlocks(text: string, options: { complete?: boolean } = {}):
       const item = parseInline(bullet[1] ?? "", complete);
       if (bullets) {
         bullets.push(item);
+        extend(lineEnd);
       } else {
         bullets = [item];
-        blocks.push({ kind: "bullets", items: bullets });
+        open({ kind: "bullets", items: bullets }, lineStart, lineEnd);
       }
       continue;
     }
@@ -174,9 +194,10 @@ export function parseBlocks(text: string, options: { complete?: boolean } = {}):
       const item = parseInline(number[2] ?? "", complete);
       if (numbered) {
         numbered.items.push(item);
+        extend(lineEnd);
       } else {
         numbered = { kind: "numbered", start: Number(number[1]), items: [item] };
-        blocks.push(numbered);
+        open(numbered, lineStart, lineEnd);
       }
       continue;
     }
@@ -185,14 +206,67 @@ export function parseBlocks(text: string, options: { complete?: boolean } = {}):
     const spans = parseInline(line.trim(), complete);
     if (paragraph) {
       paragraph.push(spans);
+      extend(lineEnd);
     } else {
       paragraph = [spans];
-      blocks.push({ kind: "paragraph", lines: paragraph });
+      open({ kind: "paragraph", lines: paragraph }, lineStart, lineEnd);
     }
   }
 
-  if (draft) blocks.push({ kind: "draft", body: (draft as string[]).join("\n").trim(), complete: false });
-  return blocks;
+  if (draft) open({ kind: "draft", body: (draft as string[]).join("\n").trim(), complete: false }, draftStart, text.length);
+  return entries;
+}
+
+/**
+ * El texto (completo o a medias) en bloques. Un `:::borrador` sin cerrar es un
+ * borrador abierto: se muestra lo que lleva y sigue creciendo.
+ */
+export function parseBlocks(text: string, options: { complete?: boolean } = {}): TextBlock[] {
+  return parseBlockRanges(text, options.complete ?? true).map((entry) => entry.block);
+}
+
+/** Dónde empieza y termina cada bloque de `parseBlocks(text)`, en el texto original. */
+export function blockRanges(text: string): BlockRange[] {
+  return parseBlockRanges(text, true).map(({ start, end }) => ({ start, end }));
+}
+
+// ---------- Gráficos y tablas dentro del texto ----------
+
+/**
+ * En qué hueco entre bloques va cada gráfico: `n` significa "después de los
+ * primeros n bloques" (0 = arriba de todo, la cantidad de bloques = al final).
+ * `positions` son los caracteres de texto que Gesti había escrito al mostrarlo;
+ * se recortan al texto, y un bloque que ya había empezado queda entero arriba
+ * (nunca se parte un párrafo, una lista ni un borrador). Sin posición (mensajes
+ * viejos) va después del texto. Respeta el orden: posiciones crecientes dan
+ * huecos crecientes.
+ */
+export function embedSlots(
+  ranges: ReadonlyArray<BlockRange>,
+  positions: ReadonlyArray<number | undefined>,
+  textLength: number
+): number[] {
+  return positions.map((position) => {
+    if (position === undefined || !Number.isFinite(position)) return ranges.length;
+    const clamped = Math.min(Math.max(0, Math.floor(position)), Math.max(0, textLength));
+    return ranges.filter((range) => range.start < clamped).length;
+  });
+}
+
+/**
+ * Si un gráfico ya se puede mostrar mientras el texto se va escribiendo: cuando
+ * lo revelado llega a su posición. Con el texto completo siempre se muestra, y
+ * uno sin posición (mensajes viejos) espera a que el texto termine.
+ */
+export function embedRevealed(
+  position: number | undefined,
+  textLength: number,
+  revealedLength: number,
+  complete: boolean
+): boolean {
+  if (complete) return true;
+  if (position === undefined || !Number.isFinite(position)) return false;
+  return revealedLength >= Math.min(Math.max(0, Math.floor(position)), Math.max(0, textLength));
 }
 
 /** El texto sin marcas (para "Copiar respuesta"): sin `[[n]]`, sin `**` y con el borrador como párrafo. */

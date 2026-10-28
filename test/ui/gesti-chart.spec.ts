@@ -11,13 +11,16 @@ import {
   isNumericColumn,
   niceTicks,
   planXLabels,
+  recordDestination,
+  recordLinkLabel,
   shouldCompact,
   shouldIncludeZero,
   sortRows,
   summarizeChart,
+  tableEntries,
   truncateLabel
 } from "@/lib/gesti-chart-format";
-import type { ChartSpec } from "@/lib/gesti-parts";
+import type { ChartLink, ChartSpec } from "@/lib/gesti-parts";
 
 describe("niceTicks", () => {
   it("rounds a positive range to a readable step that includes zero", () => {
@@ -341,5 +344,148 @@ describe("GestiChart", () => {
     expect(() => renderToStaticMarkup(createElement(GestiChart, { chart: zeros }))).not.toThrow();
     const single: ChartSpec = { kind: "line", title: "Uno", labels: ["A"], series: [{ name: "x", values: [4] }] };
     expect(() => renderToStaticMarkup(createElement(GestiChart, { chart: single }))).not.toThrow();
+  });
+});
+
+describe("tableEntries", () => {
+  const rows = [
+    ["Bravo", 20],
+    ["alfa", 5],
+    ["Charlie", null],
+    ["Delta", 100]
+  ];
+  const links: Array<ChartLink | null> = [
+    { kind: "task", id: "t-bravo" },
+    { kind: "task", id: "t-alfa" },
+    null,
+    { kind: "task", id: "t-delta" }
+  ];
+
+  it("keeps the original order and each row's link when there is no sort", () => {
+    expect(tableEntries(rows, links, null).map((entry) => [entry.row[0], entry.link?.id ?? null])).toEqual([
+      ["Bravo", "t-bravo"],
+      ["alfa", "t-alfa"],
+      ["Charlie", null],
+      ["Delta", "t-delta"]
+    ]);
+  });
+
+  it("sorts rows and carries the link of every row with it", () => {
+    const sorted = tableEntries(rows, links, { column: 1, direction: "asc" });
+    expect(sorted.map((entry) => entry.row[0])).toEqual(["alfa", "Bravo", "Delta", "Charlie"]);
+    expect(sorted.map((entry) => entry.link?.id ?? null)).toEqual(["t-alfa", "t-bravo", "t-delta", null]);
+
+    const desc = tableEntries(rows, links, { column: 0, direction: "desc" });
+    expect(desc.map((entry) => [entry.row[0], entry.link?.id ?? null])).toEqual([
+      ["Delta", "t-delta"],
+      ["Charlie", null],
+      ["Bravo", "t-bravo"],
+      ["alfa", "t-alfa"]
+    ]);
+  });
+
+  it("matches sortRows and tolerates missing or short link lists", () => {
+    expect(tableEntries(rows, undefined, { column: 1, direction: "asc" }).map((entry) => entry.row)).toEqual(
+      sortRows(rows, 1, "asc")
+    );
+    expect(tableEntries(rows, [links[0] ?? null], null).map((entry) => entry.link)).toEqual([links[0], null, null, null]);
+  });
+
+  it("gives identical rows their own links", () => {
+    const twins = [["Igual"], ["Igual"]];
+    const sorted = tableEntries(twins, [{ kind: "task", id: "uno" }, { kind: "task", id: "dos" }], { column: 0, direction: "desc" });
+    expect(sorted.map((entry) => entry.link?.id)).toEqual(["uno", "dos"]);
+  });
+});
+
+describe("recordLinkLabel", () => {
+  it("names what the row opens and which record it is", () => {
+    expect(recordLinkLabel("task", "Llamar a Ana")).toBe("Abrir tarea: Llamar a Ana");
+    expect(recordLinkLabel("policy", "AU-123")).toBe("Abrir póliza: AU-123");
+    expect(recordLinkLabel("notice", 30)).toBe("Abrir aviso de pago: 30");
+    expect(recordLinkLabel("client", null)).toBe("Abrir asegurado");
+    expect(recordLinkLabel("company", "  ")).toBe("Abrir compañía");
+  });
+});
+
+describe("GestiChart table rows", () => {
+  const table: ChartSpec = {
+    kind: "table",
+    title: "Tareas abiertas",
+    columns: ["Tarea", "Vence"],
+    rows: [
+      ["Llamar a Ana", "20/10"],
+      ["Sin registro", "21/10"],
+      ["Renovar póliza", "22/10"]
+    ],
+    links: [{ kind: "task", id: "t1" }, null, { kind: "policy", id: "p1", clientId: "c1" }]
+  };
+  const render = (chart: ChartSpec, onOpenRecord?: (link: ChartLink) => void) =>
+    renderToStaticMarkup(createElement(GestiChart, { chart, ...(onOpenRecord ? { onOpenRecord } : {}) }));
+  const count = (html: string, text: string) => html.split(text).length - 1;
+
+  it("makes only the rows with a link interactive, with a button and an accessible label", () => {
+    const html = render(table, () => undefined);
+
+    expect(count(html, 'data-interactive="true"')).toBe(2);
+    expect(html).toContain('aria-label="Abrir tarea: Llamar a Ana"');
+    expect(html).toContain('aria-label="Abrir póliza: Renovar póliza"');
+    expect(count(html, 'class="gesti-chart-open"')).toBe(2);
+  });
+
+  it("keeps rows inert without a navigation callback (public demo)", () => {
+    const html = render(table);
+
+    expect(html).not.toContain("data-interactive");
+    expect(html).not.toContain("gesti-chart-open");
+    expect(html).not.toContain("Abrir ");
+  });
+
+  it("keeps rows inert when the table has no links", () => {
+    const { links: _links, ...plain } = table;
+    const html = render(plain, () => undefined);
+
+    expect(html).not.toContain("data-interactive");
+    expect(html).not.toContain("gesti-chart-open");
+  });
+
+  it("keeps non-table charts non-interactive even if they carry links", () => {
+    const chart: ChartSpec = {
+      kind: "bar",
+      title: "Pólizas",
+      labels: ["Auto"],
+      series: [{ name: "Cantidad", values: [3] }],
+      links: [{ kind: "policy", id: "p1", clientId: "c1" }]
+    };
+    const html = render(chart, () => undefined);
+
+    expect(html).not.toContain("data-interactive");
+    expect(html).not.toContain("gesti-chart-open");
+  });
+});
+
+describe("recordDestination", () => {
+  it("opens a task by id", () => {
+    expect(recordDestination({ kind: "task", id: "t1" })).toEqual({ tab: "tasks", taskId: "t1" });
+  });
+
+  it("opens a policy, and a notice's policy, inside the client's detail", () => {
+    expect(recordDestination({ kind: "policy", id: "p1", clientId: "c1" })).toEqual({ tab: "clients", clientId: "c1", policyId: "p1" });
+    expect(recordDestination({ kind: "notice", id: "n1", policyId: "p1", clientId: "c1" })).toEqual({
+      tab: "clients",
+      clientId: "c1",
+      policyId: "p1"
+    });
+  });
+
+  it("opens a client's detail and the companies tab", () => {
+    expect(recordDestination({ kind: "client", id: "c1" })).toEqual({ tab: "clients", clientId: "c1", policyId: null });
+    expect(recordDestination({ kind: "company", id: "co1" })).toEqual({ tab: "companies" });
+  });
+
+  it("goes nowhere when the ids needed to open the record are missing", () => {
+    expect(recordDestination({ kind: "policy", id: "p1" })).toBeNull();
+    expect(recordDestination({ kind: "notice", id: "n1", clientId: "c1" })).toBeNull();
+    expect(recordDestination({ kind: "notice", id: "n1", policyId: "p1" })).toBeNull();
   });
 });

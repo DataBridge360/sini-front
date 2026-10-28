@@ -242,6 +242,7 @@
 .gesti-chart-legend-item:focus-visible,
 .gesti-chart-pie-row:focus-visible,
 .gesti-chart-sort:focus-visible,
+.gesti-chart-open:focus-visible,
 .gesti-chart-scroll:focus-visible {
   outline: 2px solid var(--gesti-blue, #0a72d1);
   outline-offset: 2px;
@@ -451,6 +452,57 @@
 .gesti-chart-sort svg[data-sorted="true"] {
   color: var(--gesti-blue, #0a72d1);
   opacity: 1;
+}
+
+/* Filas que abren un registro (tarea, póliza, asegurado, aviso, compañía). */
+
+.gesti-chart-table tbody tr[data-interactive="true"] {
+  cursor: pointer;
+}
+
+.gesti-chart-table tbody tr[data-interactive="true"]:hover td,
+.gesti-chart-table tbody tr[data-interactive="true"]:focus-within td {
+  background: var(--gesti-blue-soft, #eaf3fc);
+}
+
+.gesti-chart-table th.gesti-chart-open-head,
+.gesti-chart-table td.gesti-chart-open-cell {
+  width: 1%;
+  padding: 0 6px 0 0;
+  text-align: right;
+}
+
+.gesti-chart-open {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 9999px;
+  color: var(--gesti-ink-3, #7b7e84);
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.gesti-chart-table tr[data-interactive="true"]:hover .gesti-chart-open,
+.gesti-chart-open:focus-visible {
+  color: var(--gesti-blue, #0a72d1);
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gesti-chart-open {
+    transition: none;
+  }
+
+  .gesti-chart-table tr[data-interactive="true"]:hover .gesti-chart-open,
+  .gesti-chart-open:focus-visible {
+    transform: none;
+  }
 }
 
 /* ---------- Entrada ---------- */
