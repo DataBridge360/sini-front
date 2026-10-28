@@ -57,7 +57,9 @@ export const MAX_TOOL_ROUNDS = 6;
 export const MAX_CHARTS_PER_REPLY = 4;
 export const MAX_DOCUMENTS_PER_REPLY = 4;
 export const MAX_WEB_SOURCES = 20;
-const MAX_TOKENS = 4096;
+// Incluye el razonamiento adaptativo; solo se cobra lo que se usa. La respuesta
+// visible igual se corta en MAX_REPLY_CHARS.
+const MAX_TOKENS = 8192;
 const INLINE_DOCUMENT_CHARS = 15_000;
 const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_STORED_CONTENT_CHARS = 20_000;
@@ -112,7 +114,7 @@ const WEB_SEARCH_TOOL: Anthropic.WebSearchTool20250305 = {
   type: "web_search_20250305",
   name: "web_search",
   // Cada búsqueda cuesta USD 0,01 y sus resultados suman miles de tokens de entrada.
-  max_uses: 2,
+  max_uses: 3,
   user_location: { type: "approximate", country: "AR", timezone: "America/Argentina/Buenos_Aires" }
 };
 
@@ -549,10 +551,9 @@ export class GestiChatService {
         model: MODEL_MAIN,
         max_tokens: MAX_TOKENS,
         // Sonnet 5.5 razona por defecto con esfuerzo alto, y el razonamiento se cobra
-        // como salida. between_tools es lo mínimo: sin razonar antes de responder,
-        // solo notas breves entre herramientas. El esfuerzo no puede cambiar a
-        // mitad de conversación con between_tools: queda fijo.
-        thinking: { type: "between_tools" },
+        // como salida. Adaptativo con esfuerzo medio: razona cuando la consulta lo
+        // pide (una duda legal, un cálculo) y responde directo cuando es simple.
+        thinking: { type: "adaptive" },
         output_config: { effort: "medium" },
         // Caché automático: el historial y los resultados de herramientas se
         // reenvían en cada ronda; así se cobran a 0,05x en vez de entero.

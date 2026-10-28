@@ -55,9 +55,12 @@ function cappedText(content: Anthropic.ContentBlock[], max = MAX_SUBAGENT_ANSWER
 
 /**
  * Haiku 5.5 razona por defecto (esfuerzo medio) y ese razonamiento se cobra y
- * cuenta en max_tokens. Para estas tareas cortas no hace falta: se apaga.
+ * cuenta en max_tokens; en estas tareas acotadas no hace falta y se apaga. Las de
+ * varios pasos (cartera, documentos) mantienen esfuerzo medio para no saltear
+ * consultas ni cortar antes; el título, que es trivial, va con esfuerzo bajo.
  */
-const HAIKU_NO_THINKING = { thinking: { type: "disabled" as const }, output_config: { effort: "low" as const } };
+const HAIKU_NO_THINKING = { thinking: { type: "disabled" as const }, output_config: { effort: "medium" as const } };
+const HAIKU_TRIVIAL = { thinking: { type: "disabled" as const }, output_config: { effort: "low" as const } };
 
 function cachedSystem(prompt: string): Anthropic.TextBlockParam[] {
   return [{ type: "text", text: prompt, cache_control: EPHEMERAL }];
@@ -279,7 +282,7 @@ export async function generateTitle(context: AgentContext, firstMessage: string)
     {
       model: MODEL_FAST,
       max_tokens: 30,
-      ...HAIKU_NO_THINKING,
+      ...HAIKU_TRIVIAL,
       system: TITLE_PROMPT,
       messages: [{ role: "user", content: firstMessage.slice(0, 1000) }]
     },

@@ -8,6 +8,7 @@ import { createApiHandler } from "@/server/core/router";
 import type { SupabaseService } from "@/server/core/supabase";
 import { MAX_DOCUMENT_PROMPT_CHARS } from "@/server/modules/gesti/agents";
 import { buildHistory, GestiChatService, HISTORY_MESSAGES, TURN_DEADLINE_MS, TURN_TIMEOUT_NOTE } from "@/server/modules/gesti/chat";
+import { MAIN_SYSTEM_PROMPT } from "@/server/modules/gesti/prompts";
 import { gestiRoutes } from "@/server/modules/gesti/routes";
 import { costUsd } from "@/server/modules/gesti/pricing";
 import { monthSpendUsd, UsageRecorder } from "@/server/modules/gesti/usage";
@@ -235,7 +236,8 @@ type Usage = Partial<{ in: number; out: number; read: number; write: number; sea
 type ScriptBlock =
   | { type: "text"; text: string; citations?: Array<{ url: string; title: string | null }> }
   | { type: "server_tool_use"; name: string }
-  | { type: "tool_use"; name: string; input: unknown };
+  | { type: "tool_use"; name: string; input: unknown }
+  | { type: "thinking"; signature: string };
 type Script = {
   blocks: ScriptBlock[];
   stop?: string;
@@ -279,6 +281,9 @@ function streamEvents(blocks: ScriptBlock[]) {
           }
         });
       }
+    } else if (block.type === "thinking") {
+      events.push({ type: "content_block_start", index, content_block: { type: "thinking", thinking: "", signature: "" } });
+      events.push({ type: "content_block_delta", index, delta: { type: "signature_delta", signature: block.signature } });
     } else if (block.type === "server_tool_use") {
       events.push({ type: "content_block_start", index, content_block: { type: "server_tool_use", id: `srv_${index}`, name: block.name, input: {} } });
     } else {
@@ -300,6 +305,7 @@ function messageOf(model: string, script: Script) {
     usage: sdkUsage(script.usage),
     content: script.blocks.map((block, index) => {
       if (block.type === "text") return { type: "text", text: block.text, citations: null };
+      if (block.type === "thinking") return { type: "thinking", thinking: "", signature: block.signature };
       if (block.type === "server_tool_use") return { type: "server_tool_use", id: `srv_${index}`, name: block.name, input: {} };
       return { type: "tool_use", id: `tu_${index}`, name: block.name, input: block.input };
     })
@@ -512,7 +518,6 @@ describe("Gesti chat", () => {
 
     const { params } = anthropic.streamCalls[0]!;
     expect(params.model).toBe("claude-sonnet-5-5");
-    expect(params.max_tokens).toBe(4096);
     expect(params.system[0]).toMatchObject({ cache_control: { type: "ephemeral" } });
     expect(params.system[0].text).not.toMatch(/Hoy es/);
     expect(params.system[1].text).toMatch(/^Hoy es .*2026/);
@@ -521,7 +526,7 @@ describe("Gesti chat", () => {
     expect(params.tools[0]).toEqual({
       type: "web_search_20250305",
       name: "web_search",
-      max_uses: 2,
+      max_uses: 3,
       user_location: { type: "approximate", country: "AR", timezone: "America/Argentina/Buenos_Aires" }
     });
     expect(params.tools.map((tool: { name: string }) => tool.name)).toEqual([
@@ -535,10 +540,12 @@ describe("Gesti chat", () => {
     ]);
     expect(params.tools.at(-1).cache_control).toEqual({ type: "ephemeral" });
 
-    // Costo: Sonnet sin razonamiento previo (lo trae activado por defecto), esfuerzo
-    // medio y caché automático del historial, que se reenvía en cada ronda.
-    expect(params.thinking).toEqual({ type: "between_tools" });
+    // Costo sin perder calidad: Sonnet razona solo cuando la consulta lo pide
+    // (adaptativo) con esfuerzo medio, deja lugar en max_tokens para ese
+    // razonamiento, y el historial va en caché.
+    expect(params.thinking).toEqual({ type: "adaptive" });
     expect(params.output_config).toEqual({ effort: "medium" });
+    expect(params.max_tokens).toBe(8192);
     expect(params.cache_control).toEqual({ type: "ephemeral" });
 
     // Haiku titula con un tope de tokens bajo y sin razonar (el razonamiento cuenta en max_tokens).
@@ -548,6 +555,29 @@ describe("Gesti chat", () => {
       thinking: { type: "disabled" },
       output_config: { effort: "low" }
     });
+  });
+
+  it("passes Sonnet's thinking blocks back unchanged in the next tool round and never shows them", async () => {
+    const anthropic = createAnthropic({
+      streams: [
+        {
+          blocks: [
+            { type: "thinking", signature: "sig-1" },
+            { type: "tool_use", name: "show_chart", input: { kind: "pie", title: "Pólizas", labels: ["Auto"], series: [{ name: "Pólizas", values: [3] }] } }
+          ]
+        },
+        { blocks: [{ type: "text", text: "Ahí está el gráfico." }] }
+      ]
+    });
+    const events = await chat(anthropic.client);
+
+    const secondRound = anthropic.streamCalls[1]?.messagesAtCall as Array<{ role: string; content: unknown }>;
+    const assistantTurn = secondRound.at(-2);
+    expect(assistantTurn?.role).toBe("assistant");
+    expect(assistantTurn?.content).toEqual(
+      expect.arrayContaining([{ type: "thinking", thinking: "", signature: "sig-1" }])
+    );
+    expect(lastDone(events).content).toBe("Ahí está el gráfico.");
   });
 
   it("never lets Haiku think and caches its prompts, so long documents and data rounds stay cheap", async () => {
@@ -567,8 +597,15 @@ describe("Gesti chat", () => {
     await chat(anthropic.client, { conversationId });
 
     expect(anthropic.createCalls).toHaveLength(2);
+    // Leer documentos y consultar la cartera son tareas de varios pasos: esfuerzo
+    // medio para no saltear consultas, pero sin razonamiento cobrado.
     for (const call of anthropic.createCalls) {
-      expect(call).toMatchObject({ model: "claude-haiku-5-5", thinking: { type: "disabled" }, cache_control: { type: "ephemeral" } });
+      expect(call).toMatchObject({
+        model: "claude-haiku-5-5",
+        thinking: { type: "disabled" },
+        output_config: { effort: "medium" },
+        cache_control: { type: "ephemeral" }
+      });
     }
     // El documento entra recortado para que el prompt quede debajo de los 100.000 tokens
     // (arriba de eso Haiku 5.5 cobra 5 veces más todo el pedido).
@@ -912,6 +949,15 @@ describe("Gesti chat", () => {
 });
 
 // ----- Historial -----
+
+describe("MAIN_SYSTEM_PROMPT", () => {
+  it("prefers short replies but allows a long one when the question needs it", () => {
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/Si la consulta lo amerita/);
+    expect(MAIN_SYSTEM_PROMPT).not.toMatch(/más corta posible/);
+    expect(MAIN_SYSTEM_PROMPT).not.toMatch(/en pocas líneas/);
+    expect(MAIN_SYSTEM_PROMPT).toContain(String(MAX_REPLY_CHARS));
+  });
+});
 
 describe("buildHistory", () => {
   const message = (role: "user" | "assistant", content: string, parts: StoredGestiMessage["parts"] = {}): StoredGestiMessage => ({
