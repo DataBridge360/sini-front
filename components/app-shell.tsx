@@ -797,6 +797,7 @@ export function AppShell() {
           ) : null}
           {tab === "gesti" ? (
             <GestiView
+              userId={auth.user.id}
               userName={auth.user.fullName}
               organizationSlug={common.organizationSlug}
               canSeeUsage={canManageOrganization}

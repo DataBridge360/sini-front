@@ -4,18 +4,22 @@ import { useMemo, useState } from "react";
 import { AIAssistantInterface } from "@/components/ui/ai-assistant-interface";
 import { authStorage } from "@/lib/api";
 import { createGestiApiBackend } from "@/lib/gesti-api";
+import { gestiCacheScope } from "@/lib/gesti-cache";
 import { createDemoBackend } from "@/lib/gesti-demo";
 import type { Tab } from "@/lib/shell-types";
 
 // Gesti en el CRM: el chat vive en `AIAssistantInterface` (también lo usa la
 // demo pública); acá solo se le conecta la API, el nombre del usuario y la
-// navegación. Los chats se guardan en el server, separados por usuario.
+// navegación. Los chats se guardan en el server, separados por usuario, y se
+// cachean en el navegador para que volver a la pestaña no recargue todo.
 export function GestiView({
+  userId,
   userName,
   organizationSlug,
   canSeeUsage,
   onNavigate
 }: {
+  userId: string;
   userName: string;
   organizationSlug: string | undefined;
   /** Productor o admin de plataforma: ve el consumo del mes. */
@@ -42,6 +46,7 @@ export function GestiView({
       backend={backend}
       onNavigate={onNavigate}
       usageScope={organizationSlug ?? "none"}
+      cacheScope={gestiCacheScope(userId, organizationSlug)}
     />
   );
 }

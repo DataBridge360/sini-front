@@ -15,6 +15,7 @@ import {
   type ReactNode
 } from "react";
 import Image from "next/image";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
@@ -44,6 +45,15 @@ import { GestiUsagePanel } from "@/components/ui/gesti-usage-panel";
 import { StreamingText, type StreamingSource } from "@/components/ui/streaming-text";
 import { useIsWideScreen } from "@/lib/browser";
 import { validateGestiFile, type GestiBackend } from "@/lib/gesti-api";
+import {
+  GESTI_CACHE_GC_MS,
+  GESTI_CHAT_STALE_MS,
+  GESTI_LIST_STALE_MS,
+  gestiQueryKeys,
+  isCacheFresh,
+  recallOpenChat,
+  rememberOpenChat
+} from "@/lib/gesti-cache";
 import {
   GESTI_UPLOAD_ACCEPT,
   MAX_GESTI_FILES_PER_MESSAGE,
@@ -775,6 +785,24 @@ function fromStored(message: StoredGestiMessage): ChatMessage {
   };
 }
 
+// Lo que se guarda en el caché: sin la animación de entrada ni las URLs locales
+// de las imágenes (se revocan al salir de la vista). Devuelve el mismo arreglo
+// si no hay nada que limpiar, para no reescribir el caché sin cambios.
+function toCachedMessages(messages: ChatMessage[]): ChatMessage[] {
+  let changed = false;
+  const cached = messages.map((message): ChatMessage => {
+    if (message.role === "assistant") {
+      if (!message.fresh) return message;
+      changed = true;
+      return { ...message, fresh: false };
+    }
+    if (message.attachments.every((attachment) => attachment.previewUrl === null)) return message;
+    changed = true;
+    return { ...message, attachments: message.attachments.map((attachment) => ({ ...attachment, previewUrl: null })) };
+  });
+  return changed ? cached : messages;
+}
+
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError";
 }
@@ -810,7 +838,8 @@ export function AIAssistantInterface({
   userName,
   backend,
   onNavigate,
-  usageScope = "default"
+  usageScope = "default",
+  cacheScope
 }: {
   userName: string;
   /** De dónde salen los chats y las respuestas: la API en el CRM, guiones en la demo. */
@@ -819,15 +848,42 @@ export function AIAssistantInterface({
   onNavigate?: (tab: Tab) => void;
   /** Separa el caché del consumo por organización. */
   usageScope?: string;
+  /**
+   * Separa el caché de chats (usuario + organización) y hace que sobreviva a
+   * salir de la vista. Sin esto (demo) el caché es solo de esta vista.
+   */
+  cacheScope?: string;
 }) {
-  const [chats, setChats] = useState<HistoryChat[]>([]);
-  const [listState, setListState] = useState<{ loading: boolean; error: string | null }>({
-    loading: true,
-    error: null
+  const queryClient = useQueryClient();
+  const [viewScope] = useState(() => uniqueId("gesti-view"));
+  const scope = cacheScope ?? viewScope;
+  // Al volver a la pestaña se reabre el último chat, con sus mensajes del caché.
+  const [restored] = useState(() => {
+    const chatId = cacheScope ? recallOpenChat(cacheScope) : null;
+    const cached = chatId ? queryClient.getQueryData<ChatMessage[]>(gestiQueryKeys.chat(scope, chatId)) : undefined;
+    return { chatId, messages: cached ?? [] };
   });
-  const [reloadKey, setReloadKey] = useState(0);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  const listQuery = useQuery({
+    queryKey: gestiQueryKeys.list(scope),
+    queryFn: async () => (await backend.listConversations()).map(toHistoryChat),
+    staleTime: GESTI_LIST_STALE_MS,
+    gcTime: GESTI_CACHE_GC_MS
+  });
+  const chats = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  const listState = {
+    loading: listQuery.isPending,
+    error: listQuery.isError && !listQuery.data ? "No se pudieron cargar tus chats." : null
+  };
+  // Los cambios locales (chat nuevo, título, fijado) van directo al caché.
+  const setChats = useCallback(
+    (update: (current: HistoryChat[]) => HistoryChat[]) => {
+      queryClient.setQueryData<HistoryChat[]>(gestiQueryKeys.list(scope), (current) => update(current ?? []));
+    },
+    [queryClient, scope]
+  );
+  const [activeChatId, setActiveChatId] = useState<string | null>(restored.chatId);
+  const [messages, setMessages] = useState<ChatMessage[]>(restored.messages);
   const [loadingChat, setLoadingChat] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   // Hay una respuesta en camino: no se puede enviar otro mensaje.
@@ -842,12 +898,13 @@ export function AIAssistantInterface({
   const docked = useIsWideScreen(HISTORY_DOCK_MIN_PX);
   // Lo que cambia entre un render y un gesto del usuario va en refs, para que
   // los callbacks asíncronos vean siempre el chat y la vista de ahora.
-  const chatIdRef = useRef<string | null>(null);
+  const chatIdRef = useRef<string | null>(restored.chatId);
+  const messagesRef = useRef<ChatMessage[]>(restored.messages);
   const viewRef = useRef(0);
   const inFlightRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadTokenRef = useRef(0);
-  const jumpToEndRef = useRef(false);
+  const jumpToEndRef = useRef(restored.messages.length > 0);
   const flashTimerRef = useRef<number | undefined>(undefined);
   // URLs locales de las imágenes enviadas: pasan a ser del hilo y se revocan al salir.
   const [ownedUrls] = useState(() => new Set<string>());
@@ -875,32 +932,47 @@ export function AIAssistantInterface({
     [chats, activeChatId, messages]
   );
 
-  // La lista de chats sale del backend; se vuelve a pedir si cambia (otra organización).
   useEffect(() => {
-    let cancelled = false;
-    backend
-      .listConversations()
-      .then((list) => {
-        if (cancelled) return;
-        setChats(list.map(toHistoryChat));
-        setListState({ loading: false, error: null });
-      })
-      .catch(() => {
-        if (!cancelled) setListState({ loading: false, error: "No se pudieron cargar tus chats." });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [backend, reloadKey]);
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    if (cacheScope) rememberOpenChat(cacheScope, activeChatId);
+  }, [cacheScope, activeChatId]);
+
+  // El chat que se reabre al volver: sale del caché y se revalida si está viejo.
+  useEffect(() => {
+    if (restored.chatId) loadChat(restored.chatId, { fallbackToNew: true });
+    // Solo al montar: después, abrir chats es cosa de `openChat`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Con el chat quieto (sin respuesta en camino), sus mensajes pasan al caché.
+  useEffect(() => {
+    if (!activeChatId || busy || loadingChat || messages.length === 0) return;
+    if (messages.some((message) => message.role === "assistant" && message.phase !== "done")) return;
+    const key = gestiQueryKeys.chat(scope, activeChatId);
+    const cached = toCachedMessages(messages);
+    if (queryClient.getQueryData(key) === cached) return;
+    queryClient.setQueryData(key, cached);
+  }, [activeChatId, busy, loadingChat, messages, queryClient, scope]);
 
   useEffect(() => {
     return () => {
+      // Salir con una respuesta en camino: el server guarda lo que alcanzó a
+      // escribir, así que el caché de ese chat ya no está al día.
+      if (inFlightRef.current && chatIdRef.current) {
+        void queryClient.invalidateQueries({
+          queryKey: gestiQueryKeys.chat(scope, chatIdRef.current),
+          refetchType: "none"
+        });
+      }
       abortRef.current?.abort();
       window.clearTimeout(flashTimerRef.current);
       ownedUrls.forEach((url) => URL.revokeObjectURL(url));
       ownedUrls.clear();
     };
-  }, [ownedUrls]);
+  }, [ownedUrls, queryClient, scope]);
 
   const cancelScrollFrame = useCallback(() => {
     if (scrollFrameRef.current === null) return;
@@ -993,13 +1065,9 @@ export function AIAssistantInterface({
     flashTimerRef.current = window.setTimeout(() => setFlash(null), FLASH_MS);
   }
 
+  // Si falla, el caché se queda con la lista que ya tiene.
   function refreshList() {
-    backend
-      .listConversations()
-      .then((list) => setChats(list.map(toHistoryChat)))
-      .catch(() => {
-        // Se queda con la lista que ya tiene.
-      });
+    void queryClient.invalidateQueries({ queryKey: gestiQueryKeys.list(scope) });
   }
 
   function patchAssistant(key: string, update: (message: AssistantMessage) => AssistantMessage) {
@@ -1202,20 +1270,44 @@ export function AIAssistantInterface({
     if (lastUser) dispatch(lastUser.text, lastUser.attachments, lastUser.fileIds);
   }
 
-  function loadChat(chatId: string) {
+  // Con el chat en el caché se muestra al instante y, si está viejo, se
+  // revalida en segundo plano; si no, se pide al server.
+  function loadChat(chatId: string, { fallbackToNew = false } = {}) {
     const token = ++loadTokenRef.current;
-    setLoadingChat(true);
+    const key = gestiQueryKeys.chat(scope, chatId);
+    const cached = queryClient.getQueryData<ChatMessage[]>(key);
     setChatError(null);
-    backend
-      .getConversation(chatId)
-      .then((conversation) => {
+    if (cached) {
+      jumpToEndRef.current = true;
+      setMessages(cached);
+      setLoadingChat(false);
+      const state = queryClient.getQueryState(key);
+      if (!state?.isInvalidated && isCacheFresh(state?.dataUpdatedAt ?? 0, Date.now(), GESTI_CHAT_STALE_MS)) return;
+    } else {
+      setLoadingChat(true);
+    }
+    queryClient
+      .fetchQuery({
+        queryKey: key,
+        queryFn: async () => (await backend.getConversation(chatId)).messages.map(fromStored),
+        staleTime: 0,
+        gcTime: GESTI_CACHE_GC_MS
+      })
+      .then((loaded) => {
         if (token !== loadTokenRef.current) return;
-        jumpToEndRef.current = true;
-        setMessages(conversation.messages.map(fromStored));
+        // Mientras se revalidaba, el usuario siguió escribiendo: no se pisa.
+        if (cached && messagesRef.current !== cached) return;
+        if (!cached) jumpToEndRef.current = true;
+        setMessages(loaded);
         setLoadingChat(false);
       })
       .catch(() => {
-        if (token !== loadTokenRef.current) return;
+        if (token !== loadTokenRef.current || cached) return;
+        // El chat que se recordaba ya no está (otro dispositivo, otra sesión): chat nuevo.
+        if (fallbackToNew) {
+          openChat(null);
+          return;
+        }
         setLoadingChat(false);
         setChatError("No se pudo abrir esta conversación.");
       });
@@ -1224,7 +1316,14 @@ export function AIAssistantInterface({
   function openChat(chatId: string | null) {
     setHistoryOpen(false);
     if (chatId === chatIdRef.current) return;
-    // Una respuesta en curso se corta: el server guarda lo que alcanzó a escribir.
+    // Una respuesta en curso se corta: el server guarda lo que alcanzó a
+    // escribir, así que ese chat se vuelve a pedir la próxima vez.
+    if (abortRef.current && chatIdRef.current) {
+      void queryClient.invalidateQueries({
+        queryKey: gestiQueryKeys.chat(scope, chatIdRef.current),
+        refetchType: "none"
+      });
+    }
     abortRef.current?.abort();
     abortRef.current = null;
     inFlightRef.current = false;
@@ -1307,10 +1406,7 @@ export function AIAssistantInterface({
             activeChatId={activeChatId}
             loading={listState.loading}
             error={listState.error}
-            onRetry={() => {
-              setListState({ loading: true, error: null });
-              setReloadKey((current) => current + 1);
-            }}
+            onRetry={() => void listQuery.refetch()}
             {...historyActions}
           />
         </aside>
@@ -1475,10 +1571,7 @@ export function AIAssistantInterface({
               activeChatId={activeChatId}
               loading={listState.loading}
               error={listState.error}
-              onRetry={() => {
-                setListState({ loading: true, error: null });
-                setReloadKey((current) => current + 1);
-              }}
+              onRetry={() => void listQuery.refetch()}
               onClose={closeDrawer}
               {...historyActions}
             />
