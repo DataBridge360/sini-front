@@ -8,7 +8,7 @@ import { createApiHandler } from "@/server/core/router";
 import type { SupabaseService } from "@/server/core/supabase";
 import { MAX_DOCUMENT_PROMPT_CHARS } from "@/server/modules/gesti/agents";
 import { buildHistory, GestiChatService, HISTORY_MESSAGES, TURN_DEADLINE_MS, TURN_TIMEOUT_NOTE } from "@/server/modules/gesti/chat";
-import { MAIN_SYSTEM_PROMPT } from "@/server/modules/gesti/prompts";
+import { DATA_AGENT_PROMPT, MAIN_SYSTEM_PROMPT } from "@/server/modules/gesti/prompts";
 import { gestiRoutes } from "@/server/modules/gesti/routes";
 import { costUsd } from "@/server/modules/gesti/pricing";
 import { monthSpendUsd, UsageRecorder } from "@/server/modules/gesti/usage";
@@ -956,6 +956,17 @@ describe("MAIN_SYSTEM_PROMPT", () => {
     expect(MAIN_SYSTEM_PROMPT).not.toMatch(/más corta posible/);
     expect(MAIN_SYSTEM_PROMPT).not.toMatch(/en pocas líneas/);
     expect(MAIN_SYSTEM_PROMPT).toContain(String(MAX_REPLY_CHARS));
+  });
+
+  it("asks for a table, not a bullet list, when a reply lists several portfolio records", () => {
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/4 o más registros/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/show_chart con kind "table"/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/no repitas la lista en el texto/);
+  });
+
+  it("has the data agent return one record per line so it can become a table", () => {
+    expect(DATA_AGENT_PROMPT).toMatch(/un registro por línea/);
+    expect(DATA_AGENT_PROMPT).toContain(" | ");
   });
 });
 

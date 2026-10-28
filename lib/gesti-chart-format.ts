@@ -205,7 +205,28 @@ export function isNumericColumn(rows: ChartCell[][], column: number) {
   return seen;
 }
 
-/** Ordena sin mutar; las celdas vacías van siempre al final. Estable. */
+// "30/10", "01/11/2026" o "28/10 (hoy)" → un número que ordena por fecha. Sin año
+// cuenta como el mismo año (las tablas de vencimientos son de pocos días).
+const DATE_CELL = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?(?!\d)/;
+
+function dateSortKey(cell: string): number | null {
+  const match = DATE_CELL.exec(cell.trim());
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : 0;
+  return year * 10_000 + month * 100 + day;
+}
+
+function compareText(left: string, right: string) {
+  const leftDate = dateSortKey(left);
+  const rightDate = dateSortKey(right);
+  if (leftDate !== null && rightDate !== null) return leftDate - rightDate;
+  return left.localeCompare(right, LOCALE, { numeric: true, sensitivity: "base" });
+}
+
+/** Ordena sin mutar; las celdas vacías van siempre al final. Las fechas dd/mm, por fecha. Estable. */
 export function sortRows(rows: ChartCell[][], column: number, direction: SortDirection) {
   const factor = direction === "asc" ? 1 : -1;
   return rows
@@ -220,7 +241,7 @@ export function sortRows(rows: ChartCell[][], column: number, direction: SortDir
       const result =
         typeof left === "number" && typeof right === "number"
           ? left - right
-          : String(left).localeCompare(String(right), LOCALE, { numeric: true, sensitivity: "base" });
+          : compareText(String(left), String(right));
       return result === 0 ? a.index - b.index : result * factor;
     })
     .map((item) => item.row);

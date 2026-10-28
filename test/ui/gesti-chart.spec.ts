@@ -212,6 +212,27 @@ describe("sortRows", () => {
     expect(sortRows(rows, 0, "asc").map((row) => row[0])).toEqual(["alfa", "Bravo", "Charlie", "Delta"]);
   });
 
+  it("sorts dd/mm and dd/mm/yyyy dates by date, not as text", () => {
+    const dates = [
+      ["a", "01/11"],
+      ["b", "30/10"],
+      ["c", "28/10 (hoy)"],
+      ["d", "5/1/2027"],
+      ["e", "31/12/2026"]
+    ];
+    expect(sortRows(dates.slice(0, 3), 1, "asc").map((row) => row[0])).toEqual(["c", "b", "a"]);
+    expect(sortRows(dates.slice(0, 3), 1, "desc").map((row) => row[0])).toEqual(["a", "b", "c"]);
+    expect(sortRows(dates.slice(3), 1, "asc").map((row) => row[0])).toEqual(["e", "d"]);
+  });
+
+  it("keeps comparing as text when only one side is a date", () => {
+    const mixed = [
+      ["a", "Sin fecha"],
+      ["b", "01/11"]
+    ];
+    expect(sortRows(mixed, 1, "asc").map((row) => row[0])).toEqual(["b", "a"]);
+  });
+
   it("does not mutate the input", () => {
     const copy = rows.map((row) => [...row]);
     sortRows(rows, 1, "desc");
