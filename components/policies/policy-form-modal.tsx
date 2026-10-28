@@ -11,7 +11,6 @@ import {
   type Policy
 } from "@/lib/api";
 import { formatDate } from "@/lib/format";
-import { suggestNextPaymentDate } from "@/lib/policy-analysis";
 import { BRANCHES, type PolicyFormValues } from "@/lib/shell-types";
 import { ClientCreateModal } from "@/components/clients/client-create-modal";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -23,14 +22,11 @@ export function PolicyFormModal({
   submitLabel,
   isOpen,
   policy,
-  // Valores sugeridos para un alta (hoy: lo que salió de analizar un PDF). No
-  // se pasa un `policy` sintético a propósito, porque eso activaría la rama de
-  // edición y el aviso sobre el vencimiento pendiente. Como el estado se
-  // inicializa una sola vez, quien los pase tiene que remontar con `key`.
+  // Valores sugeridos para un alta. No se pasa un `policy` sintético a
+  // propósito, porque eso activaría la rama de edición y el aviso sobre el
+  // vencimiento pendiente. Como el estado se inicializa una sola vez, quien los
+  // pase tiene que remontar con `key`.
   initialValues,
-  // Vigencia leída del PDF. Solo alimenta los atajos de fecha de cobro: no se
-  // guarda en la póliza, que no tiene esas columnas.
-  coverageDates,
   clients,
   companies,
   isSaving,
@@ -49,7 +45,6 @@ export function PolicyFormModal({
   isOpen: boolean;
   policy: Policy | null;
   initialValues?: Partial<PolicyFormValues> | undefined;
-  coverageDates?: { from: string | null; to: string | null } | undefined;
   clients: Client[];
   companies: InsuranceCompany[];
   isSaving: boolean;
@@ -100,20 +95,6 @@ export function PolicyFormModal({
   // Editar el vencimiento arrastra el aviso activo que tenía la fecha vieja
   // (trigger trg_sync_policy_notice_due_date), así que se avisa antes de guardar.
   const dateChanged = Boolean(policy && date && date !== policy.first_payment_date);
-
-  const dateSuggestions = (() => {
-    if (policy || !coverageDates?.from) return [];
-    const options: Array<{ value: string; label: string }> = [];
-    const next = suggestNextPaymentDate(coverageDates.from, months);
-    if (next) options.push({ value: next, label: "Próximo cobro" });
-    if (coverageDates.from !== next) {
-      options.push({ value: coverageDates.from, label: "Inicio de vigencia" });
-    }
-    if (coverageDates.to && coverageDates.to !== next) {
-      options.push({ value: coverageDates.to, label: "Fin de vigencia" });
-    }
-    return options;
-  })();
 
   return (
     <>
@@ -243,26 +224,6 @@ export function PolicyFormModal({
                 Con esta fecha se genera el primer aviso de cobro.
               </span>
             )}
-            {/* La póliza trae la vigencia, no el calendario de cobranza: se
-                ofrecen las fechas de referencia para no obligar a calcularlas. */}
-            {!policy && dateSuggestions.length > 0 ? (
-              <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                {dateSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion.value}
-                    type="button"
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      date === suggestion.value
-                        ? "border-sky-300 bg-sky-50 text-sky-700"
-                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                    }`}
-                    onClick={() => setDate(suggestion.value)}
-                  >
-                    {suggestion.label} · {formatDate(suggestion.value)}
-                  </button>
-                ))}
-              </span>
-            ) : null}
           </label>
           {error ? <div className="sp-pay-error">{error}</div> : null}
           <div className="sp-modal-actions">

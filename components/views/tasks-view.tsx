@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   apiRequest,
-  apiUploadForm,
+  uploadToSignedUrl,
   type ApiCommonOptions,
   type Client,
   type OrganizationMember,
   type Policy,
+  type SignedAttachmentUpload,
   type TaskDetail,
   type TaskFormPayload,
   type TaskListItem,
@@ -47,6 +48,7 @@ export function TasksView({
   currentUserId,
   canModerate,
   initialArchived = false,
+  initialTaskId = null,
   clients,
   policies,
   notify
@@ -58,6 +60,8 @@ export function TasksView({
   // finalizadas del dashboard). La vista se remonta al cambiar de pestaña, así
   // que alcanza con sembrar el estado inicial.
   initialArchived?: boolean;
+  // Abre el detalle de una tarea al entrar (desde la campana o el dashboard).
+  initialTaskId?: string | null;
   clients: Client[];
   policies: Policy[];
   notify: (message: string, tone?: "success" | "error") => void;
@@ -70,7 +74,7 @@ export function TasksView({
 
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_TASK_FILTERS);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(initialTaskId);
   const [activeStatus, setActiveStatus] = useState<TaskStatus>("pendiente");
   const [isArchivedOpen, setIsArchivedOpen] = useState(initialArchived);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -201,22 +205,62 @@ export function TasksView({
     onError
   });
 
-  // Una actividad viaja completa: texto y archivos en una sola request, con
-  // progreso real de subida.
+  // Una actividad con archivos va en tres pasos: el server firma una subida por
+  // archivo, el navegador sube directo a Storage (con progreso real) y al final
+  // se confirma la actividad; el server verifica los objetos antes de guardarla.
   const addMessage = useMutation({
-    mutationFn: ({ taskId, message, files }: { taskId: string; message: string; files: File[] }) => {
-      setUploadProgress(files.length > 0 ? 0 : null);
-      return apiUploadForm<unknown>(
-        `/tasks/${taskId}/messages`,
-        () => {
-          const form = new FormData();
-          if (message) form.set("message", message);
-          for (const file of files) form.append("files", file);
-          return form;
-        },
-        // Solo hay progreso que mostrar si viajan archivos.
-        files.length > 0 ? { ...common, onProgress: setUploadProgress } : common
+    mutationFn: async ({ taskId, message, files }: { taskId: string; message: string; files: File[] }) => {
+      const send = (attachments: Array<{ path: string; name: string }>) =>
+        apiRequest<unknown>(`/tasks/${taskId}/messages`, {
+          ...common,
+          method: "POST",
+          body: { message: message || null, attachments }
+        });
+
+      if (files.length === 0) {
+        return send([]);
+      }
+
+      setUploadProgress(0);
+      const { uploads } = await apiRequest<{ uploads: SignedAttachmentUpload[] }>(
+        `/tasks/${taskId}/attachments/uploads`,
+        {
+          ...common,
+          method: "POST",
+          body: { files: files.map((file) => ({ name: file.name, type: file.type, size: file.size })) }
+        }
       );
+
+      // Solo hay progreso que mostrar si viajan archivos: se suma lo subido de todos.
+      const totalBytes = files.reduce((sum, file) => sum + file.size, 0) || 1;
+      const loadedBytes = files.map(() => 0);
+      try {
+        // allSettled: si una subida falla hay que esperar a las demás para poder
+        // descartar todo lo que sí llegó a Storage.
+        const results = await Promise.allSettled(
+          uploads.map((upload, index) =>
+            uploadToSignedUrl(upload, files[index]!, (loaded) => {
+              loadedBytes[index] = loaded;
+              setUploadProgress(Math.min(1, loadedBytes.reduce((sum, value) => sum + value, 0) / totalBytes));
+            })
+          )
+        );
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed) {
+          throw failed.reason;
+        }
+
+        return await send(uploads.map((upload) => ({ path: upload.path, name: upload.name })));
+      } catch (error) {
+        // Nada queda huérfano: lo subido de una actividad que no se guardó se
+        // descarta. El server solo borra paths que ninguna actividad vincula.
+        await apiRequest(`/tasks/${taskId}/attachments/discard`, {
+          ...common,
+          method: "POST",
+          body: { paths: uploads.map((upload) => upload.path) }
+        }).catch(() => undefined);
+        throw error;
+      }
     },
     onSettled: () => setUploadProgress(null),
     onSuccess: (_data, { taskId }) => invalidateTask(taskId),

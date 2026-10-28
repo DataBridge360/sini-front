@@ -1,0 +1,2224 @@
+/* Gesti: asistente de IA (components/ui/ai-assistant-interface.tsx, streaming-text.tsx).
+   Estilos planos con prefijo `gesti-`. Los tokens viven en `.gesti` para no pisar
+   el sistema de diseño del CRM. prefers-reduced-motion lo resuelve la regla global. */
+
+/* El chat maneja su propio aire: el historial y la barra del chat van pegados
+   a los bordes y el dock del compositor llega al borde de la ventana. */
+.sp-shell.app-redesign.gesti-page-mode .sp-workspace {
+  padding: 0;
+}
+
+/* `.sp-main` no puede ser contenedor de scroll: quien scrollea es la ventana,
+   y con `overflow-y: auto` los sticky (header del CRM, barra del chat,
+   compositor) se miden contra un contenedor que nunca se mueve. Tampoco
+   reserva el aire de la barra inferior: el chat ya lo suma con --gesti-nav. */
+.sp-shell.app-redesign.gesti-page-mode .sp-main {
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+/* Tokens en el layout (historial + chat) y en el chat solo, que la demo y el
+   CRM montan siempre dentro del layout. */
+.gesti-layout,
+.gesti {
+  --gesti-ink: #1f2124;
+  --gesti-ink-2: #62656b;
+  --gesti-ink-3: #7b7e84;
+  --gesti-inset: #f7f8f9;
+  --gesti-hover: #f4f5f6;
+  --gesti-hover-2: #e7e9eb;
+  --gesti-line: #ecedef;
+  --gesti-line-strong: #e1e7ef;
+  --gesti-blue: #0a72d1;
+  --gesti-blue-dark: #0962b3;
+  --gesti-blue-soft: #eaf3fc;
+  --gesti-blue-line: #bcd9f6;
+  --gesti-page: #f7f9ff;
+  --gesti-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Barra del chat (título y acciones), sticky bajo el header del CRM. */
+  --gesti-bar: 56px;
+  /* Barra de navegación inferior (fija, solo bajo 900px). */
+  --gesti-nav: 0px;
+  /* Header sticky del CRM, para lo que queda fijo arriba al scrollear. */
+  --gesti-header: 64px;
+  /* Alto que ocupan fuera del chat: header del CRM + barra del chat. */
+  --gesti-chrome: calc(var(--gesti-header) + var(--gesti-bar));
+}
+
+.gesti {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 824px;
+  min-height: calc(100dvh - var(--gesti-chrome));
+  margin: 0 auto;
+  padding: 24px 32px var(--gesti-nav);
+  color: var(--gesti-ink);
+}
+
+@media (max-width: 900px) {
+  .gesti-layout,
+  .gesti {
+    --gesti-nav: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 760px) {
+  .gesti-layout,
+  .gesti {
+    --gesti-header: 52px;
+  }
+
+  .gesti {
+    padding: 16px 16px var(--gesti-nav);
+  }
+}
+
+/* Demo fuera del shell: sin header ni barra inferior. */
+.gesti-layout[data-standalone="true"],
+.gesti[data-standalone="true"] {
+  --gesti-nav: 0px;
+  --gesti-header: 0px;
+}
+
+/* ---------- Estado vacío ---------- */
+
+.gesti[data-mode="empty"] .gesti-stage {
+  margin-block: auto;
+  padding-block: 16px;
+}
+
+.gesti-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.gesti-mascot {
+  width: 104px;
+  height: 104px;
+  object-fit: contain;
+  animation: gesti-float 4s ease-in-out infinite;
+}
+
+.gesti-hero h1 {
+  margin: 12px 0 4px;
+  color: #101828;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.gesti-hero p {
+  margin: 0;
+  color: var(--gesti-ink-2);
+  font-size: 14px;
+}
+
+/* ---------- Compositor ---------- */
+
+/* Una sola fila (+, texto, mic, enviar) en forma de píldora; con varias líneas
+   o adjuntos pasa a caja: texto arriba y los botones abajo, como ChatGPT. */
+.gesti-composer {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 9999px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.gesti-composer[data-expanded="true"] {
+  border-radius: 20px;
+}
+
+.gesti-composer:focus-within {
+  border-color: var(--gesti-blue);
+  box-shadow: 0 0 0 3px rgba(10, 114, 209, 0.12);
+}
+
+.gesti-composer[data-dragging="true"] {
+  border-color: var(--gesti-blue);
+  background: #f5faff;
+}
+
+.gesti-composer[data-dragging="true"]::after {
+  content: "Soltá los archivos para adjuntarlos";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(245, 250, 255, 0.92);
+  color: var(--gesti-blue);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Adjuntos ARRIBA del texto, dentro de la tarjeta. */
+.gesti-composer-attachments {
+  padding: 12px 12px 0;
+}
+
+.gesti-composer-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "tools input actions";
+  align-items: center;
+  gap: 4px;
+  padding: 7px 8px;
+}
+
+.gesti-composer[data-expanded="true"] .gesti-composer-row {
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "input input"
+    "tools actions";
+  padding: 8px 10px 8px 8px;
+}
+
+/* Avisos (límite de archivos, errores del dictado) y estado del dictado,
+   justo arriba del compositor. */
+.gesti-composer-hints {
+  padding: 0 18px;
+}
+
+.gesti-composer-notice {
+  margin: 0 0 8px;
+  color: #9b5d14;
+  font-size: 12px;
+}
+
+/* Dictado: el compositor pasa a caja y el campo se bloquea; en la fila de abajo
+   aparece la onda con el estado, y arriba queda lo que se va transcribiendo. */
+.gesti-composer[data-dictating="true"] .gesti-composer-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "input input input"
+    "tools wave actions";
+}
+
+.gesti-composer[data-dictating="true"] .gesti-composer-input {
+  caret-color: transparent;
+  cursor: default;
+}
+
+/* Sin nada transcripto todavía no hay renglón vacío arriba de la onda. */
+.gesti-composer[data-dictating="true"][data-empty="true"] .gesti-composer-input {
+  display: none;
+}
+
+.gesti-dictation {
+  display: flex;
+  grid-area: wave;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--gesti-ink-2);
+  font-size: 13px;
+}
+
+.gesti-dictation-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+}
+
+.gesti-wave span {
+  width: 3px;
+  height: 24px;
+  border-radius: 2px;
+  background: var(--gesti-blue);
+  transform: scaleY(var(--h));
+}
+
+/* Escuchando: las barras suben y bajan escalonadas. Con prefers-reduced-motion
+   la regla global corta la animación y quedan quietas con su alto base. */
+.gesti-dictation[data-phase="listening"] .gesti-wave span {
+  animation: gesti-wave 900ms ease-in-out infinite;
+  animation-delay: calc(var(--i) * 90ms);
+}
+
+/* Preparando y cerrando: barras bajas que respiran juntas. */
+.gesti-dictation[data-phase="starting"] .gesti-wave span,
+.gesti-dictation[data-phase="finishing"] .gesti-wave span {
+  transform: scaleY(0.3);
+  opacity: 0.5;
+  animation: gesti-pulse 1.2s ease-in-out infinite;
+}
+
+.gesti-composer-input {
+  display: block;
+  grid-area: input;
+  width: 100%;
+  max-height: 200px;
+  padding: 0 8px;
+  overflow-y: auto;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.gesti-composer[data-expanded="true"] .gesti-composer-input {
+  padding: 8px 8px 6px;
+}
+
+.gesti-composer-input::placeholder {
+  color: var(--gesti-ink-3);
+  white-space: nowrap;
+}
+
+/* El placeholder del hero es más largo que la fila en pantallas angostas:
+   `text-overflow` no vale en un textarea, así que se desvanece en el borde. */
+.gesti-composer-input:placeholder-shown {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+
+.gesti-tool-btn {
+  grid-area: tools;
+}
+
+.gesti-composer-actions {
+  display: flex;
+  grid-area: actions;
+  align-items: center;
+  justify-self: end;
+  gap: 4px;
+}
+
+.gesti-tool-btn,
+.gesti-mic-btn,
+.gesti-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--gesti-ink-2);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 140ms var(--gesti-ease);
+}
+
+.gesti-tool-btn,
+.gesti-mic-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+}
+
+.gesti-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--gesti-ink-3);
+}
+
+.gesti-tool-btn:hover,
+.gesti-mic-btn:hover,
+.gesti-icon-btn:hover {
+  background: var(--gesti-hover-2);
+  color: var(--gesti-ink);
+}
+
+/* Dictando: azul de marca relleno, con un pulso suave (la regla global de
+   prefers-reduced-motion lo deja quieto). */
+.gesti-mic-btn[aria-pressed="true"] {
+  background: var(--gesti-blue);
+  color: #ffffff;
+}
+
+.gesti-mic-btn[data-phase="listening"] {
+  animation: gesti-mic-pulse 1.6s ease-out infinite;
+}
+
+.gesti-mic-btn[aria-pressed="true"]:not(:disabled):hover {
+  background: var(--gesti-blue-dark);
+  color: #ffffff;
+}
+
+.gesti-mic-btn:disabled,
+.gesti-tool-btn:disabled {
+  cursor: not-allowed;
+}
+
+.gesti-mic-btn[data-phase="finishing"] {
+  opacity: 0.55;
+}
+
+.gesti-tool-btn:disabled {
+  opacity: 0.4;
+}
+
+.gesti-tool-btn:disabled:hover {
+  background: transparent;
+  color: var(--gesti-ink-2);
+}
+
+.gesti-icon-btn[aria-pressed="true"] {
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+
+
+
+.gesti-send {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--gesti-blue);
+  color: #ffffff;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    transform 140ms var(--gesti-ease);
+}
+
+.gesti-send:not(:disabled):hover {
+  background: var(--gesti-blue-dark);
+}
+
+.gesti-send:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.gesti-send:disabled {
+  background: #f1f2f3;
+  color: #b4b7bc;
+  cursor: not-allowed;
+}
+
+.gesti-tool-btn:focus-visible,
+.gesti-mic-btn:focus-visible,
+.gesti-icon-btn:focus-visible,
+.gesti-draft-copy:focus-visible,
+.gesti-bar-btn:focus-visible,
+.gesti-history-new:focus-visible,
+.gesti-history-clear:focus-visible,
+.gesti-send:focus-visible,
+.gesti-category:focus-visible,
+.gesti-cite:focus-visible,
+.gesti-sources-toggle:focus-visible,
+.gesti-source-row:focus-visible,
+.gesti-followups button:focus-visible,
+.gesti-suggestions-card button:focus-visible,
+.gesti-attachment-remove:focus-visible {
+  outline: 2px solid var(--gesti-blue);
+  outline-offset: 2px;
+}
+
+.gesti-disclaimer {
+  margin: 10px 0 0;
+  color: var(--gesti-ink-3);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ---------- Adjuntos (compositor y burbuja) ---------- */
+
+.gesti-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gesti-attachment {
+  position: relative;
+}
+
+.gesti-attachment.is-image {
+  width: 56px;
+  height: 56px;
+}
+
+.gesti-attachment-thumb {
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.gesti-attachment.is-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 6px 10px 6px 8px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 10px;
+  background: var(--gesti-inset);
+  color: var(--gesti-ink-2);
+}
+
+.gesti-attachment-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.gesti-attachment-name {
+  overflow: hidden;
+  color: var(--gesti-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-attachment-size {
+  color: var(--gesti-ink-3);
+  font-size: 11px;
+}
+
+.gesti-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 9999px;
+  background: #ffffff;
+  color: var(--gesti-ink-2);
+  cursor: pointer;
+}
+
+.gesti-attachment-remove:hover {
+  background: var(--gesti-hover-2);
+  color: var(--gesti-ink);
+}
+
+/* ---------- Categorías y sugerencias ---------- */
+
+.gesti-category-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.gesti-category {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--gesti-ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.gesti-category svg {
+  color: var(--gesti-blue);
+}
+
+.gesti-category:hover {
+  background: var(--gesti-inset);
+}
+
+.gesti-category[aria-expanded="true"] {
+  border-color: var(--gesti-blue-line);
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+.gesti-suggestions {
+  overflow: hidden;
+}
+
+.gesti-suggestions-card {
+  margin-top: 10px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.gesti-suggestions-card p {
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gesti-line);
+  color: var(--gesti-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gesti-suggestions-card ul {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+}
+
+.gesti-suggestions-card button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.gesti-suggestions-card button:hover {
+  background: var(--gesti-hover);
+}
+
+.gesti-suggestions-card button:focus-visible {
+  outline-offset: -2px;
+}
+
+.gesti-suggestions-card button svg {
+  flex: 0 0 auto;
+  color: var(--gesti-blue);
+}
+
+/* ---------- Conversación ---------- */
+
+.gesti-thread {
+  padding: 4px 0 8px;
+}
+
+.gesti-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gesti-msg.is-user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.gesti-bubble {
+  max-width: min(80%, 560px);
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--gesti-hover-2);
+}
+
+.gesti-bubble p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.gesti-bubble .gesti-attachments {
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.gesti-msg.is-assistant {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.gesti-msg-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.gesti-msg-avatar img {
+  border-radius: 9999px;
+  background: #e8f2fd;
+  box-shadow: 0 0 0 1px #d6e7fb;
+}
+
+.gesti-msg-body {
+  min-width: 0;
+}
+
+/* "Gesti 14:51" arriba de la respuesta, centrado con el avatar. */
+.gesti-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0;
+  color: var(--gesti-ink-3);
+  font-size: 12.5px;
+  line-height: 1;
+}
+
+.gesti-msg-meta span {
+  font-weight: 600;
+}
+
+.gesti-msg-meta time {
+  font-variant-numeric: tabular-nums;
+}
+
+.gesti-thinking {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  margin: 0;
+  color: var(--gesti-ink-2);
+  font-size: 13.5px;
+  animation: gesti-pulse 1.6s ease-in-out infinite;
+}
+
+/* ---------- Dock del compositor (con conversación) ---------- */
+
+.gesti[data-mode="chat"] {
+  min-height: calc(100dvh - var(--gesti-chrome));
+}
+
+.gesti[data-mode="chat"] .gesti-stage {
+  position: sticky;
+  bottom: var(--gesti-nav);
+  z-index: 5;
+  margin-top: auto;
+  padding: 16px 0 14px;
+  background: linear-gradient(180deg, rgba(247, 249, 255, 0) 0, var(--gesti-page) 16px);
+}
+
+.gesti[data-mode="chat"][data-standalone="true"] .gesti-stage {
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------- StreamingText ---------- */
+
+.gesti-stream {
+  width: 100%;
+}
+
+.gesti-stream-text {
+  margin: 0;
+  color: var(--gesti-ink);
+  font-size: 14.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+/* Solo opacidad y corta: con el stream real, el desenfoque se veía como lag. */
+.gesti-word {
+  animation: gesti-word-in 120ms ease-out both;
+}
+
+/* Párrafos y listas del texto de Gesti (**negrita**, viñetas, numeradas). */
+.gesti-stream-body > * + * {
+  margin-top: 10px;
+}
+
+/* Gráfico o tabla dentro de la respuesta, entre dos bloques de texto. */
+.gesti-stream-body > .gesti-stream-embed {
+  margin-block: 14px;
+}
+
+.gesti-stream-text strong,
+.gesti-stream-list strong {
+  font-weight: 650;
+}
+
+.gesti-stream-list {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--gesti-ink);
+  font-size: 14.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+ul.gesti-stream-list {
+  list-style: disc;
+}
+
+ol.gesti-stream-list {
+  list-style: decimal;
+}
+
+.gesti-stream-list li + li {
+  margin-top: 4px;
+}
+
+.gesti-stream-list li::marker {
+  color: var(--gesti-ink-3);
+}
+
+/* ---------- Borrador copiable ---------- */
+
+.gesti-draft {
+  margin: 14px 0;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 16px;
+  background: #f1f4f8;
+}
+
+/* `backwards` y no `both`: un transform que queda al terminar volvería al bloque
+   el contenedor de cualquier `position: fixed` de adentro (el modal). */
+.gesti-draft[data-animated="true"] {
+  animation: gesti-fade-up 350ms var(--gesti-ease) backwards;
+}
+
+.gesti-draft-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px 0 16px;
+}
+
+.gesti-draft-label {
+  color: var(--gesti-ink-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.gesti-draft-status {
+  margin: 0 6px 0 auto;
+  color: var(--gesti-blue);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.gesti-draft-status[data-state="failed"] {
+  color: #9b5d14;
+}
+
+.gesti-draft[data-complete="false"] .gesti-draft-body:empty::after {
+  content: "…";
+  color: var(--gesti-ink-3);
+}
+
+.gesti-draft-body {
+  padding: 4px 16px 16px;
+  color: var(--gesti-ink);
+  font-size: 14.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.gesti-draft-modal-text {
+  color: var(--gesti-ink);
+  font-size: 15px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.gesti-draft-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.gesti-draft-modal-actions .gesti-draft-status {
+  margin: 0;
+}
+
+.gesti-draft-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--gesti-blue);
+  color: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.gesti-draft-copy:hover {
+  background: var(--gesti-blue-dark);
+}
+
+.gesti-cite-wrap {
+  white-space: nowrap;
+}
+
+.gesti-cite {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px 0 5px;
+  border: 0;
+  border-radius: 5px;
+  background: #f1f5fa;
+  box-shadow: 0 0 0 1px var(--gesti-line-strong);
+  color: var(--gesti-ink-2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: middle;
+  transform: translateY(-1px);
+  animation: gesti-pop-in 250ms var(--gesti-ease) both;
+}
+
+button.gesti-cite {
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+button.gesti-cite:hover {
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+.gesti-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  border-radius: 2px;
+  background: var(--gesti-blue);
+  vertical-align: text-bottom;
+  animation:
+    gesti-caret-glide 180ms var(--gesti-ease) both,
+    gesti-caret-blink 1s ease-in-out 180ms infinite;
+}
+
+.gesti-stream-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-top: 10px;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 400ms ease,
+    transform 400ms var(--gesti-ease),
+    visibility 0s linear 400ms;
+}
+
+.gesti-stream-actions[data-ready="true"] {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition-delay: 0s;
+}
+
+.gesti-sources-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin-left: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gesti-ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.gesti-sources-toggle:hover {
+  background: var(--gesti-hover);
+}
+
+.gesti-sources-caret {
+  transition: transform 250ms var(--gesti-ease);
+}
+
+.gesti-sources-toggle[aria-expanded="true"] .gesti-sources-caret {
+  transform: rotate(90deg);
+}
+
+.gesti-source-stack {
+  display: inline-flex;
+}
+
+.gesti-source-dot {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--gesti-blue-soft);
+  box-shadow: 0 0 0 1.5px var(--gesti-page);
+  color: var(--gesti-blue);
+}
+
+.gesti-source-dot + .gesti-source-dot {
+  margin-left: -4px;
+}
+
+.gesti-sources {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 300ms var(--gesti-ease),
+    opacity 300ms var(--gesti-ease);
+}
+
+.gesti-sources[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.gesti-sources-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gesti-sources-list {
+  max-width: 420px;
+  margin: 8px 0 0;
+  padding: 4px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 12px;
+  background: #ffffff;
+  list-style: none;
+}
+
+.gesti-source-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+button.gesti-source-row {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+button.gesti-source-row:hover {
+  background: var(--gesti-hover);
+}
+
+.gesti-source-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.gesti-source-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+.gesti-source-name {
+  font-weight: 600;
+}
+
+.gesti-source-hint {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--gesti-ink-3);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-followups {
+  max-width: 460px;
+  margin-top: 14px;
+}
+
+.gesti-followups p {
+  margin: 0 0 2px;
+  color: var(--gesti-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gesti-followups button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--gesti-line);
+  background: transparent;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 140ms ease;
+  animation: gesti-fade-up 350ms var(--gesti-ease) both;
+}
+
+.gesti-followups button:last-child {
+  border-bottom: 0;
+}
+
+.gesti-followups button:hover {
+  color: var(--gesti-blue);
+}
+
+.gesti-followups button svg {
+  flex: 0 0 auto;
+  color: var(--gesti-ink-3);
+}
+
+.gesti-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Cita de una fuente web: el número, redondo y chico. */
+.gesti-cite.is-web {
+  min-width: 18px;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 9999px;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+a.gesti-cite.is-web {
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+a.gesti-cite.is-web:hover {
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+/* Fuentes web en la lista de "N fuentes": número, título y dominio. */
+a.gesti-source-row {
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+a.gesti-source-row:hover {
+  background: var(--gesti-hover);
+}
+
+.gesti-source-number {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.gesti-source-title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-source-domain {
+  flex: 0 0 auto;
+  max-width: 40%;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--gesti-ink-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Partes de la respuesta: gráficos, pregunta, archivos ---------- */
+
+.gesti-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gesti-stream + .gesti-parts,
+.gesti-thinking + .gesti-parts,
+.gesti-msg-meta + .gesti-parts {
+  margin-top: 14px;
+}
+
+.gesti-parts + .gesti-documents,
+.gesti-parts + .gesti-question,
+.gesti-stream + .gesti-documents,
+.gesti-stream + .gesti-question,
+.gesti-documents + .gesti-question {
+  margin-top: 14px;
+}
+
+.gesti-question {
+  max-width: 520px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--gesti-blue-line);
+  border-radius: 16px;
+  background: var(--gesti-blue-soft);
+}
+
+.gesti-question-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--gesti-ink);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.gesti-question-text svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--gesti-blue);
+}
+
+.gesti-question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gesti-question-options button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--gesti-blue-line);
+  border-radius: 9999px;
+  background: #ffffff;
+  color: var(--gesti-blue-dark);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.gesti-question-options button:hover:not(:disabled) {
+  border-color: var(--gesti-blue);
+  background: var(--gesti-blue);
+  color: #ffffff;
+}
+
+.gesti-question-options button:disabled {
+  border-color: var(--gesti-line-strong);
+  background: transparent;
+  color: var(--gesti-ink-3);
+  cursor: default;
+}
+
+.gesti-question[data-interactive="false"] {
+  border-color: var(--gesti-line-strong);
+  background: var(--gesti-inset);
+}
+
+.gesti-question-hint {
+  margin: 10px 0 0;
+  color: var(--gesti-ink-2);
+  font-size: 12.5px;
+}
+
+.gesti-documents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 520px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gesti-document {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.gesti-document-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue);
+}
+
+.gesti-document-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.gesti-document-name {
+  overflow: hidden;
+  color: var(--gesti-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-document-size {
+  color: var(--gesti-ink-3);
+  font-size: 12px;
+}
+
+.gesti-document-error {
+  color: #b42318;
+}
+
+.gesti-document-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--gesti-blue-line);
+  border-radius: 9999px;
+  background: var(--gesti-blue-soft);
+  color: var(--gesti-blue-dark);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.gesti-document-download:hover:not(:disabled) {
+  background: var(--gesti-blue);
+  color: #ffffff;
+}
+
+.gesti-document-download:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.gesti-spin {
+  animation: gesti-spin 0.9s linear infinite;
+}
+
+.gesti-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Respuestas especiales (se agotó el presupuesto, falló): se leen como un aviso, no como una respuesta común. */
+.gesti-msg.is-assistant[data-notice] .gesti-stream-text {
+  color: var(--gesti-ink-2);
+}
+
+.gesti-msg.is-assistant[data-notice="error"] .gesti-stream-body {
+  padding: 10px 14px;
+  border: 1px solid #f1d6d3;
+  border-radius: 12px;
+  background: #fdf3f2;
+}
+
+.gesti-msg.is-assistant[data-notice="budget_exhausted"] .gesti-stream-body,
+.gesti-msg.is-assistant[data-notice="not_configured"] .gesti-stream-body {
+  padding: 10px 14px;
+  border: 1px solid #efe0c4;
+  border-radius: 12px;
+  background: #fdf8ee;
+}
+
+/* Qué está haciendo Gesti ("Buscando en internet…") junto a su loader. */
+.gesti-stream-body + .gesti-thinking {
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+
+.gesti-bubble-error {
+  margin: 0 0 6px;
+  color: #b42318;
+  font-size: 12px;
+}
+
+.gesti-attachment-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gesti-attachment.is-image .gesti-attachment-open {
+  display: block;
+}
+
+/* Estado de carga del chat que se abre. */
+.gesti-thread-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 0;
+  color: var(--gesti-ink-2);
+  font-size: 13.5px;
+}
+
+.gesti-thread-state p {
+  margin: 0;
+}
+
+.gesti-thread-state button,
+.gesti-history-retry,
+.gesti-usage-state button {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 9999px;
+  background: #ffffff;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gesti-thread-state button:hover,
+.gesti-history-retry:hover,
+.gesti-usage-state button:hover {
+  background: var(--gesti-hover);
+}
+
+/* Aviso breve bajo la barra (por ejemplo, no se pudo renombrar). */
+.gesti-flash {
+  margin: 0;
+  padding: 8px 16px;
+  background: #fdf8ee;
+  color: #9b5d14;
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* Subida de adjuntos al enviar. */
+.gesti-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--gesti-ink-2);
+  font-size: 12px;
+}
+
+.gesti-upload-bar {
+  flex: 1 1 auto;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--gesti-hover-2);
+}
+
+.gesti-upload-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gesti-blue);
+  transition: width 160ms linear;
+}
+
+.gesti-upload-label {
+  flex: 0 0 auto;
+}
+
+/* Barra del chat: "Consumo" con texto en pantallas anchas. */
+.gesti-bar-btn.is-labeled {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------- Consumo (gesti-usage-panel.tsx) ---------- */
+
+.gesti-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  color: var(--gesti-ink);
+}
+
+.gesti-usage-month {
+  margin: 0;
+  color: var(--gesti-ink-2);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.gesti-usage-figure {
+  margin: 4px 0 10px;
+  color: var(--gesti-ink-2);
+  font-size: 15px;
+}
+
+.gesti-usage-figure strong {
+  color: var(--gesti-ink);
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.gesti-usage-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--gesti-hover-2);
+}
+
+.gesti-usage-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gesti-blue);
+  transition: width 300ms var(--gesti-ease);
+}
+
+.gesti-usage-bar[data-tone="high"] > span {
+  background: #d9822b;
+}
+
+.gesti-usage-bar[data-tone="full"] > span {
+  background: #c23a31;
+}
+
+.gesti-usage-note {
+  margin: 10px 0 0;
+  color: var(--gesti-ink-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.gesti-usage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.gesti-usage-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.gesti-usage-head span {
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.gesti-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.gesti-usage-table th,
+.gesti-usage-table td {
+  padding: 9px 0;
+  border-top: 1px solid var(--gesti-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.gesti-usage-table thead th {
+  border-top: 0;
+  color: var(--gesti-ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.gesti-usage-table tbody th {
+  font-weight: 500;
+}
+
+.gesti-usage-table .is-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gesti-usage-table td.is-number {
+  padding-left: 16px;
+}
+
+.gesti-usage-name,
+.gesti-usage-email {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.gesti-usage-email {
+  color: var(--gesti-ink-3);
+  font-size: 12px;
+}
+
+.gesti-usage-empty,
+.gesti-usage-state {
+  margin: 0;
+  color: var(--gesti-ink-2);
+  font-size: 13.5px;
+}
+
+.gesti-usage-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.gesti-usage-state p {
+  margin: 0;
+}
+
+/* ---------- Historial de chats (gesti-history-panel.tsx) ---------- */
+
+.gesti-layout {
+  width: 100%;
+}
+
+.gesti-main {
+  min-width: 0;
+}
+
+/* Escritorio ancho: el historial es una columna plana pegada al borde, de
+   arriba abajo, separada del chat solo por una línea (como ChatGPT o Claude).
+   Oculta, el chat ocupa todo el ancho. */
+.gesti-layout[data-sidebar="open"] {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  align-items: start;
+}
+
+.gesti-history-dock {
+  position: sticky;
+  top: var(--gesti-header);
+  height: calc(100dvh - var(--gesti-header));
+  border-right: 1px solid #e6eaf0;
+  background: #fbfcfe;
+}
+
+.gesti-history {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 16px 12px 0;
+  color: var(--gesti-ink);
+}
+
+.gesti-history-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px 2px;
+}
+
+.gesti-history-logo {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #e8f2fd;
+  box-shadow: 0 0 0 1px #d6e7fb;
+}
+
+.gesti-history-brand-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gesti-history-brand-text p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-history-name {
+  color: var(--gesti-ink);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.gesti-history-tagline {
+  color: var(--gesti-ink-2);
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+/* Búsqueda y "Nuevo chat": campos con contorno, como en la referencia. */
+.gesti-history-search,
+.gesti-history-new {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--gesti-line-strong);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--gesti-ink-2);
+}
+
+.gesti-history-search {
+  padding: 0 8px 0 12px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.gesti-history-search:hover {
+  border-color: #cdd5e0;
+}
+
+.gesti-history-search:focus-within {
+  border-color: var(--gesti-blue);
+  box-shadow: 0 0 0 3px rgba(10, 114, 209, 0.12);
+}
+
+.gesti-history-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.gesti-history-search input::placeholder {
+  color: var(--gesti-ink-3);
+}
+
+.gesti-history-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.gesti-history-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 9999px;
+  background: #d9dde2;
+  color: var(--gesti-ink-2);
+  cursor: pointer;
+}
+
+.gesti-history-new {
+  margin-top: 8px;
+  padding: 0 12px;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.gesti-history-new svg {
+  flex: 0 0 auto;
+}
+
+.gesti-history-new:hover {
+  border-color: #cdd5e0;
+  background: var(--gesti-inset);
+}
+
+.gesti-history-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 8px -6px 0;
+  padding: 0 6px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.gesti-history-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gesti-history-group-label {
+  margin: 18px 8px 6px;
+  color: var(--gesti-ink-3);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.gesti-history-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.gesti-history-link:hover {
+  background: #f0f2f4;
+}
+
+.gesti-history-link:focus-visible {
+  outline: 2px solid var(--gesti-blue);
+  outline-offset: -2px;
+}
+
+.gesti-history-link[aria-current="page"] {
+  background: var(--gesti-hover-2);
+  font-weight: 500;
+}
+
+.gesti-history-link > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--gesti-ink-2);
+}
+
+.gesti-history-link-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gesti-history-link-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-history-snippet {
+  display: -webkit-box;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--gesti-ink-3);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.gesti-history-mark {
+  border-radius: 3px;
+  background: rgba(10, 114, 209, 0.14);
+  color: inherit;
+}
+
+.gesti-history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 12px;
+  color: var(--gesti-ink-3);
+  text-align: center;
+}
+
+.gesti-history-empty p {
+  max-width: 200px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ---------- Barra del chat ---------- */
+
+/* Ocupa todo el ancho de la columna (no solo el del chat) y queda fija bajo
+   el header del CRM. */
+.gesti-bar {
+  position: sticky;
+  top: var(--gesti-header);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--gesti-bar);
+  padding: 0 16px;
+  border-bottom: 1px solid #e6eaf0;
+  background: var(--gesti-page);
+  color: var(--gesti-ink);
+}
+
+.gesti-bar-btn {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gesti-ink-2);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.gesti-bar-btn:hover,
+.gesti-bar-btn[aria-pressed="true"],
+.gesti-bar-btn[aria-haspopup="dialog"][aria-expanded="true"] {
+  background: var(--gesti-hover-2);
+  color: var(--gesti-ink);
+}
+
+.gesti-bar-btn[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+
+.gesti-bar-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--gesti-line-strong);
+}
+
+.gesti-bar-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gesti-bar-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--gesti-blue);
+  border-radius: 8px;
+  outline: 0;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(10, 114, 209, 0.12);
+  color: var(--gesti-ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.gesti-bar-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* Pantallas angostas: sin la línea divisoria, el título gana espacio. */
+@media (max-width: 760px) {
+  .gesti-bar {
+    gap: 4px;
+    padding: 0 8px 0 12px;
+  }
+
+  .gesti-bar-divider {
+    display: none;
+  }
+
+  .gesti-bar-title {
+    padding-left: 4px;
+  }
+}
+
+/* Panel deslizable del historial (pantallas angostas). */
+.gesti-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(16, 24, 40, 0.32);
+}
+
+.gesti-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 121;
+  width: min(300px, 84vw);
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  border-right: 1px solid #e6eaf0;
+  background: #fbfcfe;
+  outline: 0;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+  .gesti-category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 16px evita el zoom automático de iOS al enfocar el campo. */
+  .gesti-composer-input {
+    font-size: 16px;
+  }
+
+  .gesti-bubble {
+    max-width: 88%;
+  }
+
+  .gesti-source-hint {
+    display: none;
+  }
+
+  .gesti-bar-btn.is-labeled span {
+    display: none;
+  }
+
+  .gesti-bar-btn.is-labeled {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .gesti-source-domain {
+    max-width: 34%;
+  }
+}
+
+/* ---------- Animaciones ---------- */
+
+@keyframes gesti-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes gesti-word-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes gesti-pop-in {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes gesti-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gesti-caret-glide {
+  from {
+    transform: translateX(-6px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes gesti-caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes gesti-mic-pulse {
+  from {
+    box-shadow: 0 0 0 0 rgba(10, 114, 209, 0.4);
+  }
+  to {
+    box-shadow: 0 0 0 10px rgba(10, 114, 209, 0);
+  }
+}
+
+@keyframes gesti-wave {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(var(--h));
+  }
+}
+
+@keyframes gesti-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gesti-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}

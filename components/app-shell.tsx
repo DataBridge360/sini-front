@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { BrandMark } from "@/components/brand-mark";
 import {
   Building2,
   CalendarDays,
@@ -15,11 +16,10 @@ import {
   LogOut,
   MoreHorizontal,
   Settings,
-  Shield,
   User,
   Users
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiRequest,
   apiUpload,
@@ -43,6 +43,8 @@ import {
 import { readTransitionMs, useIsWideScreen } from "@/lib/browser";
 import { normalizeHexColor, organizationThemeStyle } from "@/lib/colors";
 import { emptyToNull, roleLabel } from "@/lib/format";
+import { recordDestination } from "@/lib/gesti-chart-format";
+import type { ChartLink } from "@/lib/gesti-parts";
 import { countUrgentNotices } from "@/lib/notices";
 import {
   type NoticeNoteApi,
@@ -61,6 +63,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { LoadingState } from "@/components/ui/states";
 import { ToastViewport, type ToastMessage } from "@/components/ui/toast";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
+import { TaskAlertsBell } from "@/components/notifications/task-alerts-bell";
 
 // Cada vista se carga on-demand (code-split): el usuario solo descarga el chunk
 // de la pestaña que visita, y el de login no viaja a usuarios autenticados.
@@ -121,6 +124,10 @@ const ClubplazaView = dynamic(() => import("@/components/views/clubplaza-view").
   ssr: false,
   loading: viewLoading
 });
+const GestiView = dynamic(() => import("@/components/views/gesti-view").then((m) => m.GestiView), {
+  ssr: false,
+  loading: viewLoading
+});
 
 export function AppShell() {
   const queryClient = useQueryClient();
@@ -135,6 +142,10 @@ export function AppShell() {
   // finalizadas del dashboard va derecho a Archivadas). La navegación normal
   // siempre vuelve al tablero.
   const [tasksArchived, setTasksArchived] = useState(false);
+  // Tarea a abrir al entrar a Tareas. El contador remonta la vista para que
+  // abrir otra tarea funcione aunque ya se esté en Tareas.
+  const [tasksOpenTaskId, setTasksOpenTaskId] = useState<string | null>(null);
+  const [tasksViewKey, setTasksViewKey] = useState(0);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -164,9 +175,42 @@ export function AppShell() {
   const openTasks = useCallback(
     (archived: boolean) => {
       setTasksArchived(archived);
+      setTasksOpenTaskId(null);
       setTab("tasks");
     },
     [setTab]
+  );
+
+  // Entrar a Tareas con el detalle de una tarea abierto.
+  const openTask = useCallback(
+    (taskId: string) => {
+      setTasksArchived(false);
+      setTasksOpenTaskId(taskId);
+      setTasksViewKey((key) => key + 1);
+      setTab("tasks");
+    },
+    [setTab]
+  );
+
+  // Una fila de tabla de Gesti abre el registro que lista (tarea, póliza, asegurado, compañía).
+  const openRecord = useCallback(
+    (link: ChartLink) => {
+      const destination = recordDestination(link);
+      if (!destination) return;
+      if (destination.tab === "tasks") {
+        openTask(destination.taskId);
+        return;
+      }
+      if (destination.tab === "clients") {
+        setOpenPolicyId(destination.policyId);
+        setClientDetailId(destination.clientId);
+      } else {
+        setOpenPolicyId(null);
+        setClientDetailId(null);
+      }
+      setTab(destination.tab);
+    },
+    [openTask, setTab]
   );
 
   const dismissToast = useCallback((id: string) => {
@@ -599,7 +643,10 @@ export function AppShell() {
   });
 
   return (
-    <main className={`sp-shell app-redesign ${tab === "settings" ? "settings-page-mode" : ""}`} style={shellTheme}>
+    <main
+      className={`sp-shell app-redesign ${tab === "settings" ? "settings-page-mode" : ""} ${tab === "gesti" ? "gesti-page-mode" : ""}`}
+      style={shellTheme}
+    >
       <Sidebar
         tab={tab}
         setTab={(next) => {
@@ -607,6 +654,7 @@ export function AppShell() {
           setOpenPolicyId(null);
           // Desde la navegación, Tareas siempre abre en el tablero.
           setTasksArchived(false);
+          setTasksOpenTaskId(null);
           setTab(next);
         }}
         urgentCount={countUrgentNotices(allNotices)}
@@ -615,11 +663,6 @@ export function AppShell() {
           organizationSettings.data?.display_name ??
           selectedOrganization?.displayName ??
           "SiniPro"
-        }
-        logoUrl={
-          organizationSettings.data?.logo_url ??
-          selectedOrganization?.logoUrl ??
-          null
         }
       />
 
@@ -630,7 +673,13 @@ export function AppShell() {
             <p>{subtitleForTab(tab)}</p>
           </div>
           <div className="sp-header-actions">
-            {/* Notificaciones y ayuda ocultas por ahora */}
+            <TaskAlertsBell
+              common={common}
+              currentUserId={auth.user.id}
+              canModerate={canManageOrganization}
+              onOpenTask={openTask}
+              onOpenTasks={() => openTasks(false)}
+            />
             <UserMenu
               userName={auth.user.fullName}
               userEmail={auth.user.email}
@@ -661,6 +710,7 @@ export function AppShell() {
               error={notices.error?.message ?? clients.error?.message ?? policies.error?.message ?? null}
               setTab={setTab}
               onOpenTasks={openTasks}
+              onOpenTask={openTask}
               onCreateClient={(body) => createClient.mutateAsync(body)}
               onCreatePolicy={(values) => createPolicy.mutateAsync(values)}
             />
@@ -690,6 +740,8 @@ export function AppShell() {
           ) : null}
           {tab === "tasks" ? (
             <TasksView
+              key={tasksViewKey}
+              initialTaskId={tasksOpenTaskId}
               common={common}
               currentUserId={auth.user.id}
               canModerate={canManageOrganization}
@@ -764,6 +816,16 @@ export function AppShell() {
               currentUserId={auth.user.id}
               canManage={canManageOrganization}
               notify={notify}
+            />
+          ) : null}
+          {tab === "gesti" ? (
+            <GestiView
+              userId={auth.user.id}
+              userName={auth.user.fullName}
+              organizationSlug={common.organizationSlug}
+              canSeeUsage={canManageOrganization}
+              onNavigate={setTab}
+              onOpenRecord={openRecord}
             />
           ) : null}
           {tab === "team" && canManageOrganization ? (
@@ -843,27 +905,28 @@ export function AppShell() {
   );
 }
 
+type NavIcon = ComponentType<{ size?: number }>;
+
 function Sidebar({
   tab,
   setTab,
   urgentCount,
   canManageOrganization,
-  organizationName,
-  logoUrl
+  organizationName
 }: {
   tab: Tab;
   setTab: (tab: Tab) => void;
   urgentCount: number;
   canManageOrganization: boolean;
   organizationName: string;
-  logoUrl: string | null;
 }) {
   // Navegación principal: Compañías, Equipo y Configuración viven en el grupo
   // "Configuración" anclado al pie, no en la lista principal.
-  const nav: Array<{ key: Tab; name: string; icon: typeof LayoutDashboard; count?: number }> = [
+  const nav: Array<{ key: Tab; name: string; icon: NavIcon; count?: number }> = [
     { key: "dashboard" as const, name: "Dashboard", icon: LayoutDashboard },
     { key: "notices" as const, name: "Avisos", icon: CalendarDays, count: urgentCount },
     { key: "tasks" as const, name: "Tareas", icon: ListTodo },
+    { key: "gesti" as const, name: "Gesti", icon: GestiNavIcon },
     { key: "policies" as const, name: "Pólizas", icon: FileText },
     { key: "clients" as const, name: "Asegurados", icon: Users },
     // Planilla de Club Plaza: la usan productores y asesores por igual.
@@ -871,7 +934,7 @@ function Sidebar({
   ];
 
   // Compañías queda disponible para todo el equipo; el resto pide rol productor.
-  const settingsNav: Array<{ key: Tab; name: string; icon: typeof LayoutDashboard }> = [
+  const settingsNav: Array<{ key: Tab; name: string; icon: NavIcon }> = [
     ...(canManageOrganization
       ? [
           { key: "settings" as const, name: "Más configuraciones", icon: Settings },
@@ -886,9 +949,15 @@ function Sidebar({
   // siete había que deslizar de costado, y una barra que se desliza no avisa
   // que esconde algo. Los que sobran se agrupan detrás de "Más", que sí se ve.
   // En escritorio la barra es vertical y hay lugar para todos.
+  // En el celular Gesti va en el centro de la barra: Dashboard, Avisos, Gesti,
+  // Tareas y "Más".
   const isWideNav = useIsWideScreen(900);
-  const primaryNav = isWideNav ? nav : nav.slice(0, 4);
-  const overflowNav = isWideNav ? settingsNav : [...nav.slice(4), ...settingsNav];
+  const mobilePrimaryKeys: Tab[] = ["dashboard", "notices", "gesti", "tasks"];
+  const mobilePrimaryNav = mobilePrimaryKeys.flatMap((key) => nav.filter((item) => item.key === key));
+  const primaryNav = isWideNav ? nav : mobilePrimaryNav;
+  const overflowNav = isWideNav
+    ? settingsNav
+    : [...nav.filter((item) => !mobilePrimaryKeys.includes(item.key)), ...settingsNav];
   const overflowLabel = isWideNav ? "Configuración" : "Más";
   const isOverflowActive = overflowNav.some((item) => item.key === tab);
 
@@ -916,23 +985,18 @@ function Sidebar({
     };
   }, [isSettingsOpen]);
 
+  // En escritorio el sidebar es un riel de íconos que se expande sobre el
+  // contenido al pasar el mouse (ver "Sidebar riel" en globals.css). Mientras
+  // el menú de Configuración está abierto queda fijo expandido: si se cerrara
+  // al salir el puntero, el menú quedaría flotando sobre un riel angosto.
   return (
-      <aside className="sp-sidebar">
-        <div className={logoUrl ? "sp-logo only-logo" : "sp-logo"}>
-          {logoUrl ? (
-            <div className="sp-logo-mark has-image">
-              <Image src={logoUrl} alt={organizationName} width={240} height={108} unoptimized />
-            </div>
-          ) : (
-            <>
-              <div className="sp-logo-mark">
-                <Shield size={17} />
-              </div>
-              <div className="sp-logo-copy">
-                <strong>{organizationName}</strong>
-              </div>
-            </>
-          )}
+      <aside className={isSettingsOpen ? "sp-sidebar is-pinned" : "sp-sidebar"}>
+        <div className="sp-logo sp-brand">
+          <BrandMark className="sp-brand-mark" size={30} />
+          <div className="sp-brand-copy">
+            <strong>{organizationName}</strong>
+            <span>Productor asesor de seguros</span>
+          </div>
         </div>
         <nav className="sp-nav" aria-label="Navegación principal">
           <p>Principal</p>
@@ -941,14 +1005,17 @@ function Sidebar({
             return (
               <button
                 key={item.key}
-                className={tab === item.key ? "active" : ""}
+                className={[tab === item.key ? "active" : "", item.key === "gesti" ? "sp-nav-gesti" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
                 type="button"
+                title={item.name}
                 onClick={() => setTab(item.key)}
               >
-                <Icon size={22} />
+                <Icon size={20} />
                 <span>{item.name}</span>
                 {"count" in item && typeof item.count === "number" && item.count > 0 ? (
-                  <b>{item.count}</b>
+                  <b aria-label={`${item.count} pendientes`}>{item.count > 99 ? "99+" : item.count}</b>
                 ) : null}
               </button>
             );
@@ -970,7 +1037,7 @@ function Sidebar({
                       setIsSettingsOpen(false);
                     }}
                   >
-                    <Icon size={18} />
+                    <Icon size={17} />
                     <span>{item.name}</span>
                     {"count" in item && typeof item.count === "number" && item.count > 0 ? (
                       <b>{item.count}</b>
@@ -987,12 +1054,26 @@ function Sidebar({
             aria-haspopup="menu"
             onClick={() => setIsSettingsOpen((open) => !open)}
           >
-            {isWideNav ? <Settings size={22} /> : <MoreHorizontal size={22} />}
+            {isWideNav ? <Settings size={20} /> : <MoreHorizontal size={20} />}
             <span>{overflowLabel}</span>
             <ChevronDown className="sp-nav-group-caret" size={16} aria-hidden="true" />
           </button>
         </div>
       </aside>
+  );
+}
+
+// Gesti en la navegación: la carita de la mascota en lugar de un ícono de
+// línea. Recibe `size` como los íconos de lucide para entrar en la misma lista.
+function GestiNavIcon({ size = 20 }: { size?: number }) {
+  return (
+    <Image
+      className="sp-nav-gesti-avatar"
+      src="/gesti/gesti-avatar.webp"
+      alt=""
+      width={size}
+      height={size}
+    />
   );
 }
 
@@ -1107,6 +1188,7 @@ function titleForTab(tab: Tab) {
     policies: "Pólizas",
     companies: "Compañías",
     clubplaza: "Club Plaza",
+    gesti: "Gesti",
     team: "Equipo",
     settings: "Configuración",
     profile: "Perfil"
@@ -1123,6 +1205,7 @@ function subtitleForTab(tab: Tab) {
     policies: "Pólizas activas de la organización",
     companies: "Compañías aseguradoras con las que trabajás",
     clubplaza: "Carga masiva de jugadores hacia Club Plaza",
+    gesti: "Tu asistente de seguros con IA",
     team: "Personas con acceso a esta organización",
     settings: "Marca, colores y datos de tu organización",
     profile: "Tus datos personales y contraseña"

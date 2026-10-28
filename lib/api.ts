@@ -1,4 +1,7 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+// La API vive en esta misma app (app/api/v1): mismo origen, sin CORS. Fijo a
+// propósito, para que un NEXT_PUBLIC_API_URL viejo no mande tráfico al backend
+// separado que se dio de baja.
+const API_URL = "/api/v1";
 
 export type AuthState = {
   accessToken: string;
@@ -362,60 +365,50 @@ export async function apiUpload<T>(
   return response.json() as Promise<T>;
 }
 
-// Subida multipart con progreso real. fetch() no expone el progreso de subida,
-// así que acá va XHR: sin esto una actividad con 5 fotos es una ruedita sin
-// información durante 20 segundos.
-//
-// `build` es una factory porque el FormData se consume al enviarse y hay que
-// rearmarlo si el 401 obliga a reintentar con el token renovado.
-export async function apiUploadForm<T>(
-  path: string,
-  build: () => FormData,
-  options: ApiCommonOptions & { onProgress?: (fraction: number) => void } = {}
-): Promise<T> {
-  const send = (token = options.token) =>
-    new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const request = new XMLHttpRequest();
-      request.open("POST", `${API_URL}${path}`);
-      if (token) {
-        request.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
-      if (options.organizationSlug) {
-        request.setRequestHeader("X-Organization-Slug", options.organizationSlug);
-      }
+// Subida firmada de un adjunto (POST /tasks/:id/attachments/uploads). Vercel
+// corta los bodies en 4.5 MB, así que los archivos van directo del navegador a
+// Supabase Storage con una URL de un solo uso que firmó el server.
+export type SignedAttachmentUpload = {
+  name: string;
+  path: string;
+  contentType: string;
+  signedUrl: string;
+  token: string;
+};
 
-      if (options.onProgress) {
-        request.upload.addEventListener("progress", (event) => {
-          if (event.lengthComputable && event.total > 0) {
-            options.onProgress?.(event.loaded / event.total);
-          }
-        });
-      }
+// PUT del archivo a la URL firmada, con progreso real. fetch() no expone el
+// progreso de subida, así que acá va XHR: sin esto una actividad con 5 fotos es
+// una ruedita sin información durante 20 segundos.
+export function uploadToSignedUrl(
+  upload: SignedAttachmentUpload,
+  file: Blob,
+  onProgress?: (loadedBytes: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", upload.signedUrl);
+    // Tiene que coincidir con lo que firmó el server: al confirmar se compara
+    // con el contentType que quedó guardado en Storage.
+    request.setRequestHeader("Content-Type", upload.contentType);
+    request.setRequestHeader("x-upsert", "false");
+    request.setRequestHeader("cache-control", "max-age=31536000");
 
-      request.addEventListener("load", () =>
-        resolve({ status: request.status, body: request.responseText })
-      );
-      request.addEventListener("error", () => reject(new Error("No se pudo conectar con el servidor")));
-      request.addEventListener("abort", () => reject(new Error("Subida cancelada")));
-      request.send(build());
-    });
-
-  let response = await send();
-  if (response.status === 401 && options.token) {
-    const refreshed = await refreshStoredAuth();
-    if (refreshed?.accessToken) {
-      response = await send(refreshed.accessToken);
+    if (onProgress) {
+      request.upload.addEventListener("progress", (event) => onProgress(event.loaded));
     }
-  }
 
-  const payload = response.body ? (JSON.parse(response.body) as unknown) : null;
-
-  if (response.status < 200 || response.status >= 300) {
-    const message = (payload as { message?: unknown } | null)?.message;
-    throw new Error(typeof message === "string" ? message : "No se pudo enviar la actividad");
-  }
-
-  return payload as T;
+    request.addEventListener("load", () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress?.(file.size);
+        resolve();
+      } else {
+        reject(new Error(`No se pudo subir «${upload.name}»`));
+      }
+    });
+    request.addEventListener("error", () => reject(new Error("No se pudo conectar con el almacenamiento")));
+    request.addEventListener("abort", () => reject(new Error("Subida cancelada")));
+    request.send(file);
+  });
 }
 
 const AUTH_STORAGE_KEY = "sinipro2.auth";
