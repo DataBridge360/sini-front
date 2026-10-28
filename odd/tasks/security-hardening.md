@@ -14,11 +14,11 @@ Out of scope (user decision): Club Plaza authorization (later), Gesti budget ato
 
 ## Tasks
 
-- T1 (S1) upgrade next, eslint-config-next, zod — inline — commit: c53ad46
-- T2 (S2) team member takeover fix + tests — inline — commit: pending
-- T3 (S4) uuid validation on id params + tests — inline — commit: pending
-- T4 (S3) security headers for all routes + test — inline — commit: pending
-- T5 verify (high risk: security, dependencies) — gentle-ai-verify
+- T1 (S1) upgrade next, eslint-config-next, zod — inline — commit: 069b0e2
+- T2 (S2) team member takeover fix + tests — worker — commit: 4535c2b
+- T3 (S4) uuid validation on id params + tests — worker — commit: 44b3ac5
+- T4 (S3) security headers for all routes + test — worker — commit: a501041
+- T5 verify (high risk: security, dependencies) — gentle-ai-verify — PASS S1-S4
 
 ## Log
 
@@ -28,3 +28,4 @@ Punto 3: esta bien eso, lo vamos a arreglar mas adelante.
 
 Agrega headers de seguridad, la decision de negocio esta bien, los ids los puedes validar. El tema del presupuesto es 100usd por mes, no va a ser mas que eso, la api tiene cargados 100usd y no va a gastar mas de eso."
 - L2 (evidence T1): next 16.4.3, eslint-config-next 16.4.3, zod 4.6.7; tiptap ^3.32.0 (prosemirror-view paste XSS, @tiptap/core ReDoS); pnpm.overrides for brace-expansion, browserslist, source-map-js, baseline-browser-mapping. `pnpm audit --prod`: 68 -> 1 moderate (uuid <11.1.1 inside exceljs, v3/v5/v6 with buf, not used; major bump not forced). typecheck clean, 429 tests, lint 0 errors, build OK. next-env.d.ts is generated and left out.
+- L3 (verify): S1-S4 PASS. 478 tests, typecheck clean, eslint 0 errors/139 warnings, build OK, audit 1 moderate (uuid in exceljs, unreachable: only v4() without buf). Live `next start` + curl confirmed header precedence. Follow-up (pre-existing, not a takeover): re-adding a user with an ACTIVE membership here upserts the role without assertNotLastActiveProducer. Not verified in a real browser: dictation, realtime, uploads under the new headers.
