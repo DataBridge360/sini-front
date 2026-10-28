@@ -57,13 +57,13 @@ export const clientsRoutes: Route[] = [
     method: "PATCH",
     path: "/clients/:id",
     access: "organization",
-    handler: async ({ organization, params, body }) =>
-      service().update(organization.id, params.id as string, await body(updateClientSchema))
+    handler: async ({ organization, uuidParam, body }) =>
+      service().update(organization.id, uuidParam("id"), await body(updateClientSchema))
   }),
   route({
     method: "DELETE",
     path: "/clients/:id",
     access: "organization",
-    handler: ({ organization, params }) => service().remove(organization.id, params.id as string)
+    handler: ({ organization, uuidParam }) => service().remove(organization.id, uuidParam("id"))
   })
 ];

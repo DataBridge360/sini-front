@@ -795,7 +795,15 @@ export function AppShell() {
               notify={notify}
             />
           ) : null}
-          {tab === "gesti" ? <GestiView userId={auth.user.id} userName={auth.user.fullName} onNavigate={setTab} /> : null}
+          {tab === "gesti" ? (
+            <GestiView
+              userId={auth.user.id}
+              userName={auth.user.fullName}
+              organizationSlug={common.organizationSlug}
+              canSeeUsage={canManageOrganization}
+              onNavigate={setTab}
+            />
+          ) : null}
           {tab === "team" && canManageOrganization ? (
             <TeamView
               currentUserId={auth.user.id}

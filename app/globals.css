@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./gesti.css";
+@import "./gesti-chart.css";
 @import "./dashboard.css";
 @import "./notifications.css";
 

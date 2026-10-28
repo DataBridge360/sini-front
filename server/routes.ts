@@ -2,6 +2,7 @@ import type { Route } from "./core/router";
 import { authRoutes } from "./modules/auth/routes";
 import { clientsRoutes } from "./modules/clients/routes";
 import { clubPlazaRegistrationsRoutes } from "./modules/club-plaza-registrations/routes";
+import { gestiRoutes } from "./modules/gesti/routes";
 import { insuranceCompaniesRoutes } from "./modules/insurance-companies/routes";
 import { noticesRoutes } from "./modules/notices/routes";
 import { organizationsRoutes } from "./modules/organizations/routes";
@@ -21,5 +22,6 @@ export const apiRoutes: Route[] = [
   ...noticesRoutes,
   ...profileRoutes,
   ...tasksRoutes,
+  ...gestiRoutes,
   ...clubPlazaRegistrationsRoutes
 ];

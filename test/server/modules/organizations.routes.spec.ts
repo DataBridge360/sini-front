@@ -171,6 +171,23 @@ describe("organizationsRoutes", () => {
     expect((await response.json()).message).toBe("Validation failed");
   });
 
+  // S4: el membershipId se valida como UUID antes de leer el body o tocar la base.
+  it.each([
+    "/organizations/current/team/not-a-uuid",
+    "/organizations/current/team/not-a-uuid/password",
+    "/organizations/current/team/not-a-uuid/deactivate"
+  ])("PATCH %s answers 400 uuid-expected without reading the body or querying", async (path) => {
+    from.mockClear();
+    const { handle } = setup(organizationsRoutes);
+    const response = await handle(
+      call(path, { method: "PATCH", headers: { ...authed, "content-type": "application/json" }, body: "{not json" })
+    );
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).message).toBe("Validation failed (uuid is expected)");
+    expect(from).not.toHaveBeenCalled();
+  });
+
   describe("POST /organizations/current/logo", () => {
     const png = () => new File([new Uint8Array([1, 2, 3, 4])], "Mi Logo!.png", { type: "image/png" });
 

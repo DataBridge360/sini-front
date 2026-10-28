@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { AIAssistantInterface } from "@/components/ui/ai-assistant-interface";
+import { GestiDemoView } from "@/components/views/gesti-view";
 
-// Demo pública de Gesti: el mismo chat del CRM, sin sesión ni backend (las
-// respuestas son guiones de ejemplo). Sirve para probar el flujo completo.
+// Demo pública de Gesti: el mismo chat del CRM, sin sesión ni API (las
+// respuestas son guiones de ejemplo en memoria). Sirve para probar el flujo completo.
 export const metadata: Metadata = {
   title: "Gesti · Demo",
   robots: { index: false, follow: false }
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function GestiDemoPage() {
   return (
     <main className="gesti-demo-page">
-      <AIAssistantInterface userName="Lucas" historyKey="demo" />
+      <GestiDemoView userName="Lucas" />
     </main>
   );
 }

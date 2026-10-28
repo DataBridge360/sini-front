@@ -109,11 +109,11 @@ export const organizationsRoutes: Route[] = [
     method: "PATCH",
     path: "/organizations/current/team/:membershipId",
     access: "organization",
-    handler: async ({ user, organization, params, body }) =>
+    handler: async ({ user, organization, uuidParam, body }) =>
       service().updateTeamMember(
         user,
         organization,
-        params.membershipId as string,
+        uuidParam("membershipId"),
         await body(updateOrganizationTeamMemberSchema)
       )
   }),
@@ -121,11 +121,11 @@ export const organizationsRoutes: Route[] = [
     method: "PATCH",
     path: "/organizations/current/team/:membershipId/password",
     access: "organization",
-    handler: async ({ user, organization, params, body }) =>
+    handler: async ({ user, organization, uuidParam, body }) =>
       service().changeTeamMemberPassword(
         user,
         organization,
-        params.membershipId as string,
+        uuidParam("membershipId"),
         await body(changeOrganizationTeamMemberPasswordSchema)
       )
   }),
@@ -133,11 +133,11 @@ export const organizationsRoutes: Route[] = [
     method: "PATCH",
     path: "/organizations/current/team/:membershipId/deactivate",
     access: "organization",
-    handler: async ({ user, organization, params, body }) =>
+    handler: async ({ user, organization, uuidParam, body }) =>
       service().deactivateTeamMember(
         user,
         organization,
-        params.membershipId as string,
+        uuidParam("membershipId"),
         await body(deactivateOrganizationTeamMemberSchema)
       )
   }),

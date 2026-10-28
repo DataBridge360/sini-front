@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type Ref } from "react";
-import { ConfirmDialog } from "@/components/ui/modal";
 import Image from "next/image";
-import { MessageSquare, Pencil, PanelLeft, Pin, Plus, Search, SquarePen, Trash2, X } from "lucide-react";
-import { findMatch, groupChats, searchChats, type StoredChat } from "@/lib/gesti-history";
+import { Gauge, MessageSquare, Pencil, PanelLeft, Pin, Plus, Search, SquarePen, X } from "lucide-react";
+import { findMatch, groupChats, searchChats, type HistoryChat } from "@/lib/gesti-history";
 
 // Historial de chats de Gesti. `GestiHistoryPanel` es la barra lateral: marca,
 // búsqueda (título y contenido), "Nuevo chat" y la lista agrupada por fecha.
 // `GestiChatHeader` es la barra de arriba del chat, con el título y las
-// acciones del chat abierto (fijar, renombrar, eliminar). El panel se usa como
-// columna en escritorio y dentro de un panel deslizable en pantallas angostas.
+// acciones del chat abierto (fijar, renombrar) y, para el productor, el consumo.
+// Los chats no se borran. El panel se usa como columna en escritorio y dentro de
+// un panel deslizable en pantallas angostas.
 
 const TICK_MS = 60_000;
 const MAX_TITLE_INPUT = 80;
@@ -35,11 +35,19 @@ function Highlight({ text, query }: { text: string; query: string }) {
 export function GestiHistoryPanel({
   chats,
   activeChatId,
+  loading = false,
+  error = null,
+  onRetry,
   onClose,
   ...actions
 }: HistoryActions & {
-  chats: StoredChat[];
+  chats: HistoryChat[];
   activeChatId: string | null;
+  /** Primera carga de la lista. */
+  loading?: boolean;
+  /** La lista no se pudo cargar. */
+  error?: string | null;
+  onRetry?: () => void;
   /** Solo en el panel deslizable: muestra el botón para cerrarlo. */
   onClose?: () => void;
 }) {
@@ -116,7 +124,20 @@ export function GestiHistoryPanel({
       </button>
 
       <div className="gesti-history-list" id={listId}>
-        {chats.length === 0 ? (
+        {chats.length === 0 && loading ? (
+          <div className="gesti-history-empty" role="status">
+            <p>Cargando chats…</p>
+          </div>
+        ) : chats.length === 0 && error ? (
+          <div className="gesti-history-empty" role="alert">
+            <p>{error}</p>
+            {onRetry ? (
+              <button type="button" className="gesti-history-retry" onClick={onRetry}>
+                Reintentar
+              </button>
+            ) : null}
+          </div>
+        ) : chats.length === 0 ? (
           <div className="gesti-history-empty">
             <MessageSquare size={18} strokeWidth={1.8} aria-hidden="true" />
             <p>Tus conversaciones con Gesti van a aparecer acá.</p>
@@ -175,7 +196,7 @@ function ChatItem({
   snippet = null,
   onSelect
 }: Pick<HistoryActions, "onSelect"> & {
-  chat: StoredChat;
+  chat: HistoryChat;
   active: boolean;
   query?: string;
   snippet?: string | null;
@@ -209,7 +230,7 @@ function ChatItem({
 
 export type ChatHeaderProps = {
   /** Chat abierto; null en un chat nuevo (sin acciones propias todavía). */
-  chat: Pick<StoredChat, "id" | "title" | "pinned"> | null;
+  chat: Pick<HistoryChat, "id" | "title" | "pinned"> | null;
   /** Escritorio ancho: el botón muestra u oculta la columna; si no, abre el panel. */
   docked: boolean;
   /** Columna visible (escritorio) o panel abierto (pantallas angostas). */
@@ -219,7 +240,8 @@ export type ChatHeaderProps = {
   onNewChat: () => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string) => void;
-  onDelete: (id: string) => void;
+  /** Solo productor y admin de plataforma: abre el consumo del mes. */
+  onOpenUsage?: (() => void) | undefined;
 };
 
 export function GestiChatHeader({
@@ -231,24 +253,21 @@ export function GestiChatHeader({
   onNewChat,
   onRename,
   onTogglePin,
-  onDelete
+  onOpenUsage
 }: ChatHeaderProps) {
-  // Se guarda el chat que se está renombrando o eliminando: al cambiar de chat
-  // el estado deja de aplicar solo, sin efectos para limpiarlo.
+  // Se guarda el chat que se está renombrando: al cambiar de chat el estado
+  // deja de aplicar solo, sin efectos para limpiarlo.
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const renameRef = useRef<HTMLButtonElement>(null);
   // El Escape que cancela desmonta el campo: su blur no debe guardar.
   const renameDoneRef = useRef(false);
 
   const renaming = chat !== null && renamingId === chat.id;
-  const confirming = chat !== null && confirmId === chat.id;
 
   function startRename() {
     if (!chat) return;
     renameDoneRef.current = false;
-    setConfirmId(null);
     setDraft(chat.title);
     setRenamingId(chat.id);
   }
@@ -330,39 +349,27 @@ export function GestiChatHeader({
             >
               <Pencil size={20} strokeWidth={1.8} />
             </button>
-            <button
-              type="button"
-              className="gesti-bar-btn"
-              aria-label="Eliminar"
-              title="Eliminar"
-              aria-haspopup="dialog"
-              onClick={() => setConfirmId(chat.id)}
-            >
-              <Trash2 size={20} strokeWidth={1.8} />
-            </button>
           </>
+        ) : null}
+        {onOpenUsage ? (
+          <button
+            type="button"
+            className="gesti-bar-btn is-labeled"
+            aria-label="Consumo"
+            title="Consumo del mes"
+            aria-haspopup="dialog"
+            onClick={onOpenUsage}
+          >
+            <Gauge size={20} strokeWidth={1.8} />
+            <span>Consumo</span>
+          </button>
         ) : null}
         {docked ? null : (
           <button type="button" className="gesti-bar-btn" aria-label="Nuevo chat" title="Nuevo chat" onClick={onNewChat}>
             <SquarePen size={20} strokeWidth={1.8} />
           </button>
         )}
-
       </div>
-
-      <ConfirmDialog
-        isOpen={confirming}
-        title="Eliminar chat"
-        message={`¿Eliminar “${chat?.title ?? ""}”? Se borra la conversación completa y no se puede deshacer.`}
-        confirmLabel="Eliminar chat"
-        isBusy={false}
-        onClose={() => setConfirmId(null)}
-        onConfirm={() => {
-          if (!chat) return;
-          setConfirmId(null);
-          onDelete(chat.id);
-        }}
-      />
     </header>
   );
 }

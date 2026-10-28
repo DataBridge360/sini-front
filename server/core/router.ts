@@ -144,6 +144,11 @@ export function createApiHandler(routes: Route[], deps: ApiDependencies) {
       }
 
       const result = await matched.handler(context);
+      // Un handler que ya arma su Response (p. ej. un stream NDJSON) se devuelve
+      // tal cual: status, headers y body son suyos.
+      if (result instanceof Response) {
+        return result;
+      }
       const status = request.method === "POST" ? 201 : 200;
       if (result === undefined) {
         return new Response(null, { status, headers: responseHeaders });

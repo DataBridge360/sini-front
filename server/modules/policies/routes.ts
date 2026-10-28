@@ -43,7 +43,7 @@ export const policiesRoutes: Route[] = [
     method: "GET",
     path: "/policies/:id/notices",
     access: "organization",
-    handler: ({ organization, params }) => service().findNotices(organization.id, params.id as string)
+    handler: ({ organization, uuidParam }) => service().findNotices(organization.id, uuidParam("id"))
   }),
   route({
     method: "POST",
@@ -56,13 +56,13 @@ export const policiesRoutes: Route[] = [
     method: "PATCH",
     path: "/policies/:id",
     access: "organization",
-    handler: async ({ organization, params, body }) =>
-      service().update(organization.id, params.id as string, await body(updatePolicySchema))
+    handler: async ({ organization, uuidParam, body }) =>
+      service().update(organization.id, uuidParam("id"), await body(updatePolicySchema))
   }),
   route({
     method: "DELETE",
     path: "/policies/:id",
     access: "organization",
-    handler: ({ organization, params }) => service().remove(organization.id, params.id as string)
+    handler: ({ organization, uuidParam }) => service().remove(organization.id, uuidParam("id"))
   })
 ];

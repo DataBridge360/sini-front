@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { dictationErrorMessage, dictationPhaseLabel, mergeDictation, nextDictationPhase } from "@/lib/use-dictation";
+import {
+  dictationErrorMessage,
+  dictationPhaseLabel,
+  MAX_DICTATION_RESTARTS,
+  mergeDictation,
+  nextDictationPhase,
+  shouldResumeDictation
+} from "@/lib/use-dictation";
 
 describe("mergeDictation", () => {
   it("joins what was already typed with the recognized text using one space", () => {
@@ -97,5 +104,30 @@ describe("dictationPhaseLabel", () => {
     expect(dictationPhaseLabel("starting")).toBe("Preparando el micrófono…");
     expect(dictationPhaseLabel("listening")).toBe("Escuchando…");
     expect(dictationPhaseLabel("finishing")).toBe("Procesando dictado…");
+  });
+});
+
+describe("shouldResumeDictation", () => {
+  it("resumes when the browser ends the session on its own while listening", () => {
+    expect(shouldResumeDictation({ phase: "listening", error: null, restarts: 0 })).toBe(true);
+  });
+
+  it("does not resume after the user asked to stop or cancelled", () => {
+    expect(shouldResumeDictation({ phase: "finishing", error: null, restarts: 0 })).toBe(false);
+    expect(shouldResumeDictation({ phase: "idle", error: null, restarts: 0 })).toBe(false);
+  });
+
+  it("does not resume before the microphone was ready", () => {
+    expect(shouldResumeDictation({ phase: "starting", error: null, restarts: 0 })).toBe(false);
+  });
+
+  it("does not resume after an error, so the message stays visible", () => {
+    expect(shouldResumeDictation({ phase: "listening", error: "no-speech", restarts: 0 })).toBe(false);
+    expect(shouldResumeDictation({ phase: "listening", error: "network", restarts: 0 })).toBe(false);
+  });
+
+  it("stops resuming after MAX_DICTATION_RESTARTS to avoid a loop", () => {
+    expect(shouldResumeDictation({ phase: "listening", error: null, restarts: MAX_DICTATION_RESTARTS - 1 })).toBe(true);
+    expect(shouldResumeDictation({ phase: "listening", error: null, restarts: MAX_DICTATION_RESTARTS })).toBe(false);
   });
 });
