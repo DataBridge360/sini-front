@@ -2,7 +2,8 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { GestiStreamEvent, StoredGestiMessage } from "@/lib/gesti-contract";
 import {
-  chartSpecSchema,
+  chartInputSchema,
+  MAX_CHART_POSITION,
   MAX_REPLY_CHARS,
   messagePartsSchema,
   questionSchema,
@@ -33,6 +34,7 @@ import { ConversationsService } from "./conversations";
 import { renderDocument } from "./documents/render";
 import { documentSpecSchema, type DocumentSpec } from "./documents/spec";
 import { fileRefFromRow, GestiFilesService, type GestiFileRow } from "./files";
+import { RecordRegistry, resolveRowLinks } from "./references";
 import {
   budgetExhaustedReply,
   ERROR_REPLY,
@@ -98,8 +100,8 @@ const CLIENT_TOOLS: Anthropic.Tool[] = [
   {
     name: "show_chart",
     description:
-      "Muestra un gráfico interactivo (bar, line, area, pie) o una tabla al usuario. Máximo 4 por respuesta. Úsalo solo cuando ayude a entender datos reales.",
-    input_schema: toolInputSchema(chartSpecSchema)
+      "Muestra un gráfico interactivo (bar, line, area, pie) o una tabla al usuario, en el punto del texto donde la llamás. Máximo 4 por respuesta. Úsalo solo cuando ayude a entender datos reales. En tablas de registros de la cartera, pasá en refs la referencia (como #Rk7q2-1) que viste junto a cada registro, una por fila y en el mismo orden que rows (null si la fila no tiene); así cada fila abre su registro. Las referencias son internas: nunca las escribas en las celdas ni en el texto.",
+    input_schema: toolInputSchema(chartInputSchema)
   },
   {
     name: "ask_user",
@@ -192,6 +194,8 @@ export type ChatDependencies = {
   budgetUsd?: () => number;
   /** Tope del turno completo; los tests lo achican. */
   turnDeadlineMs?: number;
+  /** Marca de las referencias a registros de cada turno; por defecto, al azar. Los tests la fijan. */
+  referenceTag?: () => string;
 };
 
 /**
@@ -409,6 +413,7 @@ export class GestiChatService {
             supabase: this.deps.supabase,
             organizationId: organization.id,
             usage,
+            records: new RecordRegistry(undefined, this.deps.referenceTag?.()),
             now: this.now,
             signal
           };
@@ -444,8 +449,11 @@ export class GestiChatService {
 
     await titleTask.catch(() => undefined);
 
-    const parts = this.buildParts(state, notice);
     const content = state.content.trim().slice(0, MAX_STORED_CONTENT_CHARS);
+    const parts = this.buildParts(state, notice, {
+      leading: state.content.length - state.content.trimStart().length,
+      length: content.length
+    });
     if (aborted && !content && Object.keys(parts).length === 0) return;
 
     // Una respuesta sin texto ni partes (el modelo no dijo nada) igual necesita algo que mostrar.
@@ -651,15 +659,25 @@ export class GestiChatService {
           return await this.storeDocument(input.data, turn, state, emit);
         }
         case "show_chart": {
-          const input = chartSpecSchema.safeParse(toolUse.input);
+          const input = chartInputSchema.safeParse(toolUse.input);
           if (!input.success) {
             return { content: `El gráfico no es válido: ${issueSummary(input.error.issues)}. Corregilo y volvé a llamar a show_chart.`, isError: true };
           }
           if (state.charts.length >= MAX_CHARTS_PER_REPLY) {
             return { content: `Ya mostraste ${MAX_CHARTS_PER_REPLY} gráficos en esta respuesta.`, isError: true };
           }
-          state.charts.push(input.data);
-          emit({ type: "chart", chart: input.data });
+          // Las referencias solo valen contra los registros que las herramientas
+          // de datos devolvieron en ESTE turno; el resto se descarta sin error.
+          const { refs, ...spec } = input.data;
+          const links = spec.kind === "table" ? resolveRowLinks(agent.records, refs, spec.rows?.length ?? 0) : undefined;
+          const chart: ChartSpec = {
+            ...spec,
+            ...(links ? { links } : {}),
+            // Dónde del texto lo mostró Gesti: el navegador lo ubica ahí.
+            position: Math.min(state.content.length, MAX_CHART_POSITION)
+          };
+          state.charts.push(chart);
+          emit({ type: "chart", chart });
           return { content: "Gráfico mostrado al usuario." };
         }
         default:
@@ -799,11 +817,22 @@ export class GestiChatService {
     return state.sources.length;
   }
 
-  private buildParts(state: TurnState, notice: MessageParts["notice"] | null): MessageParts {
+  /** `text` describe el recorte del texto guardado: las posiciones de los gráficos lo acompañan. */
+  private buildParts(
+    state: TurnState,
+    notice: MessageParts["notice"] | null,
+    text: { leading: number; length: number }
+  ): MessageParts {
     const parts: MessageParts = {};
     if (state.sources.length > 0) parts.sources = state.sources;
     if (state.appSources.length > 0) parts.appSources = state.appSources;
-    if (state.charts.length > 0) parts.charts = state.charts;
+    if (state.charts.length > 0) {
+      parts.charts = state.charts.map((chart) =>
+        chart.position === undefined
+          ? chart
+          : { ...chart, position: Math.max(0, Math.min(chart.position - text.leading, text.length)) }
+      );
+    }
     if (state.question) parts.question = state.question;
     if (state.documents.length > 0) parts.documents = state.documents;
     if (notice) parts.notice = notice;

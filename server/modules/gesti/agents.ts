@@ -11,6 +11,7 @@ import {
   DOCUMENT_READER_PROMPT,
   TITLE_PROMPT
 } from "./prompts";
+import type { RecordRegistry } from "./references";
 import { toolInputSchema } from "./schemas";
 import { callUsageFromSdk, type UsageRecorder } from "./usage";
 
@@ -22,6 +23,8 @@ export type AgentContext = {
   supabase: SupabaseService;
   organizationId: string;
   usage: UsageRecorder;
+  /** Referencias opacas del turno: las herramientas de datos anotan acá cada registro que devuelven. */
+  records: RecordRegistry;
   now: () => Date;
   signal?: AbortSignal;
 };
@@ -101,7 +104,8 @@ export async function runDataAgent(
       const result = await runDataTool(toolUse.name, toolUse.input, {
         supabase: context.supabase,
         organizationId: context.organizationId,
-        now: context.now()
+        now: context.now(),
+        records: context.records
       });
       for (const source of result.appSources) appSources.add(source);
       results.push({

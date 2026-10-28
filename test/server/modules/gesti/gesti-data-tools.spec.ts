@@ -7,10 +7,14 @@ import {
   sanitizeForModel,
   type DataToolContext
 } from "@/server/modules/gesti/data-tools";
+import { RecordRegistry } from "@/server/modules/gesti/references";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const CLIENT_ID = "22222222-2222-4222-8222-222222222222";
 const POLICY_ID = "33333333-3333-4333-8333-333333333333";
+const NOTICE_ID = "55555555-5555-4555-8555-555555555555";
+const TASK_ID = "66666666-6666-4666-8666-666666666666";
+const COMPANY_ID = "44444444-4444-4444-8444-444444444444";
 const NOW = new Date("2026-10-27T15:00:00Z");
 
 type Call = [method: string, args: unknown[]];
@@ -47,8 +51,8 @@ function fakeSupabase(respond: (query: Query) => Response) {
   return { supabase: { admin } as unknown as SupabaseService, queries };
 }
 
-function contextFor(supabase: SupabaseService): DataToolContext {
-  return { supabase, organizationId: ORG, now: NOW };
+function contextFor(supabase: SupabaseService, records = new RecordRegistry()): DataToolContext {
+  return { supabase, organizationId: ORG, now: NOW, records };
 }
 
 const hasOrgFilter = (query: Query) =>
@@ -84,16 +88,18 @@ const tableData: Record<string, unknown> = {
       payment_method: "manual",
       first_payment_date: "2026-01-10",
       clients: { id: CLIENT_ID, full_name: "Ana Pérez" },
-      insurance_companies: { id: "44444444-4444-4444-8444-444444444444", name: "La Segunda" }
+      insurance_companies: { id: COMPANY_ID, name: "La Segunda" }
     }
   ],
   policy_notices: [
     {
-      id: "55555555-5555-4555-8555-555555555555",
+      id: NOTICE_ID,
       policy_id: POLICY_ID,
       due_date: "2026-10-30",
       status: "avisar",
       policies: {
+        id: POLICY_ID,
+        client_id: CLIENT_ID,
         policy_number: "AU-123",
         branch: "Automotor",
         vehicle_plate: "AB123CD",
@@ -104,7 +110,7 @@ const tableData: Record<string, unknown> = {
   ],
   tasks: [
     {
-      id: "66666666-6666-4666-8666-666666666666",
+      id: TASK_ID,
       title: "Llamar a Ana",
       status: "pendiente",
       priority: "alta",
@@ -202,7 +208,7 @@ describe("Gesti data tools", () => {
     expect(parsed.avisosPorEstado).toEqual({ avisar: 7, avisado: 7, pagado: 7 });
     expect(parsed.avisosVencidosSinPagar).toBe(7);
     expect(parsed.polizasPorRama).toEqual([{ nombre: "Automotor", polizas: 1 }]);
-    expect(parsed.polizasPorCompania).toEqual([{ nombre: "La Segunda", polizas: 1 }]);
+    expect(parsed.polizasPorCompania).toEqual([{ ref: expect.stringMatching(/^#R[a-z0-9]{4}-\d+$/), nombre: "La Segunda", polizas: 1 }]);
 
     const dates = queries.flatMap((query) =>
       query.calls.filter(([method]) => ["lt", "gte", "lte"].includes(method)).map(([method, args]) => `${method}:${String(args[1])}`)
@@ -256,6 +262,92 @@ describe("Gesti data tools", () => {
     expect((await runDataTool("listar_avisos", { desde: "mañana" }, contextFor(supabase))).isError).toBe(true);
     expect((await runDataTool("ficha_asegurado", {}, contextFor(supabase))).isError).toBe(true);
     expect(queries).toEqual([]);
+  });
+
+  describe("opaque per-turn references", () => {
+    type Listed = Record<string, unknown> & { ref?: string };
+
+    async function listed(name: string, input: unknown, key: string) {
+      const records = new RecordRegistry();
+      const { supabase } = standardFake();
+      const result = await runDataTool(name, input, contextFor(supabase, records));
+      const parsed = JSON.parse(result.output) as Record<string, Listed[]>;
+      return { records, rows: parsed[key] ?? [], output: result.output };
+    }
+
+    it("gives every listed task a reference that resolves to the task, never its id", async () => {
+      const { records, rows, output } = await listed("listar_tareas", {}, "tareas");
+
+      expect(rows[0]?.ref).toMatch(/^#R[a-z0-9]{4}-\d+$/);
+      expect(records.resolve(rows[0]?.ref)).toEqual({ kind: "task", id: TASK_ID });
+      expect(output).not.toContain(TASK_ID);
+    });
+
+    it("links notices to their policy and client so the UI can open the policy", async () => {
+      const { records, rows, output } = await listed("listar_avisos", {}, "avisos");
+
+      expect(records.resolve(rows[0]?.ref)).toEqual({ kind: "notice", id: NOTICE_ID, policyId: POLICY_ID, clientId: CLIENT_ID });
+      expect(output).not.toMatch(UUID_PATTERN);
+    });
+
+    it("links policies to their client, and clients on their own", async () => {
+      const policies = await listed("listar_polizas", {}, "polizas");
+      expect(policies.records.resolve(policies.rows[0]?.ref)).toEqual({ kind: "policy", id: POLICY_ID, clientId: CLIENT_ID });
+
+      const clients = await listed("buscar_asegurados", { texto: "Ana" }, "asegurados");
+      expect(clients.records.resolve(clients.rows[0]?.ref)).toEqual({ kind: "client", id: CLIENT_ID });
+      expect(clients.output).not.toMatch(UUID_PATTERN);
+    });
+
+    it("references the client, its policies and its pending notices in the client file", async () => {
+      const records = new RecordRegistry();
+      const { supabase } = standardFake();
+      const result = await runDataTool("ficha_asegurado", { nombre: "Ana" }, contextFor(supabase, records));
+      const ficha = (JSON.parse(result.output) as { fichas: Array<Record<string, any>> }).fichas[0]!;
+
+      expect(records.resolve(ficha.ref)).toEqual({ kind: "client", id: CLIENT_ID });
+      expect(records.resolve(ficha.polizas[0].ref)).toEqual({ kind: "policy", id: POLICY_ID, clientId: CLIENT_ID });
+      expect(records.resolve(ficha.polizas[0].avisosPendientes[0].ref)).toEqual({
+        kind: "notice",
+        id: NOTICE_ID,
+        policyId: POLICY_ID,
+        clientId: CLIENT_ID
+      });
+      expect(result.output).not.toMatch(UUID_PATTERN);
+    });
+
+    it("references companies in the portfolio summary", async () => {
+      const records = new RecordRegistry();
+      const { supabase } = standardFake();
+      const result = await runDataTool("resumen_cartera", {}, contextFor(supabase, records));
+      const summary = JSON.parse(result.output) as { polizasPorCompania: Array<Listed> };
+
+      expect(records.resolve(summary.polizasPorCompania[0]?.ref)).toEqual({ kind: "company", id: COMPANY_ID });
+      expect(result.output).not.toMatch(UUID_PATTERN);
+    });
+
+    it("reuses the reference when the same record shows up in another call", async () => {
+      const records = new RecordRegistry();
+      const { supabase } = standardFake();
+      const first = JSON.parse((await runDataTool("listar_polizas", {}, contextFor(supabase, records))).output) as Record<string, Listed[]>;
+      const second = JSON.parse((await runDataTool("listar_polizas", {}, contextFor(supabase, records))).output) as Record<string, Listed[]>;
+
+      expect(second.polizas?.[0]?.ref).toBe(first.polizas?.[0]?.ref);
+    });
+
+    it("leaves a record without a reference when the ids needed to open it are missing", async () => {
+      const { supabase } = fakeSupabase((query) => ({
+        data: query.table === "policy_notices" ? [{ id: NOTICE_ID, due_date: "2026-10-30", status: "avisar", policies: { policy_number: "AU-1" } }] : [],
+        count: 1
+      }));
+      const records = new RecordRegistry();
+      const result = await runDataTool("listar_avisos", {}, contextFor(supabase, records));
+      const [aviso] = (JSON.parse(result.output) as { avisos: Listed[] }).avisos;
+
+      expect(aviso).toBeDefined();
+      expect(aviso).not.toHaveProperty("ref");
+      expect(records.size).toBe(0);
+    });
   });
 
   it("exposes a closed list of read-only tools to the sub-agent", () => {

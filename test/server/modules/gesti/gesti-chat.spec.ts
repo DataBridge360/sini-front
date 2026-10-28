@@ -438,6 +438,7 @@ function chatService(client: unknown, overrides: { budget?: number; turnDeadline
     getClient: () => client as never,
     now: () => NOW,
     budgetUsd: () => overrides.budget ?? 100,
+    referenceTag: () => "tn01",
     ...(overrides.turnDeadlineMs === undefined ? {} : { turnDeadlineMs: overrides.turnDeadlineMs })
   });
 }
@@ -740,7 +741,7 @@ describe("Gesti chat", () => {
     expect(afterValid.content[0].is_error).toBeUndefined();
 
     expect(events.filter((event) => event.type === "chart")).toHaveLength(1);
-    expect(lastDone(events).parts.charts).toEqual([valid]);
+    expect(lastDone(events).parts.charts).toEqual([{ ...valid, position: 0 }]);
     expect(lastDone(events).content).toBe("Listo.");
     expect(db.rowsOf("gesti_usage").filter((row) => row.purpose === "chat")).toHaveLength(3);
   });
@@ -794,6 +795,138 @@ describe("Gesti chat", () => {
     expect(lastDone(events).parts.appSources).toEqual(["tasks"]);
     expect(db.rowsOf("gesti_usage").map((row) => row.purpose).sort()).toEqual(["chat", "chat", "data", "data", "title"]);
     expect(db.rowsOf("gesti_usage").filter((row) => row.purpose === "data").every((row) => row.model === "claude-haiku-5-5")).toBe(true);
+  });
+
+  describe("table links and inline position", () => {
+    const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const TASKS_TABLE = {
+      kind: "table",
+      title: "Tareas abiertas",
+      columns: ["Tarea"],
+      rows: [["Llamar a Ana"], ["Fantasma"], ["Inventada"], ["Sin referencia"]]
+    };
+
+    function seedTask() {
+      const taskId = randomUUID();
+      db.rowsOf("tasks").push(
+        { id: taskId, organization_id: ORG, title: "Llamar a Ana", status: "pendiente", priority: "alta", due_date: "2026-10-20" },
+        { id: randomUUID(), organization_id: OTHER_ORG, title: "Tarea de otra organización", status: "pendiente", priority: "baja", due_date: null }
+      );
+      return taskId;
+    }
+
+    const chartEvents = (events: GestiStreamEvent[]) =>
+      events.filter((event): event is Extract<GestiStreamEvent, { type: "chart" }> => event.type === "chart").map((event) => event.chart);
+
+    it("resolves the references Gesti passes against this turn's data tools and emits links with the position", async () => {
+      const taskId = seedTask();
+      const first = "Revisé tu cartera.\n\n";
+      const second = "Acá está la tabla:\n\n";
+      const anthropic = createAnthropic({
+        streams: [
+          { blocks: [{ type: "text", text: first }, { type: "tool_use", name: "consultar_cartera", input: { pregunta: "¿Qué tareas hay abiertas?" } }] },
+          { blocks: [{ type: "text", text: second }, { type: "tool_use", name: "show_chart", input: { ...TASKS_TABLE, refs: ["#Rtn01-1", "#Rtn01-9", "no-es-una-ref", null] } }] },
+          { blocks: [{ type: "text", text: "Esa es la urgente." }] }
+        ],
+        creates: [
+          { blocks: [{ type: "text", text: "Tareas abiertas" }] },
+          { blocks: [{ type: "tool_use", name: "listar_tareas", input: {} }] },
+          { blocks: [{ type: "text", text: "Ref | Tarea\n#Rtn01-1 | Llamar a Ana" }] }
+        ]
+      });
+      const events = await chat(anthropic.client, { message: "¿Qué tareas tengo?" });
+
+      const expected = { links: [{ kind: "task", id: taskId }, null, null, null], position: first.length + second.length };
+      expect(chartEvents(events)).toEqual([{ ...TASKS_TABLE, ...expected }]);
+      expect(chartEvents(events)[0]).not.toHaveProperty("refs");
+
+      const reply = lastDone(events);
+      expect(reply.parts.charts).toEqual([{ ...TASKS_TABLE, ...expected }]);
+      expect(db.rowsOf("gesti_messages").at(-1)?.parts).toMatchObject({ charts: [expected] });
+
+      // Haiku ve la referencia, nunca el id; Sonnet tampoco.
+      const dataCalls = anthropic.createCalls.filter((call) => call.tools);
+      const haikuSaw = JSON.stringify((dataCalls[1]!.messages as any[]).at(-1));
+      expect(haikuSaw).toContain("#Rtn01-1");
+      expect(haikuSaw).not.toContain(taskId);
+      const sonnetSaw = JSON.stringify(anthropic.streamCalls.map((call) => call.messagesAtCall));
+      expect(sonnetSaw).toContain("#Rtn01-1");
+      expect(sonnetSaw).not.toMatch(UUID);
+    });
+
+    it("drops references from another turn, even when this turn issued the same number", async () => {
+      const taskId = seedTask();
+      const conversationId = seedConversation(db);
+      seedMessage(db, conversationId, "user", "¿Qué tareas tengo?", 1);
+      seedMessage(db, conversationId, "assistant", "Tenés una tarea (#Rold1-1).", 2);
+      const anthropic = createAnthropic({
+        streams: [
+          { blocks: [{ type: "tool_use", name: "consultar_cartera", input: { pregunta: "¿Qué tareas hay abiertas?" } }] },
+          { blocks: [{ type: "tool_use", name: "show_chart", input: { ...TASKS_TABLE, refs: ["#Rold1-1", "#R1", null, null] } }] },
+          { blocks: [{ type: "text", text: "Listo." }] }
+        ],
+        creates: [
+          { blocks: [{ type: "tool_use", name: "listar_tareas", input: {} }] },
+          { blocks: [{ type: "text", text: "Ref | Tarea\n#Rtn01-1 | Llamar a Ana" }] }
+        ]
+      });
+      const events = await chat(anthropic.client, { conversationId, message: "Mostrame la tabla" });
+
+      const [chart] = chartEvents(events);
+      expect(chart).toBeDefined();
+      expect(chart).not.toHaveProperty("links");
+      expect(JSON.stringify(events)).not.toContain(taskId);
+      expect(lastDone(events).parts.charts?.[0]).not.toHaveProperty("links");
+    });
+
+    it("ignores raw links and positions injected in the show_chart input", async () => {
+      const injected = { ...TASKS_TABLE, links: [{ kind: "task", id: randomUUID() }], position: 3 };
+      const anthropic = createAnthropic({
+        streams: [
+          { blocks: [{ type: "text", text: "Mirá esto:\n\n" }, { type: "tool_use", name: "show_chart", input: injected }] },
+          { blocks: [{ type: "text", text: "Listo." }] }
+        ]
+      });
+      const events = await chat(anthropic.client);
+
+      const [chart] = chartEvents(events);
+      expect(chart).not.toHaveProperty("links");
+      expect(chart?.position).toBe("Mirá esto:\n\n".length);
+      expect(JSON.stringify(events)).not.toContain(injected.links[0]!.id);
+    });
+
+    it("stores the position relative to the trimmed reply and keeps it within the stored text", async () => {
+      const anthropic = createAnthropic({
+        streams: [
+          { blocks: [{ type: "text", text: "\n\nHola mundo" }, { type: "tool_use", name: "show_chart", input: TASKS_TABLE }] },
+          { blocks: [{ type: "text", text: "" }] }
+        ]
+      });
+      const events = await chat(anthropic.client);
+
+      // Streaming: el navegador tiene el texto crudo.
+      expect(chartEvents(events)[0]?.position).toBe("\n\nHola mundo".length);
+      // Guardado: el texto se recorta, la posición lo acompaña.
+      const reply = lastDone(events);
+      expect(reply.content).toBe("Hola mundo");
+      expect(reply.parts.charts?.[0]?.position).toBe("Hola mundo".length);
+    });
+
+    it("never gives the model ids or links when it rebuilds the history", async () => {
+      const taskId = randomUUID();
+      const conversationId = seedConversation(db);
+      seedMessage(db, conversationId, "user", "¿Qué tareas tengo?", 1);
+      seedMessage(db, conversationId, "assistant", "Tenés una tarea.", 2, {
+        charts: [{ ...TASKS_TABLE, links: [{ kind: "task", id: taskId }, null, null, null], position: 4 }]
+      });
+      const anthropic = createAnthropic({ streams: [{ blocks: [{ type: "text", text: "Dale." }] }] });
+      await chat(anthropic.client, { conversationId, message: "Gracias" });
+
+      const sent = JSON.stringify(anthropic.streamCalls[0]!.messagesAtCall);
+      expect(sent).toContain("[Gráfico mostrado: Tareas abiertas]");
+      expect(sent).not.toContain(taskId);
+      expect(sent).not.toMatch(/"links"|"position"|clientId|policyId/);
+    });
   });
 
   it.each([
@@ -968,6 +1101,17 @@ describe("MAIN_SYSTEM_PROMPT", () => {
     expect(DATA_AGENT_PROMPT).toMatch(/un registro por línea/);
     expect(DATA_AGENT_PROMPT).toContain(" | ");
   });
+
+  it("has Gesti pass the record references to show_chart and never write them in the text", () => {
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/refs de show_chart/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca las escribas en el texto/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/en el punto de tu respuesta donde querés que aparezca/);
+  });
+
+  it("has the data agent keep each record's reference on its line", () => {
+    expect(DATA_AGENT_PROMPT).toMatch(/Mantenela en la línea de ese registro/);
+    expect(DATA_AGENT_PROMPT).toContain("Ref | Vence");
+  });
 });
 
 describe("buildHistory", () => {
@@ -999,6 +1143,27 @@ describe("buildHistory", () => {
           "El tope es $10 y sube.\n[Gráfico mostrado: Cartera]\n[Pregunta hecha al usuario: ¿Cuál?]\n[Archivo generado: carta.docx · file_id: d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2]"
       }
     ]);
+  });
+
+  it("never includes chart links or ids, only the chart title", () => {
+    const history = buildHistory([
+      message("user", "Mostrame las tareas"),
+      message("assistant", "Acá están.", {
+        charts: [
+          {
+            kind: "table",
+            title: "Tareas",
+            columns: ["a"],
+            rows: [["x"]],
+            links: [{ kind: "policy", id: "p-secret-id", clientId: "c-secret-id" }],
+            position: 5
+          }
+        ]
+      })
+    ]);
+
+    expect(JSON.stringify(history)).not.toMatch(/secret|links|clientId|position/);
+    expect(history[1]).toEqual({ role: "assistant", content: "Acá están.\n[Gráfico mostrado: Tareas]" });
   });
 
   it("drops notice replies, leading assistant messages and merges same-role neighbours", () => {
