@@ -29,6 +29,7 @@ type TeamMemberProfile = {
   email: string;
   full_name: string;
   is_active: boolean;
+  platform_role?: string;
 };
 
 type TeamMembershipRecord = {
@@ -182,9 +183,14 @@ export class OrganizationsService {
     let createdAuthUserId: string | null = null;
 
     if (profile) {
-      // Bloquea agregar (y luego poder editar credenciales de) usuarios que ya
-      // pertenecen a otra organización: evita el takeover cross-tenant.
-      await this.assertUserBelongsOnlyToOrganization(organization.id, profile.id);
+      // Un correo existente solo se reutiliza si es un ex integrante de ESTA
+      // organización (membresía activa o inactiva). Cualquier otro perfil no se
+      // toca: evita el takeover de cuentas ajenas, de admins o de otras orgs.
+      this.assertNotPlatformAdmin(profile);
+      if (!(await this.hasMembershipIn(organization.id, profile.id))) {
+        throw new BadRequestException("Ya existe un usuario con ese correo.");
+      }
+      await this.assertUserBelongsOnlyToOrganization(organization.id, profile);
     }
 
     if (!profile) {
@@ -278,17 +284,16 @@ export class OrganizationsService {
     if (membership.user_id === user.id) {
       throw new BadRequestException("No podés editar tu propio usuario desde Equipo");
     }
-    // El cambio de email afecta la cuenta global del usuario: solo se permite si
-    // el usuario pertenece exclusivamente a esta organización.
-    await this.assertUserBelongsOnlyToOrganization(organization.id, membership.user_id);
-
-    if (membership.role === "productor" && dto.role !== "productor") {
-      await this.assertNotLastActiveProducer(organization.id, membership.id);
-    }
-
     const profile = this.getMembershipProfile(membership);
     if (!profile) {
       throw new NotFoundException("Team member profile not found");
+    }
+    // El cambio de email afecta la cuenta global del usuario: solo se permite si
+    // el usuario pertenece exclusivamente a esta organización.
+    await this.assertUserBelongsOnlyToOrganization(organization.id, profile);
+
+    if (membership.role === "productor" && dto.role !== "productor") {
+      await this.assertNotLastActiveProducer(organization.id, membership.id);
     }
 
     const existingProfile = await this.findProfileByEmail(dto.email);
@@ -358,9 +363,13 @@ export class OrganizationsService {
     if (membership.user_id === user.id) {
       throw new BadRequestException("No podés cambiar tu propia contraseña desde Equipo");
     }
+    const profile = this.getMembershipProfile(membership);
+    if (!profile) {
+      throw new NotFoundException("Team member profile not found");
+    }
     // La contraseña es de la cuenta global del usuario: solo se permite si el
     // usuario pertenece exclusivamente a esta organización.
-    await this.assertUserBelongsOnlyToOrganization(organization.id, membership.user_id);
+    await this.assertUserBelongsOnlyToOrganization(organization.id, profile);
 
     const { error } = await this.supabase.admin.auth.admin.updateUserById(
       membership.user_id,
@@ -492,7 +501,7 @@ export class OrganizationsService {
   private async getTeamMembership(organizationId: string, membershipId: string) {
     const { data, error } = await this.supabase.admin
       .from("organization_memberships")
-      .select("id,user_id,role,is_active,created_at,user_profiles(id,email,full_name,is_active)")
+      .select("id,user_id,role,is_active,created_at,user_profiles(id,email,full_name,is_active,platform_role)")
       .eq("id", membershipId)
       .eq("organization_id", organizationId)
       .maybeSingle<TeamMembershipRecord>();
@@ -523,12 +532,37 @@ export class OrganizationsService {
     };
   }
 
-  private async assertUserBelongsOnlyToOrganization(organizationId: string, userId: string) {
+  // Los admins de plataforma nunca se gestionan desde Equipo (pueden no tener
+  // membresías, así que ningún chequeo por organización los cubre).
+  private assertNotPlatformAdmin(profile: TeamMemberProfile) {
+    if (profile.platform_role === "platform_admin") {
+      throw new ForbiddenException("Ese usuario no puede gestionarse desde Equipo.");
+    }
+  }
+
+  private async hasMembershipIn(organizationId: string, userId: string) {
     const { count, error } = await this.supabase.admin
       .from("organization_memberships")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
-      .eq("is_active", true)
+      .eq("organization_id", organizationId);
+
+    if (error) {
+      throw supabaseError(this.logger, "organizations.hasMembershipIn", error, "No se pudo validar el usuario.");
+    }
+
+    return Boolean(count);
+  }
+
+  private async assertUserBelongsOnlyToOrganization(organizationId: string, profile: TeamMemberProfile) {
+    this.assertNotPlatformAdmin(profile);
+
+    // Cuenta también las membresías inactivas: un ex empleado desactivado en otra
+    // organización sigue siendo una cuenta ajena.
+    const { count, error } = await this.supabase.admin
+      .from("organization_memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", profile.id)
       .neq("organization_id", organizationId);
 
     if (error) {
@@ -561,7 +595,7 @@ export class OrganizationsService {
   private async findProfileByEmail(email: string) {
     const { data, error } = await this.supabase.admin
       .from("user_profiles")
-      .select("id,email,full_name,is_active")
+      .select("id,email,full_name,is_active,platform_role")
       .eq("email", email)
       .limit(1)
       .maybeSingle();
