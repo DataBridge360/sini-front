@@ -759,6 +759,11 @@
   margin-top: 10px;
 }
 
+/* Gráfico o tabla dentro de la respuesta, entre dos bloques de texto. */
+.gesti-stream-body > .gesti-stream-embed {
+  margin-block: 14px;
+}
+
 .gesti-stream-text strong,
 .gesti-stream-list strong {
   font-weight: 650;

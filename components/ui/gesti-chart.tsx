@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   donutSlicePath,
@@ -11,14 +11,16 @@ import {
   isNumericColumn,
   niceTicks,
   planXLabels,
+  recordLinkLabel,
   shouldCompact,
   shouldIncludeZero,
-  sortRows,
   summarizeChart,
+  tableEntries,
   truncateLabel,
+  type ChartCell,
   type SortDirection
 } from "@/lib/gesti-chart-format";
-import type { ChartSpec } from "@/lib/gesti-parts";
+import type { ChartLink, ChartSpec } from "@/lib/gesti-parts";
 
 // Gráficos de Gesti dentro de un mensaje del asistente (S6). SVG propio, sin
 // librerías de gráficos. Estilos en app/gesti-chart.css.
@@ -64,14 +66,21 @@ function useElementWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
-export function GestiChart({ chart }: { chart: ChartSpec }) {
+export function GestiChart({
+  chart,
+  onOpenRecord
+}: {
+  chart: ChartSpec;
+  /** Abre el registro de una fila de tabla. Sin esto (demo pública) las filas no son clickeables. */
+  onOpenRecord?: ((link: ChartLink) => void) | undefined;
+}) {
   return (
     <figure className="gesti-chart" data-kind={chart.kind}>
       <figcaption className="gesti-chart-head">
         <span className="gesti-chart-title">{chart.title}</span>
         {chart.subtitle ? <span className="gesti-chart-subtitle">{chart.subtitle}</span> : null}
       </figcaption>
-      {chart.kind === "table" ? <ChartTable chart={chart} /> : <ChartBody chart={chart} />}
+      {chart.kind === "table" ? <ChartTable chart={chart} onOpenRecord={onOpenRecord} /> : <ChartBody chart={chart} />}
     </figure>
   );
 }
@@ -478,13 +487,25 @@ function PieChart({ data }: { data: ChartData }) {
 
 // ---------- Tabla ----------
 
-function ChartTable({ chart }: { chart: ChartSpec }) {
+function firstCell(row: ChartCell[]) {
+  return row.find((cell) => cell !== null && String(cell).trim() !== "") ?? null;
+}
+
+function ChartTable({
+  chart,
+  onOpenRecord
+}: {
+  chart: ChartSpec;
+  onOpenRecord: ((link: ChartLink) => void) | undefined;
+}) {
   const columns = chart.columns ?? [];
   const rows = chart.rows ?? [];
   const [sort, setSort] = useState<{ column: number; direction: SortDirection } | null>(null);
 
   const numeric = columns.map((_, column) => isNumericColumn(rows, column));
-  const sorted = sort ? sortRows(rows, sort.column, sort.direction) : rows;
+  // Cada fila viaja con su enlace: ordenar la tabla no cambia a qué registro abre.
+  const entries = tableEntries(rows, chart.links, sort);
+  const open = onOpenRecord && entries.some((entry) => entry.link) ? onOpenRecord : null;
 
   if (columns.length === 0) return <p className="gesti-chart-empty">Sin datos para mostrar.</p>;
 
@@ -516,11 +537,21 @@ function ChartTable({ chart }: { chart: ChartSpec }) {
                 </th>
               );
             })}
+            {open ? (
+              <th scope="col" className="gesti-chart-open-head">
+                <span className="gesti-sr-only">Abrir</span>
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row, rowPosition) => (
-            <tr key={rowPosition}>
+          {entries.map(({ row, link, index }) => (
+            // El clic en la fila es comodidad con el mouse; con teclado y lector de pantalla se usa el botón.
+            <tr
+              key={index}
+              data-interactive={open && link ? "true" : undefined}
+              onClick={open && link ? () => open(link) : undefined}
+            >
               {columns.map((_, position) => {
                 const cell = row[position] ?? null;
                 return (
@@ -529,6 +560,15 @@ function ChartTable({ chart }: { chart: ChartSpec }) {
                   </td>
                 );
               })}
+              {open ? (
+                <td className="gesti-chart-open-cell">
+                  {link ? (
+                    <button type="button" className="gesti-chart-open" aria-label={recordLinkLabel(link.kind, firstCell(row))}>
+                      <ChevronRight size={15} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

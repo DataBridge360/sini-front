@@ -226,8 +226,8 @@ function compareText(left: string, right: string) {
   return left.localeCompare(right, LOCALE, { numeric: true, sensitivity: "base" });
 }
 
-/** Ordena sin mutar; las celdas vacías van siempre al final. Las fechas dd/mm, por fecha. Estable. */
-export function sortRows(rows: ChartCell[][], column: number, direction: SortDirection) {
+/** Posiciones originales de las filas, ya ordenadas. Las celdas vacías van siempre al final. Las fechas dd/mm, por fecha. Estable. */
+function sortedIndexes(rows: ChartCell[][], column: number, direction: SortDirection) {
   const factor = direction === "asc" ? 1 : -1;
   return rows
     .map((row, index) => ({ row, index }))
@@ -244,7 +244,72 @@ export function sortRows(rows: ChartCell[][], column: number, direction: SortDir
           : compareText(String(left), String(right));
       return result === 0 ? a.index - b.index : result * factor;
     })
-    .map((item) => item.row);
+    .map((item) => item.index);
+}
+
+/** Ordena sin mutar; las celdas vacías van siempre al final. Las fechas dd/mm, por fecha. Estable. */
+export function sortRows(rows: ChartCell[][], column: number, direction: SortDirection) {
+  return sortedIndexes(rows, column, direction).map((index) => rows[index] as ChartCell[]);
+}
+
+export type TableEntry<L> = { row: ChartCell[]; link: L | null; index: number };
+
+/**
+ * Las filas de una tabla en el orden a mostrar, cada una con SU enlace (el de
+ * la fila original, también después de ordenar) y su posición original.
+ */
+export function tableEntries<L>(
+  rows: ChartCell[][],
+  links: ReadonlyArray<L | null> | undefined,
+  sort: { column: number; direction: SortDirection } | null
+): Array<TableEntry<L>> {
+  const order = sort ? sortedIndexes(rows, sort.column, sort.direction) : rows.map((_, index) => index);
+  return order.map((index) => ({ row: rows[index] as ChartCell[], link: links?.[index] ?? null, index }));
+}
+
+const LINK_LABELS = {
+  task: "tarea",
+  policy: "póliza",
+  notice: "aviso de pago",
+  client: "asegurado",
+  company: "compañía"
+} as const;
+
+export type RecordDestination =
+  | { tab: "tasks"; taskId: string }
+  | { tab: "clients"; clientId: string; policyId: string | null }
+  | { tab: "companies" };
+
+/**
+ * A dónde lleva el enlace de una fila: una tarea abre su detalle; una póliza o
+ * un aviso (que abre su póliza) la ficha del asegurado con esa póliza abierta;
+ * un asegurado, su ficha; una compañía, la pestaña de compañías. Null si falta
+ * algún id para poder abrirlo.
+ */
+export function recordDestination(link: {
+  kind: keyof typeof LINK_LABELS;
+  id: string;
+  clientId?: string | undefined;
+  policyId?: string | undefined;
+}): RecordDestination | null {
+  switch (link.kind) {
+    case "task":
+      return { tab: "tasks", taskId: link.id };
+    case "policy":
+      return link.clientId ? { tab: "clients", clientId: link.clientId, policyId: link.id } : null;
+    case "notice":
+      return link.clientId && link.policyId ? { tab: "clients", clientId: link.clientId, policyId: link.policyId } : null;
+    case "client":
+      return { tab: "clients", clientId: link.id, policyId: null };
+    case "company":
+      return { tab: "companies" };
+  }
+}
+
+/** Etiqueta accesible de una fila clickeable: "Abrir tarea: Llamar a Ana". */
+export function recordLinkLabel(kind: keyof typeof LINK_LABELS, cell: ChartCell | undefined): string {
+  const name = cell === null || cell === undefined ? "" : String(cell).trim();
+  return name ? `Abrir ${LINK_LABELS[kind]}: ${name}` : `Abrir ${LINK_LABELS[kind]}`;
 }
 
 // ---------- Torta ----------

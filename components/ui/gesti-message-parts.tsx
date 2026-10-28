@@ -2,24 +2,12 @@
 
 import { useState } from "react";
 import { Download, File as FileIcon, FileImage, FileSpreadsheet, FileText, Loader2, MessageCircleQuestion } from "lucide-react";
-import { GestiChart } from "@/components/ui/gesti-chart";
 import { isSafeSourceUrl } from "@/lib/gesti-stream-text";
-import type { ChartSpec, GestiFileRef, GestiQuestion } from "@/lib/gesti-parts";
+import type { GestiFileRef, GestiQuestion } from "@/lib/gesti-parts";
 import { formatFileSize } from "@/lib/task-attachments";
 
-// Lo que acompaña al texto de una respuesta de Gesti: gráficos, la pregunta
-// con opciones y los archivos que generó. El texto en sí está en streaming-text.tsx.
-
-export function GestiCharts({ charts }: { charts: ChartSpec[] }) {
-  if (charts.length === 0) return null;
-  return (
-    <div className="gesti-parts">
-      {charts.map((chart, index) => (
-        <GestiChart key={`${index}-${chart.title}`} chart={chart} />
-      ))}
-    </div>
-  );
-}
+// Lo que acompaña al texto de una respuesta de Gesti: la pregunta con opciones
+// y los archivos que generó. El texto y los gráficos están en streaming-text.tsx.
 
 /**
  * Pregunta de Gesti con 2-4 opciones. Solo se puede contestar en la última

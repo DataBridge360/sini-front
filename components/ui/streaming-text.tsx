@@ -17,6 +17,9 @@ import { Modal } from "@/components/ui/modal";
 import type { WebSource } from "@/lib/gesti-parts";
 import {
   INITIAL_REVEAL,
+  blockRanges,
+  embedRevealed,
+  embedSlots,
   isSafeSourceUrl,
   parseBlocks,
   sourceDomain,
@@ -34,7 +37,9 @@ import {
 // rápido de lo que se lee. Dibuja el subconjunto de markdown que usa Gesti
 // (**negrita**, viñetas, listas numeradas, borradores copiables y citas [[n]]).
 // Recién al terminar se habilitan las acciones, las fuentes y las preguntas de
-// seguimiento.
+// seguimiento. Los gráficos y tablas (`embeds`) se dibujan dentro de la
+// respuesta, en el hueco entre bloques donde Gesti los mostró y siempre arriba
+// de las acciones.
 
 const COPY_FEEDBACK_MS = 1800;
 const DRAFT_COPY_FEEDBACK_MS = 1500;
@@ -103,6 +108,16 @@ function CitationChip({ citation }: { citation: Citation }) {
     </button>
   );
 }
+
+/** Algo que va dentro de la respuesta, en el lugar del texto donde Gesti lo mostró. */
+export type StreamingEmbed = {
+  key: string;
+  /** Caracteres de texto escritos cuando se mostró; sin esto (mensajes viejos), después del texto. */
+  position: number | undefined;
+  node: ReactNode;
+};
+
+const NO_EMBEDS: StreamingEmbed[] = [];
 
 type Feedback = "up" | "down" | null;
 type CopyState = "idle" | "copied" | "failed";
@@ -268,6 +283,7 @@ export function StreamingText({
   onFollowUp,
   onRetry,
   onProgress,
+  embeds = NO_EMBEDS,
   instant = false
 }: {
   /** Todo lo recibido hasta ahora. */
@@ -282,6 +298,8 @@ export function StreamingText({
   onRetry?: () => void;
   /** Se llama en cada palabra nueva, para que el contenedor siga el scroll. */
   onProgress?: () => void;
+  /** Gráficos y tablas de la respuesta, en el orden en que Gesti los mostró. */
+  embeds?: StreamingEmbed[];
   /** Muestra el texto completo de entrada (un chat del historial). Solo cuenta al montar. */
   instant?: boolean;
 }) {
@@ -298,6 +316,27 @@ export function StreamingText({
   const streaming = !complete;
   const visible = complete ? text : text.slice(0, ends[shown - 1] ?? 0);
   const blocks = useMemo(() => parseBlocks(visible, { complete }), [visible, complete]);
+
+  // Cada embed va en un hueco entre bloques (nunca partiendo uno) y aparece
+  // cuando el texto revelado llega a su posición.
+  const ranges = useMemo(() => blockRanges(text), [text]);
+  const slots = embedSlots(
+    ranges,
+    embeds.map((embed) => embed.position),
+    text.length
+  );
+  const revealedLength = complete ? text.length : (ends[shown - 1] ?? 0);
+  const embedsAt = (slot: number) =>
+    embeds.flatMap((embed, index) =>
+      Math.min(slots[index] ?? blocks.length, blocks.length) === slot &&
+      embedRevealed(embed.position, text.length, revealedLength, complete)
+        ? [
+            <div key={`embed-${embed.key}`} className="gesti-stream-embed">
+              {embed.node}
+            </div>
+          ]
+        : []
+    );
 
   // El ritmo sale del reloj y no de encadenar timeouts (ver stepReveal): si un
   // cuadro se atrasa, el siguiente muestra las palabras pendientes juntas.
@@ -376,7 +415,8 @@ export function StreamingText({
   return (
     <div className="gesti-stream">
       <div className="gesti-stream-body" aria-busy={streaming}>
-        {blocks.map(renderBlock)}
+        {embedsAt(0)}
+        {blocks.flatMap((block, index) => [renderBlock(block, index), ...embedsAt(index + 1)])}
         {caretOnOwnLine ? (
           <p className="gesti-stream-text">
             <Caret step={shown} />

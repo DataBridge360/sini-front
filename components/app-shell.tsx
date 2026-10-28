@@ -43,6 +43,8 @@ import {
 import { readTransitionMs, useIsWideScreen } from "@/lib/browser";
 import { normalizeHexColor, organizationThemeStyle } from "@/lib/colors";
 import { emptyToNull, roleLabel } from "@/lib/format";
+import { recordDestination } from "@/lib/gesti-chart-format";
+import type { ChartLink } from "@/lib/gesti-parts";
 import { countUrgentNotices } from "@/lib/notices";
 import {
   type NoticeNoteApi,
@@ -188,6 +190,27 @@ export function AppShell() {
       setTab("tasks");
     },
     [setTab]
+  );
+
+  // Una fila de tabla de Gesti abre el registro que lista (tarea, póliza, asegurado, compañía).
+  const openRecord = useCallback(
+    (link: ChartLink) => {
+      const destination = recordDestination(link);
+      if (!destination) return;
+      if (destination.tab === "tasks") {
+        openTask(destination.taskId);
+        return;
+      }
+      if (destination.tab === "clients") {
+        setOpenPolicyId(destination.policyId);
+        setClientDetailId(destination.clientId);
+      } else {
+        setOpenPolicyId(null);
+        setClientDetailId(null);
+      }
+      setTab(destination.tab);
+    },
+    [openTask, setTab]
   );
 
   const dismissToast = useCallback((id: string) => {
@@ -802,6 +825,7 @@ export function AppShell() {
               organizationSlug={common.organizationSlug}
               canSeeUsage={canManageOrganization}
               onNavigate={setTab}
+              onOpenRecord={openRecord}
             />
           ) : null}
           {tab === "team" && canManageOrganization ? (

@@ -35,8 +35,8 @@ import {
 } from "lucide-react";
 import { GestiChatHeader, GestiHistoryPanel, type ChatHeaderProps, type HistoryActions } from "@/components/ui/gesti-history-panel";
 import { GestiLoader } from "@/components/ui/gesti-loader";
+import { GestiChart } from "@/components/ui/gesti-chart";
 import {
-  GestiCharts,
   GestiDocumentCards,
   GestiQuestionCard,
   useFileDownload
@@ -67,7 +67,7 @@ import {
   toHistoryChat,
   type HistoryChat
 } from "@/lib/gesti-history";
-import type { AppSource, MessageParts } from "@/lib/gesti-parts";
+import type { AppSource, ChartLink, MessageParts } from "@/lib/gesti-parts";
 import type { Tab } from "@/lib/shell-types";
 import { formatFileSize } from "@/lib/task-attachments";
 import { dictationErrorMessage, dictationPhaseLabel, mergeDictation, useDictation } from "@/lib/use-dictation";
@@ -838,6 +838,7 @@ export function AIAssistantInterface({
   userName,
   backend,
   onNavigate,
+  onOpenRecord,
   usageScope = "default",
   cacheScope
 }: {
@@ -846,6 +847,8 @@ export function AIAssistantInterface({
   backend: GestiBackend;
   /** Sin esto (demo) las fuentes se muestran pero no navegan. */
   onNavigate?: (tab: Tab) => void;
+  /** Abre el registro de una fila de tabla (tarea, póliza, cliente…). Sin esto (demo) las filas no son clickeables. */
+  onOpenRecord?: (link: ChartLink) => void;
   /** Separa el caché del consumo por organización. */
   usageScope?: string;
   /**
@@ -1509,6 +1512,11 @@ export function AIAssistantInterface({
                         onFollowUp={sendQuickReply}
                         {...(failed && isLast && !busy ? { onRetry: retryLast } : {})}
                         onProgress={scrollToEnd}
+                        embeds={(parts.charts ?? []).map((chart, index) => ({
+                          key: `${index}-${chart.title}`,
+                          position: chart.position,
+                          node: <GestiChart chart={chart} onOpenRecord={onOpenRecord} />
+                        }))}
                       />
                     ) : null}
                     {working && (!hasText || message.status) ? (
@@ -1516,7 +1524,13 @@ export function AIAssistantInterface({
                         {message.status ?? "Gesti está pensando…"}
                       </p>
                     ) : null}
-                    <GestiCharts charts={parts.charts ?? []} />
+                    {hasText || !parts.charts?.length ? null : (
+                      <div className="gesti-parts">
+                        {parts.charts.map((chart, index) => (
+                          <GestiChart key={`${index}-${chart.title}`} chart={chart} onOpenRecord={onOpenRecord} />
+                        ))}
+                      </div>
+                    )}
                     <GestiDocumentCards documents={parts.documents ?? []} resolveUrl={backend.fileUrl} />
                     {parts.question ? (
                       <GestiQuestionCard

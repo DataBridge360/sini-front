@@ -6,6 +6,7 @@ import { authStorage } from "@/lib/api";
 import { createGestiApiBackend } from "@/lib/gesti-api";
 import { gestiCacheScope } from "@/lib/gesti-cache";
 import { createDemoBackend } from "@/lib/gesti-demo";
+import type { ChartLink } from "@/lib/gesti-parts";
 import type { Tab } from "@/lib/shell-types";
 
 // Gesti en el CRM: el chat vive en `AIAssistantInterface` (también lo usa la
@@ -17,7 +18,8 @@ export function GestiView({
   userName,
   organizationSlug,
   canSeeUsage,
-  onNavigate
+  onNavigate,
+  onOpenRecord
 }: {
   userId: string;
   userName: string;
@@ -25,6 +27,8 @@ export function GestiView({
   /** Productor o admin de plataforma: ve el consumo del mes. */
   canSeeUsage: boolean;
   onNavigate: (tab: Tab) => void;
+  /** Abre el registro de una fila de tabla en la CRM. */
+  onOpenRecord: (link: ChartLink) => void;
 }) {
   // El token se renueva con la sesión: el backend lo lee del almacenamiento de
   // la sesión en cada pedido, así no se recrea (recrearlo volvería a pedir la
@@ -45,6 +49,7 @@ export function GestiView({
       userName={userName}
       backend={backend}
       onNavigate={onNavigate}
+      onOpenRecord={onOpenRecord}
       usageScope={organizationSlug ?? "none"}
       cacheScope={gestiCacheScope(userId, organizationSlug)}
     />

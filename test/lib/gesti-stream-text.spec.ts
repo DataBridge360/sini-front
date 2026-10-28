@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   INITIAL_REVEAL,
+  blockRanges,
+  embedRevealed,
+  embedSlots,
   MAX_LAG_MS,
   WORD_MS,
   parseBlocks,
@@ -177,5 +180,81 @@ describe("sources", () => {
     expect(isSafeSourceUrl("javascript:alert(1)")).toBe(false);
     expect(isSafeSourceUrl("data:text/html,hola")).toBe(false);
     expect(isSafeSourceUrl("nada")).toBe(false);
+  });
+});
+
+describe("blockRanges", () => {
+  it("returns where every block starts and ends in the original text", () => {
+    const text = "Intro\n\n• a\n• b\n\nCierre";
+    expect(blockRanges(text)).toEqual([
+      { start: 0, end: 5 },
+      { start: 7, end: 14 },
+      { start: 16, end: 22 }
+    ]);
+    expect(blockRanges(text).map(({ start, end }) => text.slice(start, end))).toEqual(["Intro", "• a\n• b", "Cierre"]);
+  });
+
+  it("matches parseBlocks one to one, drafts included", () => {
+    const text = "Antes\n\n:::borrador\nHola Ana\n\nSaludos\n:::\n\n1. uno\n2. dos\n\nDespués";
+    const ranges = blockRanges(text);
+    expect(ranges).toHaveLength(parseBlocks(text).length);
+    expect(text.slice(ranges[1]!.start, ranges[1]!.end)).toBe(":::borrador\nHola Ana\n\nSaludos\n:::");
+  });
+
+  it("takes an unclosed draft to the end of the text", () => {
+    const text = "Antes\n\n:::borrador\nHola";
+    expect(blockRanges(text)[1]).toEqual({ start: 7, end: text.length });
+  });
+
+  it("counts offsets in the original text when it has CRLF line breaks", () => {
+    const text = "Uno\r\n\r\nDos";
+    expect(blockRanges(text).map(({ start, end }) => text.slice(start, end))).toEqual(["Uno", "Dos"]);
+  });
+
+  it("ignores blank text", () => {
+    expect(blockRanges("")).toEqual([]);
+    expect(blockRanges("  \n\n ")).toEqual([]);
+  });
+});
+
+describe("embedSlots", () => {
+  const text = "Intro\n\n• a\n• b\n\nCierre";
+  const ranges = blockRanges(text);
+
+  it("puts the chart after the block that was being written, never inside it", () => {
+    // 0: antes de todo · 5: justo al terminar "Intro" · 6 y 7: en el hueco · 8 y 14: dentro de la lista · 15 y 99: después.
+    expect(embedSlots(ranges, [0, 5, 6, 7, 8, 14, 15, 17, 22, 99], text.length)).toEqual([0, 1, 1, 1, 2, 2, 2, 3, 3, 3]);
+  });
+
+  it("clamps positions to the text, and sends old messages (no position) after the text", () => {
+    expect(embedSlots(ranges, [undefined, -5, Number.NaN, 1_000_000], text.length)).toEqual([3, 0, 3, 3]);
+  });
+
+  it("keeps charts in the order they were shown", () => {
+    const slots = embedSlots(ranges, [5, 5, 16], text.length);
+    expect(slots).toEqual([...slots].sort((a, b) => a - b));
+  });
+
+  it("handles a reply with no blocks", () => {
+    expect(embedSlots([], [0, 10, undefined], 0)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("embedRevealed", () => {
+  it("shows a chart once the revealed text reaches its position", () => {
+    expect(embedRevealed(40, 100, 39, false)).toBe(false);
+    expect(embedRevealed(40, 100, 40, false)).toBe(true);
+    expect(embedRevealed(0, 100, 0, false)).toBe(true);
+  });
+
+  it("clamps the position to the text and shows everything once the text is complete", () => {
+    expect(embedRevealed(500, 100, 99, false)).toBe(false);
+    expect(embedRevealed(500, 100, 100, false)).toBe(true);
+    expect(embedRevealed(500, 100, 20, true)).toBe(true);
+  });
+
+  it("shows charts without a position only when the text is complete", () => {
+    expect(embedRevealed(undefined, 100, 100, false)).toBe(false);
+    expect(embedRevealed(undefined, 100, 100, true)).toBe(true);
   });
 });
