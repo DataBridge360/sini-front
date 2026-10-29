@@ -175,7 +175,7 @@ describe("buildTaskFeed", () => {
       ["Hoy", "Pendiente"],
       ["Mañana", "Pendiente"],
       ["Jue 29", "Pendiente"],
-      ["Vie 20", "Pendiente"],
+      ["Vie 20 nov", "Pendiente"],
       ["Por aprobar", "En revisión"]
     ]);
     expect([shown, total]).toEqual([7, 7]);
@@ -300,8 +300,22 @@ describe("buildUpcomingList / shortDayLabel", () => {
   });
 
   it("formats a date as weekday and day", () => {
-    expect(shortDayLabel("2026-10-29")).toBe("Jue 29");
-    expect(shortDayLabel("2026-11-01")).toBe("Dom 1");
+    const now = new Date(2026, 9, 26);
+    expect(shortDayLabel("2026-10-29", now)).toBe("Jue 29");
+    expect(shortDayLabel("2026-10-31", now)).toBe("Sáb 31");
+  });
+
+  it("adds the month when the date falls in another month than today", () => {
+    const now = new Date(2026, 9, 26);
+    expect(shortDayLabel("2026-11-01", now)).toBe("Dom 1 nov");
+    expect(shortDayLabel("2026-12-21", now)).toBe("Lun 21 dic");
+    expect(shortDayLabel("2027-01-05", new Date(2026, 11, 30))).toBe("Mar 5 ene");
+  });
+
+  it("labels upcoming feed rows in another month with the month", () => {
+    const groups = groupsOf([task({ id: "next-month", due_date: "2026-11-23" })]);
+    const rows = buildTaskFeed(groups, 5).sections.flatMap((section) => section.rows);
+    expect(rows.find((row) => row.task.id === "next-month")?.dueLabel).toBe("Lun 23 nov");
   });
 });
 
