@@ -172,11 +172,20 @@ export function taskContext(task: Task) {
 
 const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
-// "Jue 29" para una fecha "YYYY-MM-DD".
-export function shortDayLabel(date: string) {
+const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function parseDay(date: string) {
   const [year, month, day] = date.split("-").map(Number);
-  const target = new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
-  return `${WEEKDAYS[target.getDay()]} ${target.getDate()}`;
+  return new Date(year ?? 0, (month ?? 1) - 1, day ?? 1);
+}
+
+// "Jue 29" para una fecha "YYYY-MM-DD"; "Lun 21 dic" si cae en otro mes que
+// `now`, para que no se confunda con un día de este mes.
+export function shortDayLabel(date: string, now: Date = new Date()) {
+  const target = parseDay(date);
+  const label = `${WEEKDAYS[target.getDay()]} ${target.getDate()}`;
+  const sameMonth = target.getMonth() === now.getMonth() && target.getFullYear() === now.getFullYear();
+  return sameMonth ? label : `${label} ${MONTHS[target.getMonth()]}`;
 }
 
 // Lo propio que vence después de mañana, lo más cercano primero. Las tareas
@@ -235,7 +244,10 @@ function feedDueLabel(item: WorkItem) {
   if (days < 0) return days === -1 ? "Ayer" : `Hace ${Math.abs(days)} días`;
   if (days === 0) return "Hoy";
   if (days === 1) return "Mañana";
-  return shortDayLabel(date);
+  // El "hoy" con el que se calculó `daysUntilDue`, no el reloj actual.
+  const today = parseDay(date);
+  today.setDate(today.getDate() - days);
+  return shortDayLabel(date, today);
 }
 
 // El listado del inicio, como los movimientos de una billetera: tramos por
