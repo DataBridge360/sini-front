@@ -18,7 +18,30 @@ describe("pickReply", () => {
 
   it("explains instead of inventing data for portfolio questions", () => {
     expect(pickReply("¿Qué pólizas vencen esta semana?").text).toContain("Todavía no tengo acceso");
-    expect(pickReply("¿Quiénes tienen cuotas pendientes?").text).toContain("te voy a inventar");
+    expect(pickReply("¿Quiénes tienen cuotas pendientes?").text).toContain("no le voy a inventar");
+  });
+
+  it("addresses the user and the draft recipients as usted", () => {
+    const prompts = [
+      "Redactá un mensaje de bienvenida para un cliente nuevo",
+      "Redactá un mensaje para pedir documentación de un siniestro",
+      "Redactá un mensaje para explicarle las coberturas",
+      "Redactá un mensaje para recordar una cuota de pago",
+      "Redactá un recordatorio de vencimiento",
+      "¿Qué diferencia hay entre terceros completo y todo riesgo?",
+      "¿Cómo le explico los pasos de un reclamo?",
+      "¿Qué documentación necesito para un siniestro?",
+      "¿Qué pólizas vencen esta semana?",
+      "¿Quiénes tienen cuotas pendientes?",
+      "¿Qué tareas tiene el equipo?",
+      "Resumí la cartera",
+      "hola"
+    ];
+    const voseoOrTuteo =
+      /\b(tenés|podés|querés|necesitás|causás|ves|sepas|avisá|confirmá|confirmalos|completá|encontrás|probá|ignorá|avisame|respondeme|envíes|estás|te|tu|tus|vos)\b/i;
+    for (const prompt of prompts) {
+      expect(pickReply(prompt).text, prompt).not.toMatch(voseoOrTuteo);
+    }
   });
 
   it("falls back for anything else", () => {

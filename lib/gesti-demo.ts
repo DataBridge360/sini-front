@@ -30,7 +30,7 @@ type Reply = {
   followUps: string[];
 };
 
-const NOT_CONNECTED = "Todavía no tengo acceso a los datos de tu cartera";
+const NOT_CONNECTED = "Todavía no tengo acceso a los datos de su cartera";
 
 const Q_EXPIRING = "¿Qué pólizas vencen esta semana?";
 const Q_PAYMENTS = "¿Qué asegurados tienen cuotas pendientes?";
@@ -46,10 +46,10 @@ const D_PAYMENT = "Redactá un mensaje para recordar una cuota de pago";
 const REPLY_COVERAGE: Reply = {
   text:
     "Las coberturas de auto se arman por niveles, y los nombres cambian según la compañía:\n" +
-    "• **Responsabilidad civil:** cubre los daños que causás a terceros, pero no los de tu propio vehículo.\n" +
+    "• **Responsabilidad civil:** cubre los daños que se causan a terceros, pero no los del propio vehículo.\n" +
     "• **Terceros completo:** suma robo e incendio y, según la compañía, cristales, cerraduras o granizo.\n" +
     "• **Todo riesgo:** cubre además los daños propios por choque o vuelco, normalmente con una franquicia.\n" +
-    "La franquicia es el monto que paga el asegurado antes de que la compañía responda. Los alcances exactos están en las condiciones de cada póliza: confirmalos en [cite] antes de asesorar.",
+    "La franquicia es el monto que paga el asegurado antes de que la compañía responda. Los alcances exactos están en las condiciones de cada póliza: confírmelos en [cite] antes de asesorar.",
   sources: ["policies", "companies"],
   followUps: [D_COVERAGE, Q_CLAIM_DOCS]
 };
@@ -62,7 +62,7 @@ const REPLY_CLAIM_STEPS: Reply = {
     "3. Hacer la denuncia a la compañía dentro del plazo de la póliza.\n" +
     "4. Presentar la documentación que pida la compañía.\n" +
     "5. Esperar la inspección o la liquidación y consultar el estado del trámite.\n" +
-    "Los tiempos y los requisitos varían según la compañía: el contacto de siniestros de cada una lo tenés en [cite].",
+    "Los tiempos y los requisitos varían según la compañía: el contacto de siniestros de cada una lo encuentra en [cite].",
   sources: ["companies", "policies"],
   followUps: [Q_CLAIM_DOCS, D_DOCS]
 };
@@ -74,66 +74,66 @@ const REPLY_CLAIM_DOCS: Reply = {
     "• DNI y licencia de conducir vigente del conductor.\n" +
     "• Cédula del vehículo y datos de la póliza.\n" +
     "• Fotos de los daños y del lugar, y los datos del otro conductor si lo hubo.\n" +
-    "Si hay lesionados, avisá a la compañía de inmediato. Antes de presentar nada, confirmá la lista en [cite].",
+    "Si hay lesionados, avise a la compañía de inmediato. Antes de presentar nada, confirme la lista en [cite].",
   sources: ["companies", "policies", "clients"],
   followUps: [D_DOCS, Q_CLAIM_STEPS]
 };
 
 function draft(body: string, sources: AppSource[], followUps: string[]): Reply {
   return {
-    text: `Te dejo un borrador para ajustar antes de enviarlo:\n\n:::borrador\n${body}\n:::\n\nCompletá los datos entre corchetes; los encontrás en [cite].`,
+    text: `Le dejo un borrador para ajustar antes de enviarlo:\n\n:::borrador\n${body}\n:::\n\nComplete los datos entre corchetes; los encuentra en [cite].`,
     sources,
     followUps
   };
 }
 
 const REPLY_DRAFT_WELCOME = draft(
-  "Hola [Nombre], te damos la bienvenida. Soy [tu nombre] de [tu productora]. Ya tenés activa tu póliza [número] y, ante cualquier duda sobre la cobertura o un siniestro, me podés escribir por acá. Estoy para ayudarte.",
+  "Hola [Nombre], le damos la bienvenida. Soy [su nombre] de [su productora]. Ya tiene activa su póliza [número] y, ante cualquier duda sobre la cobertura o un siniestro, puede escribirme por este medio. Quedo a su disposición.",
   ["clients", "policies"],
   [D_RENEWAL, Q_COVERAGE]
 );
 
 const REPLY_DRAFT_DOCS = draft(
-  "Hola [Nombre], lamento lo sucedido. Para avanzar con la denuncia necesito que me envíes: DNI y licencia del conductor, cédula del vehículo, fotos de los daños y los datos del otro conductor, si lo hubo. En cuanto lo tenga, lo presento a la compañía.",
+  "Hola [Nombre], lamento lo sucedido. Para avanzar con la denuncia necesito que me envíe: DNI y licencia del conductor, cédula del vehículo, fotos de los daños y los datos del otro conductor, si lo hubo. En cuanto lo tenga, lo presento a la compañía.",
   ["clients", "policies", "companies"],
   [Q_CLAIM_DOCS, D_WELCOME]
 );
 
 const REPLY_DRAFT_COVERAGE = draft(
-  "Hola [Nombre], te cuento cómo funcionan las coberturas: la responsabilidad civil cubre los daños a terceros, terceros completo suma robo e incendio, y todo riesgo cubre además los daños propios, con franquicia. Si querés, vemos juntos cuál te conviene.",
+  "Hola [Nombre], le cuento cómo funcionan las coberturas: la responsabilidad civil cubre los daños a terceros, terceros completo suma robo e incendio, y todo riesgo cubre además los daños propios, con franquicia. Si lo desea, vemos juntos cuál le conviene.",
   ["policies", "clients"],
   [Q_COVERAGE, D_RENEWAL]
 );
 
 const REPLY_DRAFT_PAYMENT = draft(
-  "Hola [Nombre], te recuerdo que la cuota de tu póliza [número] vence el [fecha]. Si ya la pagaste, ignorá este mensaje; si necesitás otra forma de pago, avisame y lo resolvemos.",
+  "Hola [Nombre], le recuerdo que la cuota de su póliza [número] vence el [fecha]. Si ya la abonó, desestime este mensaje; si necesita otra forma de pago, avíseme y lo resolvemos.",
   ["policies", "notices", "clients"],
   [Q_PAYMENTS, D_WELCOME]
 );
 
 const REPLY_DRAFT_RENEWAL = draft(
-  "Hola [Nombre], ¿cómo estás? Te escribo para recordarte que tu póliza [número] vence el [fecha]. Si querés renovarla o revisar la cobertura, respondeme este mensaje y lo vemos juntos. ¡Gracias!",
+  "Hola [Nombre], ¿cómo está? Le escribo para recordarle que su póliza [número] vence el [fecha]. Si desea renovarla o revisar la cobertura, responda este mensaje y lo vemos juntos. ¡Muchas gracias!",
   ["policies", "notices", "clients"],
   [Q_EXPIRING, D_PAYMENT]
 );
 
 const REPLY_DATA_EXPIRING: Reply = {
   text:
-    `${NOT_CONNECTED}, así que en esta vista previa no puedo decirte qué pólizas vencen y no quiero inventarte números. Cuando me conecten, voy a:\n` +
+    `${NOT_CONNECTED}, así que en esta vista previa no puedo decirle qué pólizas vencen y no quiero inventarle números. Cuando me conecten, voy a:\n` +
     "• Cruzar las vigencias de [cite] con los avisos de renovación.\n" +
     "• Ordenarlas por urgencia, con el asegurado y la compañía de cada una.\n" +
-    "• Dejarte listo un recordatorio para cada asegurado.\n" +
-    "Mientras tanto, los vencimientos reales los ves en Avisos.",
+    "• Dejarle listo un recordatorio para cada asegurado.\n" +
+    "Mientras tanto, los vencimientos reales los encuentra en Avisos.",
   sources: ["policies", "notices", "clients"],
   followUps: [D_RENEWAL, Q_PAYMENTS]
 };
 
 const REPLY_DATA_PAYMENTS: Reply = {
   text:
-    `${NOT_CONNECTED}, así que en esta vista previa no puedo decirte qué cuotas están pendientes ni te voy a inventar montos. Cuando me conecten, voy a:\n` +
+    `${NOT_CONNECTED}, así que en esta vista previa no puedo decirle qué cuotas están pendientes y no le voy a inventar montos. Cuando me conecten, voy a:\n` +
     "• Revisar [cite] para ver el estado de pago de cada una.\n" +
-    "• Ordenar los cobros por urgencia, para que sepas a quién avisar primero.\n" +
-    "• Prepararte el mensaje de recordatorio para cada asegurado.\n" +
+    "• Ordenar los cobros por urgencia, para que sepa a quién avisar primero.\n" +
+    "• Prepararle el mensaje de recordatorio para cada asegurado.\n" +
     "Mientras tanto, los avisos de cobranza reales están en Avisos.",
   sources: ["policies", "notices", "clients"],
   followUps: [D_PAYMENT, Q_EXPIRING]
@@ -142,27 +142,27 @@ const REPLY_DATA_PAYMENTS: Reply = {
 const REPLY_DATA_TASKS: Reply = {
   text:
     `${NOT_CONNECTED} ni al tablero del equipo, así que en esta vista previa no puedo listar pendientes. Cuando me conecten, voy a:\n` +
-    "• Leer [cite] y resumirte lo que está vencido y lo que toca hoy.\n" +
-    "• Indicarte la persona a cargo de cada cosa.\n" +
-    "• Proponerte qué atender primero según la urgencia.",
+    "• Leer [cite] y resumirle lo que está vencido y lo que toca hoy.\n" +
+    "• Indicarle la persona a cargo de cada cosa.\n" +
+    "• Proponerle qué atender primero según la urgencia.",
   sources: ["tasks", "clients"],
   followUps: [Q_EXPIRING, Q_PAYMENTS]
 };
 
 const REPLY_DATA_PORTFOLIO: Reply = {
   text:
-    `${NOT_CONNECTED}, así que no puedo resumirla ahora ni te voy a inventar datos de asegurados. Cuando me conecten, voy a:\n` +
+    `${NOT_CONNECTED}, así que no puedo resumirla ahora y no le voy a inventar datos de asegurados. Cuando me conecten, voy a:\n` +
     "• Cruzar la ficha del asegurado en [cite] con sus pólizas y avisos.\n" +
-    "• Mostrarte en pocas líneas qué tiene contratado y qué está por vencer.\n" +
-    "• Sugerirte el próximo paso, por ejemplo un mensaje de renovación.\n" +
-    "Mientras tanto, podés consultar todo en las secciones de la app.",
+    "• Mostrarle en pocas líneas qué tiene contratado y qué está por vencer.\n" +
+    "• Sugerirle el próximo paso, por ejemplo un mensaje de renovación.\n" +
+    "Mientras tanto, puede consultar todo en las secciones de la app.",
   sources: ["clients", "policies", "notices"],
   followUps: [Q_EXPIRING, D_RENEWAL]
 };
 
 const REPLY_FALLBACK: Reply = {
   text:
-    "Soy Gesti, tu asistente de seguros. Esta es una vista previa: todavía no tengo conexión con tus datos, pero ya puedo ayudarte con dudas generales como coberturas, pasos de un siniestro o borradores de mensajes para asegurados. Probá con alguna de estas preguntas.",
+    "Soy Gesti, su asistente de seguros. Esta es una vista previa: todavía no tengo conexión con sus datos, pero ya puedo ayudarle con dudas generales como coberturas, pasos de un siniestro o borradores de mensajes para asegurados. Pruebe con alguna de estas preguntas.",
   sources: [],
   followUps: [Q_COVERAGE, Q_CLAIM_DOCS]
 };

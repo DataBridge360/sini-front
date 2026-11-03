@@ -80,7 +80,7 @@ export function createNdjsonParser(onEvent: (event: GestiStreamEvent) => void) {
   };
 }
 
-const CHAT_ERROR = "No pude responder ahora. Probá de nuevo en un momento.";
+const CHAT_ERROR = "No pude responder ahora. Intente de nuevo en un momento.";
 
 function chatRequest(payload: GestiChatPayload, auth: GestiAuth, signal: AbortSignal, token = auth.token) {
   const headers = new Headers({ "Content-Type": "application/json", Accept: "application/x-ndjson" });

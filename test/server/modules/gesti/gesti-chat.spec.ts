@@ -788,7 +788,7 @@ describe("Gesti chat", () => {
     expect(forSonnet).toMatchObject({ type: "tool_result", content: "Hay 1 tarea abierta: Llamar a Ana (vencida)." });
 
     expect(events.filter((event) => event.type === "status").map((event) => (event as { label: string | null }).label)).toEqual([
-      "Consultando tu cartera…",
+      "Consultando su cartera…",
       null
     ]);
     expect(events.find((event) => event.type === "app_sources")).toEqual({ type: "app_sources", appSources: ["tasks"] });
@@ -957,7 +957,7 @@ describe("Gesti chat", () => {
 
     const reply = lastDone(events);
     expect(reply.parts.notice).toBe("error");
-    expect(reply.content).toBe("No pude responder ahora. Probá de nuevo en un momento.");
+    expect(reply.content).toBe("No pude responder ahora. Intente de nuevo en un momento.");
     expect(JSON.stringify(events)).not.toMatch(/sk-ant|x-api-key/);
     expect(db.rowsOf("gesti_messages").map((message) => message.role)).toEqual(["user", "assistant"]);
   });
@@ -1317,13 +1317,13 @@ describe("MAIN_SYSTEM_PROMPT", () => {
     expect(MAIN_SYSTEM_PROMPT).toMatch(/cifras destacadas: kind "stats"/);
     expect(MAIN_SYSTEM_PROMPT).toMatch(/tendencias o proporciones: kind "bar", "line", "area" o "pie"/);
     expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca listas de viñetas "Campo: valor"/i);
-    expect(MAIN_SYSTEM_PROMPT).toMatch(/no repitas los datos en el texto/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/no repita los datos en el texto/);
   });
 
   it("keeps the reference rules for table rows and cards and never allows them in the text", () => {
     expect(MAIN_SYSTEM_PROMPT).toMatch(/ref de cada card/);
     expect(MAIN_SYSTEM_PROMPT).toMatch(/refs de show_chart/);
-    expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca las escribas en el texto/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca las escriba en el texto/);
   });
 
   it("has the data agent return one record per line so it can become a table", () => {
@@ -1333,8 +1333,8 @@ describe("MAIN_SYSTEM_PROMPT", () => {
 
   it("has Gesti pass the record references to show_chart and never write them in the text", () => {
     expect(MAIN_SYSTEM_PROMPT).toMatch(/refs de show_chart/);
-    expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca las escribas en el texto/);
-    expect(MAIN_SYSTEM_PROMPT).toMatch(/en el punto de tu respuesta donde querés que aparezca/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/nunca las escriba en el texto/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/en el punto de su respuesta donde quiere que aparezca/);
   });
 
   it("has the data agent keep each record's reference on its line", () => {

@@ -89,7 +89,7 @@ const WAVE_BARS = [0.5, 0.85, 0.65, 1, 0.75, 0.9, 0.55];
 // Desde este ancho el historial es una columna fija al lado del chat.
 const HISTORY_DOCK_MIN_PX = 1180;
 const FLASH_MS = 4000;
-const CHAT_ERROR = "No pude responder ahora. Probá de nuevo en un momento.";
+const CHAT_ERROR = "No pude responder ahora. Intente de nuevo en un momento.";
 
 /** Lo que se muestra de un adjunto; los del historial ya no tienen el archivo local. */
 export type AttachmentView = {
