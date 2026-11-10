@@ -140,11 +140,21 @@ function paymentLabel(value: unknown) {
   return value === "debito_automatico" ? "débito automático" : "manual";
 }
 
+function previousNumbers(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const number = (entry as { number?: unknown } | null)?.number;
+    return typeof number === "string" && number ? [number] : [];
+  });
+}
+
 function toPolicy(row: Row) {
   return {
     compania: str(nested(row, "insurance_companies").name),
     rama: str(row.branch),
     numero: str(row.policy_number),
+    // Numeros que tuvo antes de renovarse: sirven para reconocer un numero viejo.
+    numerosAnteriores: previousNumbers(row.previous_policy_numbers),
     patente: str(row.vehicle_plate),
     cadaMeses: typeof row.payment_interval_months === "number" ? row.payment_interval_months : null,
     formaPago: paymentLabel(row.payment_method),
@@ -205,7 +215,7 @@ async function fichaAsegurado({ nombre }: z.infer<typeof fichaAseguradoInput>, c
     context.supabase.admin
       .from("policies")
       .select(
-        "id,client_id,branch,policy_number,vehicle_plate,payment_interval_months,payment_method,first_payment_date,insurance_companies!policies_insurance_company_fk(name)"
+        "id,client_id,branch,policy_number,previous_policy_numbers,vehicle_plate,payment_interval_months,payment_method,first_payment_date,insurance_companies!policies_insurance_company_fk(name)"
       )
       .eq("organization_id", context.organizationId)
       .eq("is_active", true)
@@ -321,7 +331,7 @@ async function listarPolizas(input: z.infer<typeof listarPolizasInput>, context:
   let query = context.supabase.admin
     .from("policies")
     .select(
-      `id,client_id,branch,policy_number,vehicle_plate,payment_interval_months,payment_method,first_payment_date,clients!policies_client_fk(full_name),insurance_companies!policies_insurance_company_fk${join}(name)`,
+      `id,client_id,branch,policy_number,previous_policy_numbers,vehicle_plate,payment_interval_months,payment_method,first_payment_date,clients!policies_client_fk(full_name),insurance_companies!policies_insurance_company_fk${join}(name)`,
       { count: "exact" }
     )
     .eq("organization_id", context.organizationId)
@@ -333,7 +343,11 @@ async function listarPolizas(input: z.infer<typeof listarPolizasInput>, context:
 
   if (input.texto) {
     const pattern = pgrstQuote(like(input.texto));
-    const conditions = [`policy_number.ilike.${pattern}`, `vehicle_plate.ilike.${pattern}`];
+    const conditions = [
+      `policy_number.ilike.${pattern}`,
+      `previous_policy_numbers_text.ilike.${pattern}`,
+      `vehicle_plate.ilike.${pattern}`
+    ];
     const matches = await exec(
       "listar_polizas.clients",
       context.supabase.admin
@@ -525,7 +539,7 @@ const DEFINITIONS: DataToolDefinition[] = [
   {
     name: "listar_polizas",
     description:
-      "Lista pólizas activas. Filtros opcionales: rama, compania (nombre o parte), forma_pago (manual o debito_automatico), texto (número de póliza, patente o nombre del asegurado). limite hasta 100 (50 por defecto).",
+      "Lista pólizas activas. Filtros opcionales: rama, compania (nombre o parte), forma_pago (manual o debito_automatico), texto (número de póliza actual o anterior, patente o nombre del asegurado). Cada póliza trae numerosAnteriores (los números que tuvo antes de renovarse): si el número buscado figura ahí, decí que fue un número anterior de esa póliza y de qué asegurado. limite hasta 100 (50 por defecto).",
     schema: listarPolizasInput,
     run: listarPolizas as DataToolDefinition["run"]
   },

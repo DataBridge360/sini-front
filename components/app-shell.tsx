@@ -58,9 +58,11 @@ import {
   type UploadLogoResponse
 } from "@/lib/shell-types";
 import { FORCED_ORG_SLUG, resolveLoginSlug } from "@/lib/slug";
+import { createNoticesFetcher, syncNoticesByIds } from "@/lib/notices-realtime";
+import { getRealtimeStatus } from "@/lib/realtime";
 import { useRealtimeSync } from "@/lib/use-realtime-sync";
 import { Avatar } from "@/components/ui/avatar";
-import { LoadingState } from "@/components/ui/states";
+import { LoadingState, PageLoadingHost } from "@/components/ui/states";
 import { ToastViewport, type ToastMessage } from "@/components/ui/toast";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { TaskAlertsBell } from "@/components/notifications/task-alerts-bell";
@@ -395,6 +397,25 @@ export function AppShell() {
     }
   });
 
+  // Renovación: el servidor guarda el número viejo y fija el nuevo. El número
+  // se muestra en pólizas, avisos, detalle de avisos y tareas, así que se
+  // refresca todo (las tareas también: muestran el número vigente al crearlas).
+  const renewPolicyNumber = useMutation({
+    mutationFn: ({ policyId, policyNumber }: { policyId: string; policyNumber: string }) =>
+      apiRequest<Policy>(`/policies/${policyId}/renew-number`, { ...common, method: "POST", body: { policyNumber } }),
+    onSuccess: async () => {
+      notify("Póliza renovada. El número anterior quedó guardado.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["policies", slug] }),
+        queryClient.invalidateQueries({ queryKey: ["notices", slug] })
+      ]);
+      void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
+      void queryClient.invalidateQueries({ queryKey: ["tasks", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["task", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["tasks-archived", slug] });
+    }
+  });
+
   const deletePolicy = useMutation({
     mutationFn: (policyId: string) =>
       apiRequest<{ ok: boolean }>(`/policies/${policyId}`, { ...common, method: "DELETE" }),
@@ -406,6 +427,26 @@ export function AppShell() {
     }
   });
 
+  // Los cambios de avisos se parchean en la caché (sin pedir la lista entera). El
+  // aviso propio vuelve por el canal en tiempo real y se confirma con una sola
+  // lectura puntual; sin canal conectado se recarga la lista como antes.
+  const noticesFetcher = createNoticesFetcher(common);
+  const refetchNoticesIfOffline = () =>
+    getRealtimeStatus() === "connected"
+      ? undefined
+      : queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+  const patchNotice = (noticeId: string, patch: (notice: Notice) => Notice) =>
+    queryClient.setQueryData<Notice[]>(["notices", slug], (prev) =>
+      prev ? prev.map((notice) => (notice.id === noticeId ? patch(notice) : notice)) : prev
+    );
+  const me = auth ? { id: auth.user.id, full_name: auth.user.fullName } : null;
+  // Si el servidor rechaza la acción (el aviso ya cambió o se borró) se muestra su
+  // respuesta y se trae el estado real de ese aviso.
+  const resyncNotice = (noticeId: string, error: Error) => {
+    notify(error.message, "error");
+    void syncNoticesByIds(queryClient, slug, [noticeId], noticesFetcher);
+  };
+
   const markNotified = useMutation({
     mutationFn: (noticeId: string) =>
       apiRequest<Notice>(`/notices/${noticeId}/notified`, {
@@ -413,55 +454,77 @@ export function AppShell() {
         method: "PATCH",
         body: {}
       }),
-    onSuccess: (_data, noticeId) => {
+    onSuccess: (data, noticeId) => {
       notify("Aviso marcado como avisado.");
       // El RPC devuelve la fila sin los joins (cliente/compañía); parcheamos solo
       // el estado en caché para no perder los datos anidados ni refetchear todo.
-      queryClient.setQueryData<Notice[]>(["notices", slug], (prev) =>
-        prev ? prev.map((notice) => (notice.id === noticeId ? { ...notice, status: "avisado" } : notice)) : prev
-      );
-    }
+      patchNotice(noticeId, (notice) => ({
+        ...notice,
+        status: "avisado",
+        notified_at: data?.notified_at ?? new Date().toISOString(),
+        notified_by: me
+      }));
+    },
+    onError: (error, noticeId) => resyncNotice(noticeId, error)
   });
 
   const payNotice = useMutation({
     mutationFn: ({ noticeId, months }: { noticeId: string; months: number }) =>
-      apiRequest(`/notices/${noticeId}/pay`, {
+      apiRequest<{ applied_interval_months?: number }>(`/notices/${noticeId}/pay`, {
         ...common,
         method: "PATCH",
         body: { paymentIntervalMonths: months }
       }),
-    onSuccess: () => {
+    onSuccess: (data, { noticeId, months }) => {
       notify("Pago registrado.");
       void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
-      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
-    }
+      patchNotice(noticeId, (notice) => ({
+        ...notice,
+        status: "pagado",
+        paid_interval_months: data?.applied_interval_months ?? months,
+        payment_processed_at: new Date().toISOString(),
+        payment_processed_by: me
+      }));
+      // El próximo aviso lo crea el servidor: llega por el canal.
+      return refetchNoticesIfOffline();
+    },
+    onError: (error, { noticeId }) => resyncNotice(noticeId, error)
   });
 
   const revertNotice = useMutation({
     mutationFn: (noticeId: string) =>
       apiRequest<Notice>(`/notices/${noticeId}/revert`, { ...common, method: "PATCH", body: {} }),
-    onSuccess: () => {
+    onSuccess: (data, noticeId) => {
       notify("Estado del aviso revertido.");
       void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
-      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
-    }
+      // La respuesta trae el aviso completo; si el pago se revirtió, el aviso
+      // siguiente que se descarta llega por el canal.
+      if (data?.id === noticeId) patchNotice(noticeId, () => data);
+      return refetchNoticesIfOffline();
+    },
+    onError: (error, noticeId) => resyncNotice(noticeId, error)
   });
 
   const addNoticeNote = useMutation({
     mutationFn: ({ noticeId, note }: { noticeId: string; note: string }) =>
       apiRequest<NoticeNote>(`/notices/${noticeId}/notes`, { ...common, method: "POST", body: { note } }),
-    onSuccess: () => {
+    onSuccess: (note, { noticeId }) => {
       void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
-      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+      // Un alta propia no vuelve por el canal (se omite al autor): se agrega acá.
+      patchNotice(noticeId, (notice) =>
+        notice.notes.some((existing) => existing.id === note.id)
+          ? notice
+          : { ...notice, notes: [...notice.notes, note] }
+      );
     }
   });
 
   const deleteNoticeNote = useMutation({
     mutationFn: ({ noticeId, noteId }: { noticeId: string; noteId: string }) =>
       apiRequest<{ ok: boolean }>(`/notices/${noticeId}/notes/${noteId}`, { ...common, method: "DELETE" }),
-    onSuccess: () => {
+    onSuccess: (_data, { noticeId, noteId }) => {
       void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
-      return queryClient.invalidateQueries({ queryKey: ["notices", slug] });
+      patchNotice(noticeId, (notice) => ({ ...notice, notes: notice.notes.filter((note) => note.id !== noteId) }));
     }
   });
 
@@ -695,206 +758,209 @@ export function AppShell() {
         </header>
 
         <div className="sp-workspace">
-          {tab === "dashboard" ? (
-            <DashboardView
-              userName={auth.user.fullName}
-              common={common}
-              currentUserId={auth.user.id}
-              canModerate={canManageOrganization}
-              notices={allNotices}
-              clients={allClients}
-              companies={allCompanies}
-              isLoading={notices.isLoading || clients.isLoading || policies.isLoading}
-              isCreatingClient={createClient.isPending}
-              isCreatingPolicy={createPolicy.isPending}
-              error={notices.error?.message ?? clients.error?.message ?? policies.error?.message ?? null}
-              setTab={setTab}
-              onOpenTasks={openTasks}
-              onOpenTask={openTask}
-              onCreateClient={(body) => createClient.mutateAsync(body)}
-              onCreatePolicy={(values) => createPolicy.mutateAsync(values)}
-            />
-          ) : null}
-          {tab === "notices" ? (
-            <NoticesView
-              notices={allNotices}
-              companies={allCompanies}
-              isLoading={notices.isLoading}
-              markingNoticeId={markNotified.isPending ? markNotified.variables ?? null : null}
-              payingNoticeId={payNotice.isPending ? payNotice.variables?.noticeId ?? null : null}
-              revertingNoticeId={revertNotice.isPending ? revertNotice.variables ?? null : null}
-              error={notices.error?.message ?? null}
-              noteApi={noticeNoteApi}
-              onNotified={(id) => markNotified.mutate(id)}
-              onRevert={(id) => revertNotice.mutate(id)}
-              onPay={(noticeId, months) => payNotice.mutateAsync({ noticeId, months })}
-              onViewPolicy={(notice) => {
-                const policyId = notice.policies?.id;
-                const clientId = notice.policies?.clients?.id;
-                if (!policyId || !clientId) return;
-                setOpenPolicyId(policyId);
-                setClientDetailId(clientId);
-                setTab("clients");
-              }}
-            />
-          ) : null}
-          {tab === "tasks" ? (
-            <TasksView
-              key={tasksViewKey}
-              initialTaskId={tasksOpenTaskId}
-              common={common}
-              currentUserId={auth.user.id}
-              canModerate={canManageOrganization}
-              initialArchived={tasksArchived}
-              clients={allClients}
-              policies={allPolicies}
-              notify={notify}
-            />
-          ) : null}
-          {tab === "clients" && !clientDetailId ? (
-            <ClientsView
-              common={common}
-              isCreating={createClient.isPending}
-              onOpenClient={(client) => {
-                setOpenPolicyId(null);
-                setClientDetailId(client.id);
-              }}
-              onCreate={(body) => createClient.mutateAsync(body)}
-            />
-          ) : null}
-          {tab === "clients" && clientDetailId ? (
-            <ClientDetailScreen
-              client={allClients.find((item) => item.id === clientDetailId) ?? null}
-              policies={allPolicies}
-              common={common}
-              currentUserId={auth.user.id}
-              isSavingClient={updateClient.isPending}
-              isDeletingClient={deleteClient.isPending}
-              noteApi={noticeNoteApi}
-              policyActions={policyActions}
-              initialOpenPolicyId={openPolicyId}
-              onBack={() => setClientDetailId(null)}
-              onSaveClient={(patch) => updateClient.mutateAsync({ clientId: clientDetailId, patch })}
-              onDeleteClient={() => deleteClient.mutateAsync(clientDetailId)}
-            />
-          ) : null}
-          {tab === "policies" ? (
-            <PoliciesView
-              common={common}
-              clients={allClients}
-              companies={allCompanies}
-              isCreating={createPolicy.isPending}
-              isCreatingClient={createClient.isPending}
-              onCreate={(values) => createPolicy.mutateAsync(values)}
-              onCreateClient={(body) => createClient.mutateAsync(body)}
-              onOpenPolicy={(policy) => {
-                if (!policy.clients?.id) return;
-                setOpenPolicyId(policy.id);
-                setClientDetailId(policy.clients.id);
-                setTab("clients");
-              }}
-            />
-          ) : null}
-          {tab === "companies" ? (
-            <CompaniesView
-              companies={allCompanies}
-              policies={allPolicies}
-              isLoading={companies.isLoading}
-              isCreating={createCompany.isPending}
-              error={companies.error?.message ?? null}
-              onSubmit={async (event) => {
-                event.preventDefault();
-                const formElement = event.currentTarget;
-                await createCompany.mutateAsync(Object.fromEntries(new FormData(formElement)));
-                formElement.reset();
-              }}
-            />
-          ) : null}
-          {tab === "clubplaza" ? (
-            <ClubplazaView
-              common={common}
-              currentUserId={auth.user.id}
-              canManage={canManageOrganization}
-              notify={notify}
-            />
-          ) : null}
-          {tab === "gesti" ? (
-            <GestiView
-              userId={auth.user.id}
-              userName={auth.user.fullName}
-              organizationSlug={common.organizationSlug}
-              canSeeUsage={canManageOrganization}
-              onNavigate={setTab}
-              onOpenRecord={openRecord}
-            />
-          ) : null}
-          {tab === "team" && canManageOrganization ? (
-            <TeamView
-              currentUserId={auth.user.id}
-              team={organizationTeam.data ?? NO_TEAM}
-              isLoading={organizationTeam.isLoading}
-              isAdding={createOrganizationTeamMember.isPending}
-              isUpdating={
-                updateOrganizationTeamMember.isPending ||
-                changeOrganizationTeamMemberPassword.isPending ||
-                deactivateOrganizationTeamMember.isPending
-              }
-              error={
-                organizationTeam.error?.message ??
-                createOrganizationTeamMember.error?.message ??
-                updateOrganizationTeamMember.error?.message ??
-                changeOrganizationTeamMemberPassword.error?.message ??
-                deactivateOrganizationTeamMember.error?.message ??
-                null
-              }
-              onAddTeamMember={(payload) => createOrganizationTeamMember.mutateAsync(payload)}
-              onUpdateTeamMember={(memberId, payload) => updateOrganizationTeamMember.mutateAsync({ memberId, body: payload })}
-              onChangeTeamMemberPassword={(memberId, payload) =>
-                changeOrganizationTeamMemberPassword.mutateAsync({ memberId, body: payload })
-              }
-              onDeactivateTeamMember={(memberId, payload) =>
-                deactivateOrganizationTeamMember.mutateAsync({ memberId, body: payload })
-              }
-              onNotify={notify}
-            />
-          ) : null}
-          {tab === "settings" && canManageOrganization ? (
-            <SettingsView
-              organization={organizationSettings.data}
-              fallbackOrganization={selectedOrganization ?? null}
-              isLoading={organizationSettings.isLoading}
-              isSaving={updateOrganization.isPending}
-              error={updateOrganization.error?.message ?? organizationSettings.error?.message ?? null}
-              onUploadLogo={(payload) => uploadOrganizationLogo.mutateAsync(payload)}
-              onSubmit={(event) => {
-                event.preventDefault();
-                const form = new FormData(event.currentTarget);
-                updateOrganization.mutate({
-                  displayName: String(form.get("displayName") ?? ""),
-                  logoUrl: emptyToNull(form.get("logoUrl")),
-                  // Los colores viajan normalizados (#rrggbb) o null: un hex inválido no se persiste.
-                  primaryColor: normalizeHexColor(String(form.get("primaryColor") ?? "")),
-                  secondaryColor: normalizeHexColor(String(form.get("secondaryColor") ?? "")),
-                  supportEmail: emptyToNull(form.get("supportEmail")),
-                  supportPhone: emptyToNull(form.get("supportPhone"))
-                });
-              }}
-            />
-          ) : null}
-          {tab === "profile" ? (
-            <ProfileView
-              userName={auth.user.fullName}
-              userEmail={auth.user.email}
-              avatarUrl={auth.user.avatarUrl ?? null}
-              role={selectedOrganization?.role ?? auth.user.platformRole}
-              isSavingProfile={updateProfile.isPending}
-              isChangingPassword={changePassword.isPending}
-              profileError={updateProfile.error?.message ?? null}
-              passwordError={changePassword.error?.message ?? null}
-              onUpdateProfile={(payload) => updateProfile.mutateAsync(payload)}
-              onChangePassword={(payload) => changePassword.mutateAsync(payload)}
-            />
-          ) : null}
+          <PageLoadingHost>
+            {tab === "dashboard" ? (
+              <DashboardView
+                userName={auth.user.fullName}
+                common={common}
+                currentUserId={auth.user.id}
+                canModerate={canManageOrganization}
+                notices={allNotices}
+                clients={allClients}
+                companies={allCompanies}
+                isLoading={notices.isLoading}
+                isCreatingClient={createClient.isPending}
+                isCreatingPolicy={createPolicy.isPending}
+                error={notices.error?.message ?? clients.error?.message ?? null}
+                setTab={setTab}
+                onOpenTasks={openTasks}
+                onOpenTask={openTask}
+                onCreateClient={(body) => createClient.mutateAsync(body)}
+                onCreatePolicy={(values) => createPolicy.mutateAsync(values)}
+              />
+            ) : null}
+            {tab === "notices" ? (
+              <NoticesView
+                notices={allNotices}
+                companies={allCompanies}
+                isLoading={notices.isLoading}
+                markingNoticeId={markNotified.isPending ? markNotified.variables ?? null : null}
+                payingNoticeId={payNotice.isPending ? payNotice.variables?.noticeId ?? null : null}
+                revertingNoticeId={revertNotice.isPending ? revertNotice.variables ?? null : null}
+                error={notices.error?.message ?? null}
+                noteApi={noticeNoteApi}
+                onNotified={(id) => markNotified.mutate(id)}
+                onRevert={(id) => revertNotice.mutate(id)}
+                onPay={(noticeId, months) => payNotice.mutateAsync({ noticeId, months })}
+                onRenewPolicy={(policyId, policyNumber) => renewPolicyNumber.mutateAsync({ policyId, policyNumber })}
+                onViewPolicy={(notice) => {
+                  const policyId = notice.policies?.id;
+                  const clientId = notice.policies?.clients?.id;
+                  if (!policyId || !clientId) return;
+                  setOpenPolicyId(policyId);
+                  setClientDetailId(clientId);
+                  setTab("clients");
+                }}
+              />
+            ) : null}
+            {tab === "tasks" ? (
+              <TasksView
+                key={tasksViewKey}
+                initialTaskId={tasksOpenTaskId}
+                common={common}
+                currentUserId={auth.user.id}
+                canModerate={canManageOrganization}
+                initialArchived={tasksArchived}
+                clients={allClients}
+                policies={allPolicies}
+                notify={notify}
+              />
+            ) : null}
+            {tab === "clients" && !clientDetailId ? (
+              <ClientsView
+                common={common}
+                isCreating={createClient.isPending}
+                onOpenClient={(client) => {
+                  setOpenPolicyId(null);
+                  setClientDetailId(client.id);
+                }}
+                onCreate={(body) => createClient.mutateAsync(body)}
+              />
+            ) : null}
+            {tab === "clients" && clientDetailId ? (
+              <ClientDetailScreen
+                client={allClients.find((item) => item.id === clientDetailId) ?? null}
+                policies={allPolicies}
+                common={common}
+                currentUserId={auth.user.id}
+                isSavingClient={updateClient.isPending}
+                isDeletingClient={deleteClient.isPending}
+                noteApi={noticeNoteApi}
+                policyActions={policyActions}
+                initialOpenPolicyId={openPolicyId}
+                onBack={() => setClientDetailId(null)}
+                onSaveClient={(patch) => updateClient.mutateAsync({ clientId: clientDetailId, patch })}
+                onDeleteClient={() => deleteClient.mutateAsync(clientDetailId)}
+              />
+            ) : null}
+            {tab === "policies" ? (
+              <PoliciesView
+                common={common}
+                clients={allClients}
+                companies={allCompanies}
+                isCreating={createPolicy.isPending}
+                isCreatingClient={createClient.isPending}
+                onCreate={(values) => createPolicy.mutateAsync(values)}
+                onCreateClient={(body) => createClient.mutateAsync(body)}
+                onOpenPolicy={(policy) => {
+                  if (!policy.clients?.id) return;
+                  setOpenPolicyId(policy.id);
+                  setClientDetailId(policy.clients.id);
+                  setTab("clients");
+                }}
+              />
+            ) : null}
+            {tab === "companies" ? (
+              <CompaniesView
+                companies={allCompanies}
+                policies={allPolicies}
+                isLoading={companies.isLoading}
+                isCreating={createCompany.isPending}
+                error={companies.error?.message ?? null}
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  const formElement = event.currentTarget;
+                  await createCompany.mutateAsync(Object.fromEntries(new FormData(formElement)));
+                  formElement.reset();
+                }}
+              />
+            ) : null}
+            {tab === "clubplaza" ? (
+              <ClubplazaView
+                common={common}
+                currentUserId={auth.user.id}
+                canManage={canManageOrganization}
+                notify={notify}
+              />
+            ) : null}
+            {tab === "gesti" ? (
+              <GestiView
+                userId={auth.user.id}
+                userName={auth.user.fullName}
+                organizationSlug={common.organizationSlug}
+                canSeeUsage={canManageOrganization}
+                onNavigate={setTab}
+                onOpenRecord={openRecord}
+              />
+            ) : null}
+            {tab === "team" && canManageOrganization ? (
+              <TeamView
+                currentUserId={auth.user.id}
+                team={organizationTeam.data ?? NO_TEAM}
+                isLoading={organizationTeam.isLoading}
+                isAdding={createOrganizationTeamMember.isPending}
+                isUpdating={
+                  updateOrganizationTeamMember.isPending ||
+                  changeOrganizationTeamMemberPassword.isPending ||
+                  deactivateOrganizationTeamMember.isPending
+                }
+                error={
+                  organizationTeam.error?.message ??
+                  createOrganizationTeamMember.error?.message ??
+                  updateOrganizationTeamMember.error?.message ??
+                  changeOrganizationTeamMemberPassword.error?.message ??
+                  deactivateOrganizationTeamMember.error?.message ??
+                  null
+                }
+                onAddTeamMember={(payload) => createOrganizationTeamMember.mutateAsync(payload)}
+                onUpdateTeamMember={(memberId, payload) => updateOrganizationTeamMember.mutateAsync({ memberId, body: payload })}
+                onChangeTeamMemberPassword={(memberId, payload) =>
+                  changeOrganizationTeamMemberPassword.mutateAsync({ memberId, body: payload })
+                }
+                onDeactivateTeamMember={(memberId, payload) =>
+                  deactivateOrganizationTeamMember.mutateAsync({ memberId, body: payload })
+                }
+                onNotify={notify}
+              />
+            ) : null}
+            {tab === "settings" && canManageOrganization ? (
+              <SettingsView
+                organization={organizationSettings.data}
+                fallbackOrganization={selectedOrganization ?? null}
+                isLoading={organizationSettings.isLoading}
+                isSaving={updateOrganization.isPending}
+                error={updateOrganization.error?.message ?? organizationSettings.error?.message ?? null}
+                onUploadLogo={(payload) => uploadOrganizationLogo.mutateAsync(payload)}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const form = new FormData(event.currentTarget);
+                  updateOrganization.mutate({
+                    displayName: String(form.get("displayName") ?? ""),
+                    logoUrl: emptyToNull(form.get("logoUrl")),
+                    // Los colores viajan normalizados (#rrggbb) o null: un hex inválido no se persiste.
+                    primaryColor: normalizeHexColor(String(form.get("primaryColor") ?? "")),
+                    secondaryColor: normalizeHexColor(String(form.get("secondaryColor") ?? "")),
+                    supportEmail: emptyToNull(form.get("supportEmail")),
+                    supportPhone: emptyToNull(form.get("supportPhone"))
+                  });
+                }}
+              />
+            ) : null}
+            {tab === "profile" ? (
+              <ProfileView
+                userName={auth.user.fullName}
+                userEmail={auth.user.email}
+                avatarUrl={auth.user.avatarUrl ?? null}
+                role={selectedOrganization?.role ?? auth.user.platformRole}
+                isSavingProfile={updateProfile.isPending}
+                isChangingPassword={changePassword.isPending}
+                profileError={updateProfile.error?.message ?? null}
+                passwordError={changePassword.error?.message ?? null}
+                onUpdateProfile={(payload) => updateProfile.mutateAsync(payload)}
+                onChangePassword={(payload) => changePassword.mutateAsync(payload)}
+              />
+            ) : null}
+          </PageLoadingHost>
         </div>
       </section>
       <ToastViewport toasts={toasts} onDismiss={dismissToast} />

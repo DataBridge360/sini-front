@@ -1,7 +1,8 @@
 // Reglas de dominio de los avisos (ventana del tablero, filtros, estados).
 
-import type { Notice } from "@/lib/api";
-import { formatDate, getDaysUntilDue } from "@/lib/format";
+import type { Notice, UserRef } from "@/lib/api";
+import { formatDate, formatDateTime, getDaysUntilDue } from "@/lib/format";
+import { matchesPolicyNumber } from "@/lib/policy-numbers";
 
 export type NoticeStatus = Notice["status"];
 export type NoticeView = "kanban" | "list";
@@ -91,7 +92,7 @@ export function matchesNoticeFilters(notice: Notice, filters: NoticeFilters) {
   const matchesSearch =
     !term ||
     client?.full_name?.toLowerCase().includes(term) ||
-    policy?.policy_number?.toLowerCase().includes(term) ||
+    matchesPolicyNumber(policy, term) ||
     policy?.vehicle_plate?.toLowerCase().includes(term);
   const matchesCompany = filters.companyId === "all" || company?.id === filters.companyId;
   const matchesBranch = filters.branch === "all" || policy?.branch === filters.branch;
@@ -118,6 +119,138 @@ export function noticeStatusPill(status: Notice["status"]) {
   if (status === "avisar") return `${base} bg-amber-50 text-amber-700`;
   if (status === "avisado") return `${base} bg-blue-50 text-blue-700`;
   return `${base} bg-emerald-50 text-emerald-700`;
+}
+
+// Qué decirle a quien está por actuar sobre un aviso que otra persona ya cambió:
+// quién lo hizo y cuándo ("Ya fue avisado por Ana el 10/11/2026, 14:30."). Null si
+// el aviso sigue en "avisar", que es el único estado desde el que se avisa.
+export function describeNoticeAlreadyHandled(notice: Notice, currentUserId: string | null): string | null {
+  if (notice.status === "avisar") return null;
+  const paid = notice.status === "pagado";
+  const by = paid ? notice.payment_processed_by : notice.notified_by;
+  const at = paid ? notice.payment_processed_at : notice.notified_at;
+  const who = by ? (by.id === currentUserId ? "vos" : by.full_name) : "otra persona";
+  const when = at ? formatDateTime(at) : "";
+  return `Ya fue ${paid ? "pagado" : "avisado"} por ${who}${when ? ` el ${when}` : ""}.`;
+}
+
+// Teléfono y correo del asegurado listos para mostrar: sin espacios sobrantes y
+// sin filas vacías. Null si no tiene ninguno de los dos (no se dibuja el bloque).
+export type NoticeContact = { phone: string | null; email: string | null };
+
+export function noticeContactOf(
+  client: { phone?: string | null; email?: string | null } | null | undefined
+): NoticeContact | null {
+  const phone = client?.phone?.trim() || null;
+  const email = client?.email?.trim() || null;
+  return phone || email ? { phone, email } : null;
+}
+
+// Acciones que ofrece un aviso según su estado (flujo estricto: avisar ->
+// avisado -> pagado). La tarjeta, el detalle y la lista comparten esta tabla.
+export type NoticeActionKind = "notify" | "revert" | "pay";
+
+export function noticeActionsFor(status: NoticeStatus): { kind: NoticeActionKind; label: string }[] {
+  if (status === "avisar") return [{ kind: "notify", label: "Marcar avisado" }];
+  if (status === "avisado") {
+    return [
+      { kind: "revert", label: "Volver a avisar" },
+      { kind: "pay", label: "Registrar pago" }
+    ];
+  }
+  return [{ kind: "revert", label: "Revertir pago" }];
+}
+
+// Avisos que todavía hay que contactar: el botón principal del detalle solo
+// aparece mientras quede alguno.
+export function pendingNotices(notices: Notice[]): Notice[] {
+  return notices.filter((notice) => notice.status === "avisar");
+}
+
+// Cuánto dura el cartel "lo avisó recién" cuando otra persona resolvió el aviso.
+export const RECENT_HANDLING_WINDOW_MS = 2 * 60 * 1000;
+
+export type NoticeHandling = { kind: "notified" | "paid"; by: UserRef; at: string; atMs: number };
+
+// Quién resolvió el estado actual del aviso (avisó si está "avisado", cobró si está
+// "pagado"). Null si sigue en "avisar" o el dato no viene.
+export function noticeHandling(notice: Notice): NoticeHandling | null {
+  if (notice.status === "avisar") return null;
+  const paid = notice.status === "pagado";
+  const by = paid ? notice.payment_processed_by : notice.notified_by;
+  const at = paid ? notice.payment_processed_at : notice.notified_at;
+  if (!by || !at) return null;
+  const atMs = Date.parse(at);
+  if (Number.isNaN(atMs)) return null;
+  return { kind: paid ? "paid" : "notified", by, at, atMs };
+}
+
+// "Otra persona, hace poco": solo si el usuario actual es conocido y no es quien
+// hizo el cambio (nunca se muestra el cartel por la acción propia) y pasaron menos
+// de dos minutos. La hora del servidor puede adelantar al reloj local: una edad
+// negativa cuenta como reciente y vence igual en `atMs + ventana`.
+export function recentHandlingByOther(
+  notice: Notice,
+  currentUserId: string | null,
+  now: number
+): NoticeHandling | null {
+  if (!currentUserId) return null;
+  const handling = noticeHandling(notice);
+  if (!handling || handling.by.id === currentUserId) return null;
+  return now - handling.atMs < RECENT_HANDLING_WINDOW_MS ? handling : null;
+}
+
+// Primer instante futuro en que algún cartel de la lista deja de ser reciente.
+export function recentHandlingDeadline(
+  notices: Notice[],
+  currentUserId: string | null,
+  now: number
+): number | null {
+  let deadline: number | null = null;
+  for (const notice of notices) {
+    const handling = recentHandlingByOther(notice, currentUserId, now);
+    if (!handling) continue;
+    const expires = handling.atMs + RECENT_HANDLING_WINDOW_MS;
+    if (deadline === null || expires < deadline) deadline = expires;
+  }
+  return deadline;
+}
+
+// "hace unos segundos" / "hace 1 minuto" / "hace 2 minutos".
+export function describeHandlingAge(atMs: number, now: number): string {
+  const minutes = Math.floor(Math.max(0, now - atMs) / 60000);
+  if (minutes < 1) return "hace unos segundos";
+  return `hace ${minutes} ${minutes === 1 ? "minuto" : "minutos"}`;
+}
+
+const pad2 = (value: number) => String(value).padStart(2, "0");
+
+// "hoy 15:29", "ayer 16:20", "09/11 11:05" (con año si no es el actual).
+export function formatHandlingWhen(iso: string, now: number): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const today = new Date(now);
+  const time = `${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
+  const dayStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDiff = Math.round((dayStart(today) - dayStart(at)) / 86400000);
+  if (dayDiff === 0) return `hoy ${time}`;
+  if (dayDiff === 1) return `ayer ${time}`;
+  const date = `${pad2(at.getDate())}/${pad2(at.getMonth() + 1)}`;
+  return `${at.getFullYear() === today.getFullYear() ? date : `${date}/${at.getFullYear()}`} ${time}`;
+}
+
+// Línea de auditoría de la tarjeta y del detalle: "Avisado por Ana · ayer 16:20".
+export function describeNoticeHandlingLine(
+  notice: Notice,
+  currentUserId: string | null,
+  now: number
+): { kind: "notified" | "paid"; text: string } | null {
+  const handling = noticeHandling(notice);
+  if (!handling) return null;
+  const who = handling.by.id === currentUserId ? "vos" : handling.by.full_name;
+  const when = formatHandlingWhen(handling.at, now);
+  const lead = handling.kind === "paid" ? "Pago registrado por" : "Avisado por";
+  return { kind: handling.kind, text: `${lead} ${who}${when ? ` · ${when}` : ""}` };
 }
 
 // Cómo se nombra el seguro en el mensaje al cliente, según la rama.

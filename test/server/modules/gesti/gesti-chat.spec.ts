@@ -1307,6 +1307,16 @@ describe("MAIN_SYSTEM_PROMPT", () => {
     expect(MAIN_SYSTEM_PROMPT).toContain(String(MAX_REPLY_CHARS));
   });
 
+  it("asks for a verdict, ## sections only for multi-finding reviews, numbered bold-label findings and one closing question", () => {
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/Abra con un veredicto/);
+    expect(MAIN_SYSTEM_PROMPT).toContain('"## "');
+    expect(MAIN_SYSTEM_PROMPT).toContain("hasta cuatro secciones");
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/sin encabezados/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/lista numerada: cada ítem empieza con una \*\*etiqueta en negrita\*\*/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/a lo sumo una pregunta/);
+    expect(MAIN_SYSTEM_PROMPT).toMatch(/No use tablas en markdown, bloques de código/);
+  });
+
   it("asks for a visual block, not bullets, for any structured data and picks the kind by shape (S5)", () => {
     expect(MAIN_SYSTEM_PROMPT).not.toMatch(/4 o más registros/);
     expect(MAIN_SYSTEM_PROMPT).toMatch(/cualquier dato estructurado/);

@@ -7,6 +7,8 @@
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import { refreshStoredAuth } from "@/lib/api";
+import { createNoticesFetcher, applyNoticeSyncPlan, NoticeSyncBatch } from "@/lib/notices-realtime";
+import { applyTaskSyncPlan, createTasksFetcher, isTaskOnBoard, TaskSyncBatch } from "@/lib/tasks-realtime";
 import {
   getRealtimeClient,
   isRealtimeDeferred,
@@ -55,12 +57,18 @@ export function useRealtimeSync({
   // rearmar el canal.
   const slugRef = useRef(slug);
   const userRef = useRef(currentUserId);
+  const tokenRef = useRef(accessToken);
   useEffect(() => {
     slugRef.current = slug;
     userRef.current = currentUserId;
+    tokenRef.current = accessToken;
   });
 
   const pendingRef = useRef(new Map<string, QueryKey>());
+  // Avisos que cambiaron en esta ventana: se parchean con una sola lectura.
+  const noticeBatchRef = useRef(new NoticeSyncBatch());
+  // Tareas que cambiaron en esta ventana: igual, una sola lectura para parchear.
+  const taskBatchRef = useRef(new TaskSyncBatch());
   const flushTimerRef = useRef<number | null>(null);
   const lastCatchUpRef = useRef(0);
   // Se marca cuando el canal se cae: al volver hay que recuperar lo perdido.
@@ -73,6 +81,17 @@ export function useRealtimeSync({
     pendingRef.current.clear();
     for (const queryKey of batch) {
       void queryClient.invalidateQueries({ queryKey });
+    }
+    if (!noticeBatchRef.current.isEmpty) {
+      const plan = noticeBatchRef.current.drain();
+      const fetcher = createNoticesFetcher({ token: tokenRef.current ?? undefined, organizationSlug: slugRef.current });
+      void applyNoticeSyncPlan(queryClient, slugRef.current, plan, fetcher);
+    }
+    if (!taskBatchRef.current.isEmpty) {
+      const slugNow = slugRef.current;
+      const plan = taskBatchRef.current.drain((id) => isTaskOnBoard(queryClient, slugNow, id));
+      const fetcher = createTasksFetcher({ token: tokenRef.current ?? undefined, organizationSlug: slugNow });
+      void applyTaskSyncPlan(queryClient, slugNow, plan, fetcher);
     }
   }, [queryClient]);
 
@@ -95,6 +114,15 @@ export function useRealtimeSync({
       scheduleFlush();
     },
     [scheduleFlush]
+  );
+
+  const enqueueEvent = useCallback(
+    (event: OrgChangeEvent) => {
+      if (noticeBatchRef.current.add(event)) scheduleFlush();
+      if (taskBatchRef.current.add(event)) scheduleFlush();
+      enqueue(queryKeysForEvent(event, slugRef.current));
+    },
+    [enqueue, scheduleFlush]
   );
 
   // Vuelve a pedir lo que cubre el tiempo real, no todas las consultas de la app.
@@ -135,13 +163,15 @@ export function useRealtimeSync({
 
     let cancelled = false;
     const pending = pendingRef.current;
+    const noticeBatch = noticeBatchRef.current;
+    const taskBatch = taskBatchRef.current;
     const channel = client.channel(topic, { config: { private: true } });
 
     channel.on("broadcast", { event: ORG_CHANGE_EVENT }, ({ payload }) => {
       const event = payload as OrgChangeEvent;
       // El que hizo el cambio ya recargó lo suyo al mutar.
       if (event.actor_id && event.actor_id === userRef.current) return;
-      enqueue(queryKeysForEvent(event, slugRef.current));
+      enqueueEvent(event);
     });
 
     void (async () => {
@@ -177,9 +207,11 @@ export function useRealtimeSync({
       if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
       pending.clear();
+      noticeBatch.drain();
+      taskBatch.drain();
       void client.removeChannel(channel);
     };
-  }, [organizationId, accessToken, enqueue, catchUp]);
+  }, [organizationId, accessToken, enqueueEvent, catchUp]);
 
   // Volver a la app. Si el canal siguió conectado no se hace nada: no se perdió
   // ningún aviso y no tiene sentido gastar requests. Solo se recupera si el canal

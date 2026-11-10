@@ -10,15 +10,15 @@ import {
   type Paginated
 } from "@/server/core/pagination";
 import { escapeLikePattern, isIsoTimestamp, isUuid, pgrstQuote } from "@/server/core/postgrest";
-import type { CreatePolicyDto, ListPoliciesQueryDto, UpdatePolicyDto } from "./schemas";
+import type { CreatePolicyDto, ListPoliciesQueryDto, RenewPolicyNumberDto, UpdatePolicyDto } from "./schemas";
 
 type PolicyCursor = { created_at: string; id: string };
 
 const POLICY_SELECT =
-  "id,branch,policy_number,vehicle_plate,payment_interval_months,payment_method,first_payment_date,is_active,created_at,clients!policies_client_fk(id,full_name),insurance_companies!policies_insurance_company_fk(id,name)";
+  "id,branch,policy_number,previous_policy_numbers,vehicle_plate,payment_interval_months,payment_method,first_payment_date,is_active,created_at,clients!policies_client_fk(id,full_name),insurance_companies!policies_insurance_company_fk(id,name)";
 
 const POLICY_NOTICE_SELECT =
-  "id,due_date,status,paid_interval_months,notified_at,payment_processed_at,created_at,policies!policy_notices_policy_fk(id,policy_number,branch,vehicle_plate,clients!policies_client_fk(id,full_name,phone,email,notes),insurance_companies!policies_insurance_company_fk(id,name)),notified_by:user_profiles!policy_notices_notified_by_user_id_fkey(id,full_name),payment_processed_by:user_profiles!policy_notices_payment_processed_by_user_id_fkey(id,full_name),notes:notice_notes(id,note,created_at,user_id,user:user_profiles!notice_notes_user_id_fkey(id,full_name))";
+  "id,due_date,status,paid_interval_months,notified_at,payment_processed_at,created_at,policies!policy_notices_policy_fk(id,policy_number,previous_policy_numbers,branch,vehicle_plate,clients!policies_client_fk(id,full_name,phone,email,notes),insurance_companies!policies_insurance_company_fk(id,name)),notified_by:user_profiles!policy_notices_notified_by_user_id_fkey(id,full_name),payment_processed_by:user_profiles!policy_notices_payment_processed_by_user_id_fkey(id,full_name),notes:notice_notes(id,note,created_at,user_id,user:user_profiles!notice_notes_user_id_fkey(id,full_name))";
 
 export class PoliciesService {
   private readonly logger = new Logger(PoliciesService.name);
@@ -116,7 +116,7 @@ export class PoliciesService {
     let query = this.supabase.admin
       .from("policies")
       .select(
-        "id,policy_number,branch,vehicle_plate,clients!policies_client_fk(id,full_name)"
+        "id,policy_number,previous_policy_numbers,branch,vehicle_plate,clients!policies_client_fk(id,full_name)"
       )
       .eq("organization_id", organizationId)
       .eq("is_active", true)
@@ -140,7 +140,11 @@ export class PoliciesService {
   // los clientes que coinciden (acotado a 100) y se filtra por client_id.
   private async policySearchOrFilter(organizationId: string, term: string) {
     const pattern = pgrstQuote(`%${escapeLikePattern(term)}%`);
-    const conditions = [`policy_number.ilike.${pattern}`, `vehicle_plate.ilike.${pattern}`];
+    const conditions = [
+      `policy_number.ilike.${pattern}`,
+      `previous_policy_numbers_text.ilike.${pattern}`,
+      `vehicle_plate.ilike.${pattern}`
+    ];
 
     const { data, error } = await this.supabase.admin
       .from("clients")
@@ -206,7 +210,7 @@ export class PoliciesService {
         first_payment_date: dto.firstPaymentDate,
         created_by_user_id: userId
       })
-      .select("id,branch,policy_number,vehicle_plate,payment_interval_months,payment_method,first_payment_date,is_active,created_at")
+      .select("id,branch,policy_number,previous_policy_numbers,vehicle_plate,payment_interval_months,payment_method,first_payment_date,is_active,created_at")
       .single();
 
     if (error) {
@@ -265,6 +269,47 @@ export class PoliciesService {
     }
     if (!data) {
       throw new NotFoundException("Policy not found");
+    }
+
+    return data;
+  }
+
+  // Renovación: el RPC agrega el número vigente a previous_policy_numbers y fija
+  // el nuevo en una sola transacción (requiere la migración
+  // 20261110120000_policy_previous_numbers: aplicarla antes de desplegar).
+  async renewNumber(organizationId: string, userId: string, policyId: string, dto: RenewPolicyNumberDto) {
+    const { error } = await this.supabase.admin.rpc("renew_policy_number", {
+      p_policy_id: policyId,
+      p_new_policy_number: dto.policyNumber,
+      p_organization_id: organizationId,
+      p_actor_user_id: userId
+    });
+
+    if (error) {
+      if (error.code === "P0002") {
+        throw new NotFoundException("Policy not found");
+      }
+      if (error.code === "P0001" && error.message) {
+        throw new BadRequestException(error.message);
+      }
+      if (error.code === "23505") {
+        throw new BadRequestException(
+          "Ese número ya lo usa otra póliza de la misma compañía. Revisá que sea el correcto."
+        );
+      }
+      throw supabaseError(this.logger, "policies.renewNumber", error, "No se pudo registrar la renovación de la póliza.");
+    }
+
+    const { data, error: selectError } = await this.supabase.admin
+      .from("policies")
+      .select(POLICY_SELECT)
+      .eq("id", policyId)
+      .eq("organization_id", organizationId)
+      .eq("is_active", true)
+      .single();
+
+    if (selectError) {
+      throw supabaseError(this.logger, "policies.renewNumber", selectError, "No se pudo obtener la póliza renovada.");
     }
 
     return data;

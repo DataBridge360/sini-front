@@ -110,10 +110,19 @@ export type InsuranceCompany = {
 // se cobra sola y no genera avisos de cobranza.
 export type PaymentMethod = "manual" | "debito_automatico";
 
+// Número que tuvo una póliza antes de renovarse; replaced_at es cuándo dejó de
+// estar vigente.
+export type PreviousPolicyNumber = {
+  number: string;
+  replaced_at: string;
+  replaced_by_user_id: string | null;
+};
+
 export type Policy = {
   id: string;
   branch: string;
   policy_number: string;
+  previous_policy_numbers?: PreviousPolicyNumber[];
   vehicle_plate: string | null;
   payment_interval_months: number;
   payment_method: PaymentMethod;
@@ -135,6 +144,7 @@ export type Notice = {
   policies?: {
     id: string;
     policy_number: string;
+    previous_policy_numbers?: PreviousPolicyNumber[];
     branch: string;
     vehicle_plate: string | null;
     clients?: { id: string; full_name: string; phone: string | null; email: string | null; notes: string | null } | null;
@@ -191,6 +201,7 @@ type TaskBase = {
   policies?: {
     id: string;
     policy_number: string;
+    previous_policy_numbers?: PreviousPolicyNumber[];
     branch: string;
     vehicle_plate: string | null;
     clients?: { id: string; full_name: string } | null;

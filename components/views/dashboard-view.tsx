@@ -97,7 +97,7 @@ export function DashboardView({
     // pone .sp-workspace.
     <div className="sp-page padded db-page">
       {error ? <ErrorState text={error} /> : null}
-      {isLoading ? <LoadingState text="Cargando resumen operativo" /> : null}
+      {isLoading || tasksQuery.isLoading ? <LoadingState text="Cargando resumen operativo" /> : null}
 
       <BalanceCard
         greeting={greeting}

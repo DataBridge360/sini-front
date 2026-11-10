@@ -50,6 +50,11 @@ export const updatePolicySchema = z
   })
   .partial();
 
+export const renewPolicyNumberSchema = z.object({
+  policyNumber: z.string().trim().min(1, "Ingresá el nuevo número de póliza.").max(120)
+});
+
+export type RenewPolicyNumberDto = z.infer<typeof renewPolicyNumberSchema>;
 export type CreatePolicyDto = z.infer<typeof createPolicySchema>;
 export type ListPoliciesQueryDto = z.infer<typeof listPoliciesQuerySchema>;
 export type SearchPoliciesQueryDto = z.infer<typeof searchPoliciesQuerySchema>;

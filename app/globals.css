@@ -2917,6 +2917,40 @@ button {
     animation: sp-think-float 1.8s ease-in-out infinite;
   }
 
+  /* Loader dentro de un panel, modal o tarjeta: compacto, en su superficie. */
+  .sp-loading.local {
+    @apply gap-1 py-4;
+  }
+
+  .sp-loading.local img {
+    width: 56px;
+    height: 56px;
+  }
+
+  /* Overlay único de página (ver PageLoadingHost). El cuerpo no altera el
+     layout: sus hijos siguen siendo hijos directos de .sp-workspace. */
+  .sp-workspace {
+    position: relative;
+  }
+
+  .sp-page-body {
+    display: contents;
+  }
+
+  .sp-page-loader {
+    @apply absolute inset-0 z-20;
+    background: color-mix(in srgb, var(--sp-bg) 90%, transparent);
+    animation: sp-loader-in 0.18s ease-out both;
+  }
+
+  /* Pegado bajo el header y del alto de lo visible: la mascota queda centrada
+     en pantalla aunque la página sea larga. */
+  .sp-page-loader-inner {
+    @apply sticky flex items-center justify-center;
+    top: 4rem;
+    height: calc(100dvh - 4rem);
+  }
+
   .sp-error-state {
     background: var(--sp-red-soft);
     border-color: #fecdca;
@@ -2936,8 +2970,21 @@ button {
   }
 }
 
+@keyframes sp-loader-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sp-loading img {
+    animation: none;
+  }
+
+  .sp-page-loader {
     animation: none;
   }
 }
@@ -9552,4 +9599,10 @@ a.sp-client-field-value:hover {
   .sp-shell.app-redesign .sp-nav-sub .sp-nav-gesti-avatar {
     border-radius: 9999px;
   }
+}
+
+/* Menú de póliza en el detalle del aviso: el botón de tres puntos llega a 44px. */
+.sp-task-menu-trigger.sp-task-menu-trigger-touch {
+  width: 44px;
+  height: 44px;
 }

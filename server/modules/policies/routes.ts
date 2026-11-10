@@ -4,6 +4,7 @@ import { route, type Route } from "@/server/core/router";
 import {
   createPolicySchema,
   listPoliciesQuerySchema,
+  renewPolicyNumberSchema,
   searchPoliciesQuerySchema,
   updatePolicySchema
 } from "./schemas";
@@ -58,6 +59,18 @@ export const policiesRoutes: Route[] = [
     access: "organization",
     handler: async ({ organization, uuidParam, body }) =>
       service().update(organization.id, uuidParam("id"), await body(updatePolicySchema))
+  }),
+  route({
+    method: "POST",
+    path: "/policies/:id/renew-number",
+    access: "organization",
+    handler: async ({ organization, user, uuidParam, body }) =>
+      service().renewNumber(
+        organization.id,
+        user.id,
+        uuidParam("id"),
+        await body(renewPolicyNumberSchema)
+      )
   }),
   route({
     method: "DELETE",

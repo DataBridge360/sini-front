@@ -1,8 +1,8 @@
 // Texto de una respuesta de Gesti que llega por partes. Acá está la lógica pura
 // (sin React): cortar el texto en palabras completas, el ritmo con el que se
 // muestran y el parser del subconjunto de markdown que usa el modelo
-// (`**negrita**`, viñetas, listas numeradas, bloques `:::borrador` y citas
-// `[[n]]`). La UI está en components/ui/streaming-text.tsx.
+// (`**negrita**`, encabezados `##`, viñetas, listas numeradas, bloques
+// `:::borrador` y citas `[[n]]`). La UI está en components/ui/streaming-text.tsx.
 
 // ---------- Palabras ----------
 
@@ -68,6 +68,8 @@ export function stepReveal(
 export type InlineSpan = { kind: "text"; text: string; bold: boolean } | { kind: "cite"; n: number };
 
 export type TextBlock =
+  /** `level` 2 para `#` y `##`, 3 para `###`. */
+  | { kind: "heading"; level: 2 | 3; spans: InlineSpan[] }
   | { kind: "paragraph"; lines: InlineSpan[][] }
   | { kind: "bullets"; items: InlineSpan[][] }
   | { kind: "numbered"; start: number; items: InlineSpan[][] }
@@ -76,6 +78,9 @@ export type TextBlock =
 
 const INLINE_TOKEN = /(\*\*|\[\[\d{1,2}\]\])/;
 const CITE = /^\[\[(\d{1,2})\]\]$/;
+const HEADING = /^\s{0,3}(#{1,3})\s+(\S.*)$/;
+// Marcador de encabezado al que todavía no le llegó el texto (el stream corta en "##").
+const HEADING_MARKER_ONLY = /^\s{0,3}#{1,3}\s*$/;
 const BULLET = /^\s*[•\-*]\s+(\S.*)$/;
 const NUMBERED = /^\s*(\d{1,3})[.)]\s+(\S.*)$/;
 const DRAFT_OPEN = /^\s*:::\s*borrador\s*$/i;
@@ -170,6 +175,22 @@ function parseBlockRanges(text: string, complete: boolean): Array<{ block: TextB
       continue;
     }
     if (line.trim() === "") {
+      flush();
+      continue;
+    }
+    const heading = HEADING.exec(line);
+    if (heading) {
+      flush();
+      const text = (heading[2] ?? "").replace(/\s+#+\s*$/, "").trim();
+      open(
+        { kind: "heading", level: heading[1] === "###" ? 3 : 2, spans: parseInline(text, complete) },
+        lineStart,
+        lineEnd
+      );
+      continue;
+    }
+    // "##" suelto mientras llega el stream: no se muestra como texto hasta saber qué es.
+    if (!complete && HEADING_MARKER_ONLY.test(line)) {
       flush();
       continue;
     }
@@ -269,13 +290,14 @@ export function embedRevealed(
   return revealedLength >= Math.min(Math.max(0, Math.floor(position)), Math.max(0, textLength));
 }
 
-/** El texto sin marcas (para "Copiar respuesta"): sin `[[n]]`, sin `**` y con el borrador como párrafo. */
+/** El texto sin marcas (para "Copiar respuesta"): sin `[[n]]`, `**` ni `##`, y con el borrador como párrafo. */
 export function toPlainText(text: string): string {
   return text
     .replace(/\r\n?/g, "\n")
     .split("\n")
     .filter((line) => !DRAFT_OPEN.test(line) && !DRAFT_CLOSE.test(line))
     .join("\n")
+    .replace(/^[ ]{0,3}#{1,3}[ \t]+/gm, "")
     .replace(/[ \t]*\[\[\d{1,2}\]\]/g, "")
     .replace(/\*\*/g, "")
     .replace(/\n{3,}/g, "\n\n")

@@ -75,7 +75,7 @@ const TASK_BASE_SELECT =
   "created_by:user_profiles!tasks_created_by_user_id_fkey(id,full_name)," +
   "approved_by:user_profiles!tasks_approved_by_user_id_fkey(id,full_name)," +
   "clients!tasks_client_fk(id,full_name)," +
-  "policies!tasks_policy_fk(id,policy_number,branch,vehicle_plate,clients!policies_client_fk(id,full_name))";
+  "policies!tasks_policy_fk(id,policy_number,previous_policy_numbers,branch,vehicle_plate,clients!policies_client_fk(id,full_name))";
 
 // Listado: solo contadores. Sin `description` (documento TipTap que puede pesar
 // 60kb por tarea) y sin adjuntos embebidos, así el tablero no arrastra ni firma
@@ -165,16 +165,30 @@ export class TasksService {
   // aparte, paginadas — crecen sin techo y arruinarían este listado.
   // Orden: las más cerca de vencer primero (vencidas arriba). Sin fecha, al final.
   async findBoard(organizationId: string) {
-    const { data, error } = await this.supabase.admin
+    return this.readBoard(organizationId, null, "tasks.findBoard");
+  }
+
+  // Lectura puntual para el tiempo real: las mismas filas que el tablero (misma
+  // forma, misma organización, solo estados del tablero) pero acotadas a `ids`.
+  // Una tarea archivada o eliminada simplemente no vuelve; el cliente la saca.
+  async findBoardByIds(organizationId: string, ids: string[]) {
+    return this.readBoard(organizationId, ids, "tasks.findBoardByIds");
+  }
+
+  private async readBoard(organizationId: string, ids: string[] | null, scope: string) {
+    let query = this.supabase.admin
       .from("tasks")
       .select(TASK_LIST_SELECT)
       .eq("organization_id", organizationId)
-      .in("status", [...taskBoardStatusValues])
+      .in("status", [...taskBoardStatusValues]);
+    if (ids) query = query.in("id", ids);
+
+    const { data, error } = await query
       .order("due_date", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true });
 
     if (error) {
-      throw supabaseError(this.logger, "tasks.findBoard", error, "No se pudieron obtener las tareas.");
+      throw supabaseError(this.logger, scope, error, "No se pudieron obtener las tareas.");
     }
 
     return ((data ?? []) as unknown as TaskListRow[]).map((task) => this.flattenCounts(task));

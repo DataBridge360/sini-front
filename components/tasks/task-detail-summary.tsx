@@ -3,6 +3,7 @@
 import { CalendarDays, FileText, User } from "lucide-react";
 import type { TaskDetail } from "@/lib/api";
 import { formatDate, getDaysUntilDue, initials } from "@/lib/format";
+import { historicNumberTitle, taskPolicyNumber } from "@/lib/policy-numbers";
 import { taskPriorityMeta } from "@/lib/tasks";
 
 // Datos de la tarea en modo lectura.
@@ -18,6 +19,7 @@ import { taskPriorityMeta } from "@/lib/tasks";
 export function TaskDetailSummary({ task }: { task: TaskDetail }) {
   const priority = taskPriorityMeta(task.priority);
   const days = task.due_date ? getDaysUntilDue(task.due_date) : null;
+  const policyNumber = taskPolicyNumber(task);
   const isOverdue = days !== null && days < 0 && task.status !== "finalizado";
 
   return (
@@ -78,7 +80,12 @@ export function TaskDetailSummary({ task }: { task: TaskDetail }) {
           <dt>Póliza</dt>
           <dd>
             <FileText size={12} className="shrink-0 text-slate-400" />
-            <span className="truncate">#{task.policies.policy_number}</span>
+            <span className="truncate" title={historicNumberTitle(policyNumber)}>
+              #{policyNumber.shown}
+            </span>
+            {policyNumber.isHistoric && policyNumber.current ? (
+              <span className="shrink-0 text-[11px] font-medium text-slate-500">hoy #{policyNumber.current}</span>
+            ) : null}
           </dd>
         </div>
       ) : null}

@@ -10,6 +10,7 @@ import {
   type TaskListItem
 } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { historicNumberTitle, taskPolicyNumber } from "@/lib/policy-numbers";
 import { PriorityChip } from "@/components/tasks/shared";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { Pagination } from "@/components/ui/pagination";
@@ -159,7 +160,7 @@ export function ArchivedTasksPanel({
       </div>
 
       {query.error ? <ErrorState text={query.error.message} /> : null}
-      {query.isLoading ? <LoadingState text="Cargando archivadas" /> : null}
+      {query.isLoading ? <LoadingState variant="local" text="Cargando archivadas" /> : null}
 
       {!query.isLoading && !query.error && items.length === 0 ? (
         <EmptyState
@@ -203,8 +204,8 @@ export function ArchivedTasksPanel({
                         </span>
                       ) : null}
                       {task.policies ? (
-                        <span>
-                          <FileText size={10.5} />#{task.policies.policy_number}
+                        <span title={historicNumberTitle(taskPolicyNumber(task))}>
+                          <FileText size={10.5} />#{taskPolicyNumber(task).shown}
                         </span>
                       ) : null}
                     </div>
