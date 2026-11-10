@@ -26,6 +26,13 @@ import {
   TASK_STATUS_META,
   type TaskFilters
 } from "@/lib/tasks";
+import {
+  applyTaskDetailToCache,
+  beginLocalTaskChange,
+  createTasksFetcher,
+  endLocalTaskChange,
+  syncTasksByIds
+} from "@/lib/tasks-realtime";
 import { ArchivedTasksPanel } from "@/components/tasks/archived-tasks-panel";
 import type { TaskApi } from "@/components/tasks/shared";
 import { TaskBoard } from "@/components/tasks/task-board";
@@ -106,9 +113,10 @@ export function TasksView({
   const onError = (error: Error) => notify(error.message, "error");
 
   // El detalle vive en su propia query; el listado solo trae contadores. Tras
-  // cualquier escritura hay que refrescar ambos.
+  // una actividad o un adjunto se refresca el detalle y se lee de nuevo esa
+  // tarea (una lectura puntual, no el listado entero) para sus contadores.
   const invalidateTask = (taskId: string) => {
-    void queryClient.invalidateQueries({ queryKey: tasksKey });
+    void syncTasksByIds(queryClient, slug, [taskId], createTasksFetcher(common));
     void queryClient.invalidateQueries({ queryKey: ["task", slug, taskId] });
   };
 
@@ -122,7 +130,8 @@ export function TasksView({
     onSuccess: (task) => {
       notify("Tarea creada.");
       setDetailCache(task);
-      void queryClient.invalidateQueries({ queryKey: tasksKey });
+      // La respuesta ya trae la tarea: entra al tablero sin pedir el listado.
+      applyTaskDetailToCache(queryClient, slug, task);
       void queryClient.invalidateQueries({ queryKey: statsKey });
     }
     // Sin onError: el formulario muestra el error inline.
@@ -133,10 +142,12 @@ export function TasksView({
       apiRequest<TaskDetail>(`/tasks/${taskId}`, { ...common, method: "PATCH", body: patch }),
     onSuccess: (task) => {
       setDetailCache(task);
-      void queryClient.invalidateQueries({ queryKey: tasksKey });
+      const before = applyTaskDetailToCache(queryClient, slug, task);
       // Reasignar cambia de quién es la tarea: los recuentos por persona se
-      // mueven aunque la etapa no cambie.
-      void queryClient.invalidateQueries({ queryKey: statsKey });
+      // mueven aunque la etapa no cambie. Sin nada que comparar, se recarga.
+      if (!before || before.assigned_to_user_id !== task.assigned_to_user_id || before.status !== task.status) {
+        void queryClient.invalidateQueries({ queryKey: statsKey });
+      }
     },
     onError
   });
@@ -150,12 +161,18 @@ export function TasksView({
       }),
     // Optimista: la tarjeta cambia de columna al instante. Si el servidor
     // rechaza (por ejemplo un asesor intentando aprobar), vuelve sola.
+    //
+    // Mientras la mutación está en vuelo, los parches de tiempo real de esta
+    // tarea se retienen (beginLocalTaskChange): una lectura anterior a que el
+    // servidor confirme la devolvería a la columna vieja. Al terminar se lee de
+    // nuevo una vez si algo quedó retenido.
     onMutate: ({ taskId, status }) => {
-      const previous = queryClient.getQueryData<TaskListItem[]>(tasksKey);
+      beginLocalTaskChange(taskId);
+      const previousStatus = queryClient.getQueryData<TaskListItem[]>(tasksKey)?.find((item) => item.id === taskId)?.status;
       queryClient.setQueryData<TaskListItem[]>(tasksKey, (prev) =>
         prev ? prev.map((item) => (item.id === taskId ? { ...item, status } : item)) : prev
       );
-      return { previous };
+      return { previousStatus };
     },
     onSuccess: (task, { status }) => {
       setDetailCache(task);
@@ -164,13 +181,31 @@ export function TasksView({
         // Deja de existir para el tablero: se cierra el detalle si estaba abierto.
         setDetailTaskId((current) => (current === task.id ? null : current));
       }
-      void queryClient.invalidateQueries({ queryKey: tasksKey });
-      void queryClient.invalidateQueries({ queryKey: ["tasks-archived", slug] });
+      applyTaskDetailToCache(queryClient, slug, task);
+      // Solo se archiva al llegar a finalizado; mover entre columnas del tablero
+      // no toca Archivadas.
+      if (status === "finalizado") void queryClient.invalidateQueries({ queryKey: ["tasks-archived", slug] });
       void queryClient.invalidateQueries({ queryKey: statsKey });
     },
-    onError: (error, _variables, context) => {
-      if (context?.previous) queryClient.setQueryData(tasksKey, context.previous);
+    onError: (error, { taskId, status }, context) => {
+      // Se revierte solo esta tarjeta, no toda la lista: en el medio pueden haber
+      // entrado cambios de otras personas que no hay que pisar.
+      if (context?.previousStatus) {
+        const previousStatus = context.previousStatus;
+        queryClient.setQueryData<TaskListItem[]>(tasksKey, (prev) =>
+          prev
+            ? prev.map((item) =>
+                item.id === taskId && item.status === status ? { ...item, status: previousStatus } : item
+              )
+            : prev
+        );
+      }
       onError(error);
+    },
+    onSettled: (_data, _error, { taskId }) => {
+      if (endLocalTaskChange(taskId)) {
+        void syncTasksByIds(queryClient, slug, [taskId], createTasksFetcher(common));
+      }
     }
   });
 
@@ -184,7 +219,7 @@ export function TasksView({
     onSuccess: (task) => {
       notify("Tarea desarchivada: volvió a En proceso.");
       setDetailCache(task);
-      void queryClient.invalidateQueries({ queryKey: tasksKey });
+      applyTaskDetailToCache(queryClient, slug, task);
       void queryClient.invalidateQueries({ queryKey: ["tasks-archived", slug] });
       void queryClient.invalidateQueries({ queryKey: statsKey });
     },

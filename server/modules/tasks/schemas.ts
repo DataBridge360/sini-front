@@ -96,9 +96,24 @@ export const createTaskMessageSchema = z.object({
     .optional()
 });
 
+// Tope de ids por lectura puntual. El cliente parchea hasta 15 por tanda y pide
+// la lista entera si hay más (ver lib/tasks-realtime.ts).
+export const MAX_TASK_IDS = 20;
+
 // GET /tasks?archived=1&page=&pageSize=&search=&priority=&assignedTo=
 // Sin `archived` devuelve el tablero (activas, sin paginar).
+// GET /tasks?ids=a,b,c devuelve solo esas tareas del tablero, con la misma forma
+// y el mismo alcance que el tablero (lectura puntual para el tiempo real).
 export const listTasksQuerySchema = z.object({
+  ids: z.preprocess(
+    (value) =>
+      typeof value === "string"
+        ? value.trim() === ""
+          ? null
+          : value.split(",").map((id) => id.trim())
+        : value,
+    z.array(z.uuid()).min(1).max(MAX_TASK_IDS).nullable().optional()
+  ),
   archived: z.preprocess((value) => value === "1" || value === "true", z.boolean()).optional(),
   page: pageField,
   pageSize: pageSizeField,

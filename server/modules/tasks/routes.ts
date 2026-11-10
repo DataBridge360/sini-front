@@ -29,6 +29,7 @@ export const tasksRoutes: Route[] = [
     access: "organization",
     handler: ({ organization, query }) => {
       const parsed = query(listTasksQuerySchema);
+      if (parsed.ids && parsed.ids.length > 0) return service().findBoardByIds(organization.id, parsed.ids);
       return parsed.archived
         ? service().findArchivedPage(organization.id, parsed)
         : service().findBoard(organization.id);

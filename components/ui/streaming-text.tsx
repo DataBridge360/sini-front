@@ -35,7 +35,7 @@ import {
 // un fundido corto (sin desenfoque: con el stream real se veía como lag), al
 // ritmo de lib/gesti-stream-text.ts, que se acelera si el texto llega más
 // rápido de lo que se lee. Dibuja el subconjunto de markdown que usa Gesti
-// (**negrita**, viñetas, listas numeradas, borradores copiables y citas [[n]]).
+// (**negrita**, encabezados, viñetas, listas numeradas, borradores copiables y citas [[n]]).
 // Recién al terminar se habilitan las acciones, las fuentes y las preguntas de
 // seguimiento. Los gráficos y tablas (`embeds`) se dibujan dentro de la
 // respuesta, en el hueco entre bloques donde Gesti los mostró y siempre arriba
@@ -377,6 +377,15 @@ export function StreamingText({
   const renderBlock = (block: TextBlock, index: number) => {
     const caret = streaming && index === blocks.length - 1 && block.kind !== "draft" ? <Caret step={shown} /> : null;
     switch (block.kind) {
+      case "heading": {
+        const Tag = block.level === 3 ? "h4" : "h3";
+        return (
+          <Tag key={index} className="gesti-stream-heading" data-level={block.level}>
+            {inline(block.spans)}
+            {caret}
+          </Tag>
+        );
+      }
       case "paragraph":
         return (
           <p key={index} className="gesti-stream-text">

@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { AVATAR_COLORS, formatDate, initials } from "@/lib/format";
 import { noticeStatusLabel, noticeStatusPill } from "@/lib/notices";
+import { previousPolicyNumbers } from "@/lib/policy-numbers";
 import type { NoticeNoteApi, PolicyActions } from "@/lib/shell-types";
 import { NOTICE_COLUMNS, NoticeNotes } from "@/components/notices/shared";
 import { PolicyFormModal } from "@/components/policies/policy-form-modal";
@@ -462,6 +463,9 @@ function PolicyHistoryPanel({
     { label: "Compañía", value: policy.insurance_companies?.name ?? "-" },
     { label: "Rama", value: policy.branch },
     { label: "N° de póliza", value: policy.policy_number || "-" },
+    ...(previousPolicyNumbers(policy).length > 0
+      ? [{ label: "Números anteriores", value: previousPolicyNumbers(policy).map((number) => `#${number}`).join(", ") }]
+      : []),
     { label: "Patente", value: policy.vehicle_plate || "-" },
     { label: "Periodicidad", value: intervalLabel(policy.payment_interval_months) },
     { label: "Tipo de pago", value: paymentMethodLabel(policy.payment_method) },
@@ -498,7 +502,7 @@ function PolicyHistoryPanel({
 
       {open ? (
         <div className="flex flex-col gap-5 border-t border-slate-100 bg-slate-50/70 p-4">
-          {history.isLoading ? <LoadingState text="Cargando historial" /> : null}
+          {history.isLoading ? <LoadingState variant="local" text="Cargando historial" /> : null}
           {history.error ? <ErrorState text={history.error.message} /> : null}
           {!history.isLoading && !history.error ? (
             <>

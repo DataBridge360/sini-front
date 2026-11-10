@@ -2,6 +2,7 @@
 // prioridades y filtros.
 
 import type { TaskListItem, TaskPriority, TaskStatus } from "@/lib/api";
+import { matchesPolicyNumber } from "@/lib/policy-numbers";
 
 // Lo que se ve en el tablero. 'finalizado' queda afuera: al aprobarse la tarea
 // se archiva y solo aparece en la vista Archivadas.
@@ -214,7 +215,7 @@ export function matchesTaskFilters(
     !term ||
     task.title.toLowerCase().includes(term) ||
     task.clients?.full_name?.toLowerCase().includes(term) ||
-    task.policies?.policy_number?.toLowerCase().includes(term) ||
+    matchesPolicyNumber(task.policies, term) ||
     task.assigned_to?.full_name?.toLowerCase().includes(term);
   const matchesPriority = filters.priority === "all" || task.priority === filters.priority;
   const assigneeTarget = filters.assignee === "me" ? currentUserId : filters.assignee;

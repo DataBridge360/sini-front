@@ -13,7 +13,7 @@ import type {
 type NoticeCursor = { due_date: string; id: string };
 
 const NOTICE_SELECT =
-  "id,due_date,status,paid_interval_months,notified_at,payment_processed_at,created_at,policies!policy_notices_policy_fk(id,policy_number,branch,vehicle_plate,clients!policies_client_fk(id,full_name,phone,email,notes),insurance_companies!policies_insurance_company_fk(id,name)),notified_by:user_profiles!policy_notices_notified_by_user_id_fkey(id,full_name),payment_processed_by:user_profiles!policy_notices_payment_processed_by_user_id_fkey(id,full_name),notes:notice_notes(id,note,created_at,user_id,user:user_profiles!notice_notes_user_id_fkey(id,full_name))";
+  "id,due_date,status,paid_interval_months,notified_at,payment_processed_at,created_at,policies!policy_notices_policy_fk(id,policy_number,previous_policy_numbers,branch,vehicle_plate,clients!policies_client_fk(id,full_name,phone,email,notes),insurance_companies!policies_insurance_company_fk(id,name)),notified_by:user_profiles!policy_notices_notified_by_user_id_fkey(id,full_name),payment_processed_by:user_profiles!policy_notices_payment_processed_by_user_id_fkey(id,full_name),notes:notice_notes(id,note,created_at,user_id,user:user_profiles!notice_notes_user_id_fkey(id,full_name))";
 
 export class NoticesService {
   private readonly logger = new Logger(NoticesService.name);
@@ -24,7 +24,7 @@ export class NoticesService {
     organizationId: string,
     options: ListNoticesQueryDto = {}
   ): Promise<{ data: unknown[]; nextCursor: string | null }> {
-    const { status, limit } = options;
+    const { status, limit, ids } = options;
 
     let query = this.supabase.admin
       .from("policy_notices")
@@ -37,6 +37,11 @@ export class NoticesService {
 
     if (status && status !== "all") {
       query = query.eq("status", status);
+    }
+
+    // Un id que no vuelve (borrado o de otra organización) simplemente no aparece.
+    if (ids && ids.length > 0) {
+      query = query.in("id", ids);
     }
 
     if (limit) {

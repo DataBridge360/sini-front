@@ -110,6 +110,22 @@ describe("noticesRoutes table", () => {
 });
 
 describe("notices handlers", () => {
+  it("reads only the requested notices with ?ids= under the same organization scope", async () => {
+    results.push({ data: [{ id: NOTICE_ID, due_date: "2026-01-02" }] });
+    const response = await setup()(call(`/notices?ids=${NOTICE_ID}`));
+
+    expect(response.status).toBe(200);
+    expect(calls).toContainEqual({ method: "in", args: ["id", [NOTICE_ID]] });
+    expect(calls).toContainEqual({ method: "eq", args: ["organization_id", "org-1"] });
+    expect(calls).toContainEqual({ method: "is", args: ["deleted_at", null] });
+  });
+
+  it("rejects a malformed or oversized ids filter", async () => {
+    expect((await setup()(call("/notices?ids=not-a-uuid"))).status).toBe(400);
+    const tooMany = Array.from({ length: 21 }, () => NOTICE_ID).join(",");
+    expect((await setup()(call(`/notices?ids=${tooMany}`))).status).toBe(400);
+  });
+
   it("sets X-Next-Cursor from the last due_date/id when the page is full", async () => {
     results.push({ data: [{ id: NOTICE_ID, due_date: "2026-01-02" }] });
     const response = await setup()(call("/notices?limit=1&status=avisar"));

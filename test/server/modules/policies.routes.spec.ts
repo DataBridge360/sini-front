@@ -44,10 +44,28 @@ function builder() {
 }
 
 vi.mock("@/server/core/supabase", () => ({
-  getSupabase: () => ({ admin: { from: () => builder() } }) as unknown as SupabaseService
+  getSupabase: () =>
+    ({
+      admin: {
+        from: () => builder(),
+        rpc: (name: string, args: unknown) => {
+          calls.push({ method: "rpc", args: [name, args] });
+          return builder();
+        }
+      }
+    }) as unknown as SupabaseService
 }));
 vi.mock("@/server/core/supabase", () => ({
-  getSupabase: () => ({ admin: { from: () => builder() } }) as unknown as SupabaseService
+  getSupabase: () =>
+    ({
+      admin: {
+        from: () => builder(),
+        rpc: (name: string, args: unknown) => {
+          calls.push({ method: "rpc", args: [name, args] });
+          return builder();
+        }
+      }
+    }) as unknown as SupabaseService
 }));
 
 const { policiesRoutes } = await import("@/server/modules/policies/routes");
@@ -97,6 +115,7 @@ describe("policiesRoutes table", () => {
       ["GET", "/policies/:id/notices", "organization", DEFAULT], // @Get(":id/notices")
       ["POST", "/policies", "organization", DEFAULT], // @Post()
       ["PATCH", "/policies/:id", "organization", DEFAULT], // @Patch(":id")
+      ["POST", "/policies/:id/renew-number", "organization", DEFAULT],
       ["DELETE", "/policies/:id", "organization", DEFAULT] // @Delete(":id")
     ]);
   });
@@ -206,5 +225,50 @@ describe("policies handlers", () => {
     expect((await response.json()).message).toBe("Validation failed (uuid is expected)");
     expect(calls).toEqual([]);
     expect(results).toEqual([]);
+  });
+});
+
+describe("POST /policies/:id/renew-number", () => {
+  const renew = (body: unknown) => setup()(json("POST", `/policies/${UUID}/renew-number`, body));
+
+  it("validates the body", async () => {
+    expect((await renew({})).status).toBe(400);
+    expect((await renew({ policyNumber: "   " })).status).toBe(400);
+  });
+
+  it("calls the RPC scoped to the organization and answers with the refreshed policy", async () => {
+    results.push({ data: { id: UUID } }, { data: { id: UUID, policy_number: "N-2", previous_policy_numbers: [] } });
+    const response = await renew({ policyNumber: "  N-2 " });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ id: UUID, policy_number: "N-2", previous_policy_numbers: [] });
+    expect(calls).toContainEqual({
+      method: "rpc",
+      args: [
+        "renew_policy_number",
+        { p_policy_id: UUID, p_new_policy_number: "N-2", p_organization_id: "org-1", p_actor_user_id: "user-1" }
+      ]
+    });
+  });
+
+  it("explains a number already used by another policy of the company", async () => {
+    results.push({ error: { code: "23505", message: "duplicate key" } });
+    const response = await renew({ policyNumber: "N-2" });
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).toContain("ya lo usa otra póliza");
+  });
+
+  it("shows the RPC message when the number is empty or unchanged", async () => {
+    results.push({ error: { code: "P0001", message: "El nuevo número es igual al número actual de la póliza." } });
+    const response = await renew({ policyNumber: "N-1" });
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).toContain("igual al número actual");
+  });
+
+  it("answers 404 when the policy is not found", async () => {
+    results.push({ error: { code: "P0002", message: "policy not found" } });
+    expect((await renew({ policyNumber: "N-2" })).status).toBe(404);
   });
 });

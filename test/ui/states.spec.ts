@@ -11,4 +11,10 @@ describe("LoadingState", () => {
     expect(html).toContain("Cargando pólizas");
     expect(html).not.toContain("sp-state");
   });
+
+  it("renders the compact local presentation when no page overlay is mounted", () => {
+    const html = renderToStaticMarkup(createElement(LoadingState, { text: "Cargando archivadas", variant: "local" }));
+    expect(html).toContain("sp-loading local");
+    expect(html.match(/role="status"/g)).toHaveLength(1);
+  });
 });

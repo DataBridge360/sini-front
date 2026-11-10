@@ -1,4 +1,5 @@
 import type { TaskListItem } from "@/lib/api";
+import { taskPolicyNumber } from "@/lib/policy-numbers";
 
 const MAX_BADGE_COUNT = 99;
 
@@ -16,6 +17,7 @@ export function bellAriaLabel(unreadCount: number) {
 // Vacío si la tarea no está vinculada a nada.
 export function taskAlertContext(task: TaskListItem) {
   const client = task.clients?.full_name ?? task.policies?.clients?.full_name ?? null;
-  const policy = task.policies?.policy_number ? `Póliza ${task.policies.policy_number}` : null;
+  const policyNumber = taskPolicyNumber(task).shown;
+  const policy = policyNumber ? `Póliza ${policyNumber}` : null;
   return [client, policy].filter(Boolean).join(" · ");
 }

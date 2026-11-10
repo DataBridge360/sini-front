@@ -769,6 +769,28 @@
   font-weight: 650;
 }
 
+/* Encabezados de sección: apenas más grandes y firmes que el texto, no títulos de página. */
+.gesti-stream-heading {
+  margin: 0;
+  color: var(--gesti-ink);
+  font-size: 15.5px;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.gesti-stream-heading[data-level="3"] {
+  font-size: 14.5px;
+}
+
+.gesti-stream-body > * + .gesti-stream-heading {
+  margin-top: 18px;
+}
+
+.gesti-stream-body > .gesti-stream-heading + * {
+  margin-top: 6px;
+}
+
 .gesti-stream-list {
   margin: 0;
   padding-left: 22px;

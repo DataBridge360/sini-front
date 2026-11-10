@@ -8,8 +8,6 @@ import {
   FileText,
   Layers,
   Loader2,
-  Mail,
-  Phone,
   RotateCcw,
   Search,
   X
@@ -21,17 +19,34 @@ import { capitalizeFirst, formatDate, getDaysUntilDue } from "@/lib/format";
 import {
   buildNoticeReminderMessage,
   clusterNoticesByClient,
+  describeNoticeAlreadyHandled,
   EMPTY_NOTICE_FILTERS,
+  describeNoticeHandlingLine,
   isNoticeInWindow,
   matchesNoticeFilters,
-  noticeStatusLabel,
+  noticeActionsFor,
+  noticeContactOf,
   noticeStatusPill,
+  pendingNotices,
+  recentHandlingByOther,
+  type NoticeActionKind,
   type NoticeFilters,
+  type NoticeHandling,
   type NoticeView
 } from "@/lib/notices";
-import { useDeferRealtime } from "@/lib/realtime";
+import { previousNumbersLabel } from "@/lib/policy-numbers";
+import { useRecentHandlingClock } from "@/lib/use-recent-handling-clock";
 import { BRANCHES, type NoticeNoteApi } from "@/lib/shell-types";
-import { ClientNote, DueChip, NOTICE_COLUMNS, NoticeNotes } from "@/components/notices/shared";
+import {
+  ClientNote,
+  ContactBlock,
+  DueChip,
+  NOTICE_COLUMNS,
+  NoticeHandledLine,
+  NoticeNotes,
+  RecentHandlingBanner
+} from "@/components/notices/shared";
+import { PolicyMenu, RenewPolicyDialog } from "@/components/notices/policy-renew";
 import { WhatsAppPreview } from "@/components/notices/whatsapp-preview";
 import { DatePicker } from "@/components/ui/date-picker";
 import { ConfirmDialog, Modal } from "@/components/ui/modal";
@@ -50,7 +65,8 @@ export function NoticesView({
   onNotified,
   onRevert,
   onPay,
-  onViewPolicy
+  onViewPolicy,
+  onRenewPolicy
 }: {
   notices: Notice[];
   companies: InsuranceCompany[];
@@ -64,6 +80,7 @@ export function NoticesView({
   onRevert: (id: string) => void;
   onPay: (id: string, months: number) => Promise<unknown>;
   onViewPolicy: (notice: Notice) => void;
+  onRenewPolicy: (policyId: string, policyNumber: string) => Promise<unknown>;
 }) {
   const [filters, setFilters] = useState<NoticeFilters>(EMPTY_NOTICE_FILTERS);
   const [view, setView] = useState<NoticeView>(() => readView("sp-notices-view", "kanban"));
@@ -74,20 +91,58 @@ export function NoticesView({
   const [notifyTarget, setNotifyTarget] = useState<Notice[] | null>(null);
   const [revertTarget, setRevertTarget] = useState<Notice | null>(null);
 
-  // Con un modal abierto los refrescos de tiempo real esperan: las confirmaciones
-  // de avisado, pago y reversión trabajan sobre una copia del aviso, y cambiarla
-  // por debajo mientras alguien decide sería confuso. Al cerrar se aplican todos.
-  useDeferRealtime(
-    Boolean(payNoticeTarget || detailNotices || notifyTarget || revertTarget)
-  );
+  // Los modales de confirmación guardan el aviso con el que se abrieron, pero
+  // deciden con la versión viva de la lista: el tiempo real sigue activo con un
+  // modal abierto, y quien está por contactar a un cliente tiene que ver si otra
+  // persona ya lo avisó o lo cobró.
+  const noticesById = useMemo(() => new Map(notices.map((notice) => [notice.id, notice])), [notices]);
+  const freshOf = (stale: Notice) => noticesById.get(stale.id) ?? null;
+  // Se confirma un pago: mientras tanto el aviso pasa a "pagado" y no hay que
+  // mostrar el cartel de "ya fue pagado" por el propio pago.
+  const [submittingPayId, setSubmittingPayId] = useState<string | null>(null);
+
+  // Reloj del cartel "lo avisó recién": solo corre mientras haya alguno vigente.
+  const currentUserId = noteApi.currentUserId || null;
+  const now = useRecentHandlingClock(notices, currentUserId);
 
   const requestNotify = (notice: Notice) => setNotifyTarget([notice]);
   const openDetail = (notice: Notice) => setDetailNotices([notice]);
 
-  // El estado del detalle guarda un snapshot: se refresca contra las props para
-  // que las notas agregadas desde el modal aparezcan sin cerrar y reabrir.
-  const freshDetailNotices = detailNotices
-    ? detailNotices.map((stale) => notices.find((notice) => notice.id === stale.id) ?? stale)
+  // El detalle se refresca contra las props: las notas y los cambios de estado de
+  // otras personas aparecen sin cerrar y reabrir. Un aviso que ya no está se saca.
+  const liveDetailNotices = detailNotices
+    ? detailNotices.flatMap((stale) => {
+        const fresh = freshOf(stale);
+        return fresh ? [fresh] : [];
+      })
+    : [];
+  const freshDetailNotices = liveDetailNotices.length > 0 ? liveDetailNotices : null;
+
+  const payFresh = payNoticeTarget ? freshOf(payNoticeTarget) : null;
+  const payHandledMessage = payNoticeTarget && submittingPayId !== payNoticeTarget.id
+    ? payFresh
+      ? payFresh.status === "pagado"
+        ? describeNoticeAlreadyHandled(payFresh, noteApi.currentUserId)
+        : null
+      : GONE_NOTICE_MESSAGE
+    : null;
+
+  const notifyEntries = notifyTarget?.map((stale) => ({ stale, fresh: freshOf(stale) })) ?? [];
+  const notifyPending = notifyEntries.flatMap(({ fresh }) => (fresh?.status === "avisar" ? [fresh] : []));
+  const notifyHandled = notifyEntries.flatMap(({ stale, fresh }) => {
+    if (fresh?.status === "avisar") return [];
+    const message = fresh ? describeNoticeAlreadyHandled(fresh, noteApi.currentUserId) : GONE_NOTICE_MESSAGE;
+    const label = notifyEntries.length > 1 ? `${stale.policies?.policy_number ?? "Aviso"}: ` : "";
+    return message ? [`${label}${message}`] : [];
+  });
+
+  const revertFresh = revertTarget ? freshOf(revertTarget) : null;
+  const revertHandledMessage = revertTarget
+    ? !revertFresh
+      ? GONE_NOTICE_MESSAGE
+      : revertFresh.status === "avisar"
+        ? "Este aviso ya estaba en «Avisar»: otra persona lo revirtió antes."
+        : null
     : null;
 
   const branches = useMemo(() => {
@@ -184,6 +239,8 @@ export function NoticesView({
                           isMarkingNotified={markingNoticeId === cluster[0].id}
                           isPaying={payingNoticeId === cluster[0].id}
                           isReverting={revertingNoticeId === cluster[0].id}
+                          currentUserId={currentUserId}
+                          now={now}
                           onRequestNotify={requestNotify}
                           onRequestRevert={setRevertTarget}
                           onRequestPay={setPayNoticeTarget}
@@ -196,6 +253,8 @@ export function NoticesView({
                           markingNoticeId={markingNoticeId}
                           payingNoticeId={payingNoticeId}
                           revertingNoticeId={revertingNoticeId}
+                          currentUserId={currentUserId}
+                          now={now}
                           onRequestNotifyAll={setNotifyTarget}
                           onRequestRevert={setRevertTarget}
                           onRequestPay={setPayNoticeTarget}
@@ -242,21 +301,36 @@ export function NoticesView({
 
       <PaymentDialog
         key={payNoticeTarget?.id ?? "pay-dialog"}
-        notice={payNoticeTarget}
+        notice={payHandledMessage ? null : payFresh ?? payNoticeTarget}
         isPaying={Boolean(payNoticeTarget && payingNoticeId === payNoticeTarget.id)}
         onClose={() => setPayNoticeTarget(null)}
         onConfirm={async (months) => {
           if (!payNoticeTarget) return;
-          await onPay(payNoticeTarget.id, months);
-          setPayNoticeTarget(null);
+          setSubmittingPayId(payNoticeTarget.id);
+          try {
+            await onPay(payNoticeTarget.id, months);
+            setPayNoticeTarget(null);
+          } finally {
+            setSubmittingPayId(null);
+          }
         }}
       />
+      <HandledNoticeDialog title="Registrar pago" message={payHandledMessage} onClose={() => setPayNoticeTarget(null)} />
 
       <NoticeDetailModal
         key={detailNotices ? detailNotices.map((notice) => notice.id).join("|") : "detail-modal"}
         notices={freshDetailNotices}
         noteApi={noteApi}
+        now={now}
+        markingNoticeId={markingNoticeId}
+        payingNoticeId={payingNoticeId}
+        revertingNoticeId={revertingNoticeId}
+        onRequestNotify={requestNotify}
+        onRequestNotifyAll={setNotifyTarget}
+        onRequestRevert={setRevertTarget}
+        onRequestPay={setPayNoticeTarget}
         onClose={() => setDetailNotices(null)}
+        onRenewPolicy={onRenewPolicy}
         onViewPolicy={(notice) => {
           setDetailNotices(null);
           onViewPolicy(notice);
@@ -266,24 +340,30 @@ export function NoticesView({
       {/* Confirmación de "avisado" con mensaje sugerido listo para copiar */}
       <NotifyDialog
         key={notifyTarget ? notifyTarget.map((notice) => notice.id).join("|") : "notify-dialog"}
-        notices={notifyTarget}
+        notices={notifyTarget && notifyPending.length > 0 ? notifyPending : null}
+        handledMessages={notifyHandled}
         onClose={() => setNotifyTarget(null)}
         onConfirm={() => {
-          notifyTarget?.forEach((notice) => onNotified(notice.id));
+          notifyPending.forEach((notice) => onNotified(notice.id));
           setNotifyTarget(null);
         }}
+      />
+      <HandledNoticeDialog
+        title="Marcar avisado"
+        message={notifyTarget && notifyPending.length === 0 ? notifyHandled.join(" ") : null}
+        onClose={() => setNotifyTarget(null)}
       />
 
       {/* Confirmación para volver atrás el estado de un aviso */}
       <ConfirmDialog
-        isOpen={Boolean(revertTarget)}
-        title={revertTarget?.status === "pagado" ? "Revertir pago" : "Volver a «Avisar»"}
+        isOpen={Boolean(revertTarget) && !revertHandledMessage}
+        title={(revertFresh ?? revertTarget)?.status === "pagado" ? "Revertir pago" : "Volver a «Avisar»"}
         message={
-          revertTarget?.status === "pagado"
-            ? `¿Revertir el pago de ${revertTarget?.policies?.clients?.full_name ?? "este aviso"}? El aviso vuelve a la columna "Avisados".`
-            : `¿Volver el aviso de ${revertTarget?.policies?.clients?.full_name ?? "este asegurado"} a "Avisar"? Va a quedar de nuevo como pendiente de contactar.`
+          (revertFresh ?? revertTarget)?.status === "pagado"
+            ? `¿Revertir el pago de ${(revertFresh ?? revertTarget)?.policies?.clients?.full_name ?? "este aviso"}? El aviso vuelve a la columna "Avisados".`
+            : `¿Volver el aviso de ${(revertFresh ?? revertTarget)?.policies?.clients?.full_name ?? "este asegurado"} a "Avisar"? Va a quedar de nuevo como pendiente de contactar.`
         }
-        confirmLabel={revertTarget?.status === "pagado" ? "Revertir pago" : "Volver atrás"}
+        confirmLabel={(revertFresh ?? revertTarget)?.status === "pagado" ? "Revertir pago" : "Volver atrás"}
         tone="warning"
         isBusy={Boolean(revertTarget && revertingNoticeId === revertTarget.id)}
         onClose={() => setRevertTarget(null)}
@@ -292,7 +372,37 @@ export function NoticesView({
           setRevertTarget(null);
         }}
       />
+      <HandledNoticeDialog title="Revertir estado" message={revertHandledMessage} onClose={() => setRevertTarget(null)} />
     </div>
+  );
+}
+
+const GONE_NOTICE_MESSAGE = "Este aviso ya no está disponible: otra persona lo eliminó o lo modificó.";
+
+// Cartel cuando el aviso ya lo resolvió otra persona: dice qué pasó y solo deja
+// cerrar, para no avisar ni cobrar dos veces.
+function HandledNoticeDialog({
+  title,
+  message,
+  onClose
+}: {
+  title: string;
+  message: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} isOpen={Boolean(message)} closeOnEscape onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <p className="m-0 text-sm leading-relaxed text-slate-600" role="status">
+          {message}
+        </p>
+        <div className="sp-modal-actions">
+          <button type="button" className="sp-primary-action" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -301,10 +411,13 @@ export function NoticesView({
 // la cantidad de vencimientos (aviso simple o agrupado).
 function NotifyDialog({
   notices,
+  handledMessages,
   onClose,
   onConfirm
 }: {
   notices: Notice[] | null;
+  /** Vencimientos del grupo que otra persona ya resolvió: se muestran y no se vuelven a avisar. */
+  handledMessages: string[];
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -328,6 +441,7 @@ function NotifyDialog({
     <Modal
       title={notices && notices.length > 1 ? `Marcar avisados (${notices.length})` : "Marcar avisado"}
       isOpen={isOpen}
+      closeOnEscape
       onClose={onClose}
     >
       <div className="flex flex-col gap-3">
@@ -335,6 +449,15 @@ function NotifyDialog({
           Vas a marcar como avisado{notices && notices.length > 1 ? `s los ${notices.length} vencimientos` : " el vencimiento"} de{" "}
           <strong className="font-semibold text-slate-800">{clientName}</strong>. Podés copiar el mensaje sugerido y enviárselo:
         </p>
+        {handledMessages.length > 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800" role="status">
+            {handledMessages.map((message) => (
+              <p key={message} className="m-0">
+                {message}
+              </p>
+            ))}
+          </div>
+        ) : null}
         {/* Antes del mensaje: si el asegurado tiene requisitos para contactarlo,
             hay que verlos ahora y no después de mandarlo. */}
         <ClientNote note={client?.notes} />
@@ -365,18 +488,36 @@ function NotifyDialog({
   );
 }
 
-// Detalle de uno o varios avisos del mismo asegurado: cada póliza se muestra
-// como una tarjeta destacada, todas juntas en el mismo modal.
+// Detalle de uno o varios avisos del mismo asegurado: contacto arriba, una
+// sección por póliza con su estado y sus acciones, y el aviso masivo al pie.
 function NoticeDetailModal({
   notices,
   noteApi,
+  now,
+  markingNoticeId,
+  payingNoticeId,
+  revertingNoticeId,
+  onRequestNotify,
+  onRequestNotifyAll,
+  onRequestRevert,
+  onRequestPay,
   onClose,
-  onViewPolicy
+  onViewPolicy,
+  onRenewPolicy
 }: {
   notices: Notice[] | null;
   noteApi: NoticeNoteApi;
+  now: number;
+  markingNoticeId: string | null;
+  payingNoticeId: string | null;
+  revertingNoticeId: string | null;
+  onRequestNotify: (notice: Notice) => void;
+  onRequestNotifyAll: (notices: Notice[]) => void;
+  onRequestRevert: (notice: Notice) => void;
+  onRequestPay: (notice: Notice) => void;
   onClose: () => void;
   onViewPolicy: (notice: Notice) => void;
+  onRenewPolicy: (policyId: string, policyNumber: string) => Promise<unknown>;
 }) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -386,9 +527,16 @@ function NoticeDetailModal({
   }
 
   const client = first.policies?.clients;
+  const contact = noticeContactOf(client);
   const minDays = Math.min(...notices.map((notice) => getDaysUntilDue(notice.due_date)));
   const showCopy = notices.some((notice) => notice.status !== "pagado");
+  const pending = pendingNotices(notices);
   const message = buildNoticeReminderMessage(notices);
+  const currentUserId = noteApi.currentUserId || null;
+  const recent = notices.flatMap((notice) => {
+    const handling = recentHandlingByOther(notice, currentUserId, now);
+    return handling ? [{ notice, handling }] : [];
+  });
 
   // Al copiar también se muestra la vista previa, para ver qué le va a llegar
   // al asegurado antes de pegarlo en WhatsApp.
@@ -413,67 +561,68 @@ function NoticeDetailModal({
     <Modal
       title={notices.length > 1 ? `Detalle de ${notices.length} avisos` : "Detalle del aviso"}
       isOpen
+      closeOnEscape
       onClose={handleClose}
     >
       <div className="flex flex-col gap-4">
-        {/* Cabecera: asegurado + estado + urgencia */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="m-0 truncate text-lg font-semibold text-slate-900">{client?.full_name ?? "Sin cliente"}</h3>
-            <p className="m-0 mt-1 flex flex-wrap items-center gap-1.5">
-              <DueChip days={minDays} status={first.status} />
-              {notices.length > 1 ? (
-                <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-                  <Layers size={12} /> {notices.length} pólizas con vencimientos juntos
-                </span>
-              ) : (
-                <span className="text-xs text-slate-400">Vence el {formatDate(first.due_date)}</span>
-              )}
-            </p>
-          </div>
-          <span className={noticeStatusPill(first.status)}>{noticeStatusLabel(first.status)}</span>
+        {/* Cabecera: asegurado + urgencia. El estado va en cada póliza. */}
+        <div className="min-w-0">
+          <h3 className="m-0 truncate text-xl font-bold text-slate-900">{client?.full_name ?? "Sin cliente"}</h3>
+          <p className="m-0 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <DueChip days={minDays} status={first.status} />
+            {notices.length > 1 ? (
+              <span className="inline-flex items-center gap-1 text-xs text-slate-600">
+                <Layers size={12} /> {notices.length} pólizas con vencimientos juntos
+              </span>
+            ) : (
+              <span className="text-xs text-slate-600">Vence el {formatDate(first.due_date)}</span>
+            )}
+          </p>
         </div>
 
-        {/* Una tarjeta destacada por póliza */}
-        {notices.map((notice) => (
-          <PolicyShowcase key={notice.id} notice={notice} noteApi={noteApi} onViewPolicy={onViewPolicy} />
+        {/* Otra persona resolvió un aviso mientras este detalle estaba abierto */}
+        {recent.map(({ notice, handling }) => (
+          <RecentHandlingBanner
+            key={notice.id}
+            handling={handling}
+            now={now}
+            policyNumber={notice.policies?.policy_number}
+            variant="modal"
+          />
         ))}
 
-        {/* Contacto del asegurado: links discretos */}
-        {client?.phone || client?.email ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            {client?.phone ? (
-              <a
-                href={`tel:${client.phone}`}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-[color:var(--org-primary)]"
-              >
-                <Phone size={12} />
-                {client.phone}
-              </a>
-            ) : null}
-            {client?.email ? (
-              <a
-                href={`mailto:${client.email}`}
-                className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-[color:var(--org-primary)]"
-              >
-                <Mail size={12} />
-                <span className="truncate">{client.email}</span>
-              </a>
-            ) : null}
-          </div>
-        ) : null}
+        {/* Contacto: texto plano, solo se copia */}
+        {contact ? <ContactBlock contact={contact} variant="modal" /> : null}
 
         <ClientNote note={client?.notes} />
+
+        {/* Una sección por póliza, cada una con su estado y sus acciones */}
+        {notices.map((notice) => (
+          <PolicyShowcase
+            key={notice.id}
+            notice={notice}
+            noteApi={noteApi}
+            now={now}
+            isMarkingNotified={markingNoticeId === notice.id}
+            isPaying={payingNoticeId === notice.id}
+            isReverting={revertingNoticeId === notice.id}
+            onRequestNotify={onRequestNotify}
+            onRequestRevert={onRequestRevert}
+            onRequestPay={onRequestPay}
+            onViewPolicy={onViewPolicy}
+            onRenewPolicy={onRenewPolicy}
+          />
+        ))}
 
         {showCopy && showPreview ? (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                 Vista previa del mensaje
               </span>
               <button
                 type="button"
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 transition-colors hover:text-slate-600"
+                className="inline-flex items-center gap-1 rounded text-[11px] font-semibold text-slate-600 transition-colors hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)]"
                 onClick={() => setShowPreview(false)}
               >
                 <X size={11} />
@@ -500,58 +649,100 @@ function NoticeDetailModal({
             </button>
           ) : null}
           <button type="button" className="sp-secondary-action" onClick={handleClose}>Cerrar</button>
+          {pending.length > 0 ? (
+            <button type="button" className="sp-primary-action" onClick={() => onRequestNotifyAll(pending)}>
+              <Bell size={14} />
+              {pending.length > 1 ? `Marcar avisados (${pending.length})` : "Marcar avisado"}
+            </button>
+          ) : null}
         </div>
       </div>
     </Modal>
   );
 }
 
-// Sección de una póliza dentro del detalle: encabezado sobrio, datos clave en
-// columnas y la auditoría/notas internas de ese aviso.
+// Sección de una póliza dentro del detalle: estado propio, datos clave en
+// columnas, quién la avisó o cobró, sus acciones y las notas internas.
 function PolicyShowcase({
   notice,
   noteApi,
-  onViewPolicy
+  now,
+  isMarkingNotified,
+  isPaying,
+  isReverting,
+  onRequestNotify,
+  onRequestRevert,
+  onRequestPay,
+  onViewPolicy,
+  onRenewPolicy
 }: {
   notice: Notice;
   noteApi: NoticeNoteApi;
+  now: number;
+  isMarkingNotified: boolean;
+  isPaying: boolean;
+  isReverting: boolean;
+  onRequestNotify: (notice: Notice) => void;
+  onRequestRevert: (notice: Notice) => void;
+  onRequestPay: (notice: Notice) => void;
   onViewPolicy: (notice: Notice) => void;
+  onRenewPolicy: (policyId: string, policyNumber: string) => Promise<unknown>;
 }) {
+  const [isRenewing, setIsRenewing] = useState(false);
   const company = notice.policies?.insurance_companies;
+  const policy = notice.policies;
+  const previousLabel = previousNumbersLabel(policy);
+  const currentUserId = noteApi.currentUserId || null;
+  // Una póliza pagada conserva quién la avisó antes de cobrarla.
+  const notifiedLine =
+    notice.status === "pagado" ? describeNoticeHandlingLine({ ...notice, status: "avisado" }, currentUserId, now) : null;
+  const hasOwnActions = noticeActionsFor(notice.status).some(({ kind }) => !MODAL_OMITTED_ACTIONS.includes(kind));
 
   return (
     <div className="rounded-xl border border-slate-200">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
+      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
         <span className="min-w-0">
-          <span className="block truncate text-[13px] font-semibold text-slate-800">
+          <span className="block truncate text-[15px] font-semibold text-slate-900">
             {company?.name ?? "Sin compañía"}
-            {notice.policies?.policy_number ? ` · Póliza N° ${notice.policies.policy_number}` : ""}
+            {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
           </span>
-          <span className="block text-[11px] text-slate-400">{notice.policies?.branch ?? "Rama"}</span>
+          <span className="block text-xs text-slate-600">{notice.policies?.branch ?? "Rama"}</span>
+          {previousLabel ? <span className="block truncate text-[11px] text-slate-500">{previousLabel}</span> : null}
         </span>
-        <button
-          type="button"
-          className="inline-flex shrink-0 items-center gap-1 text-[11.5px] font-semibold text-[color:var(--org-primary)] transition-opacity hover:opacity-75"
-          onClick={() => onViewPolicy(notice)}
-        >
-          <FileText size={12} />
-          Ver póliza
-        </button>
+        <span className="flex shrink-0 items-center gap-1">
+          <span className={noticeStatusPill(notice.status)}>
+            {notice.status === "avisar" ? "Por avisar" : notice.status === "avisado" ? "Avisado" : "Pagado"}
+          </span>
+          {policy?.id && policy.policy_number ? (
+            <PolicyMenu
+              policyNumber={policy.policy_number}
+              policyLabel={`la póliza #${policy.policy_number}`}
+              onRenew={() => setIsRenewing(true)}
+            />
+          ) : null}
+        </span>
       </div>
+      {isRenewing && policy?.id ? (
+        <RenewPolicyDialog
+          currentNumber={policy.policy_number}
+          onClose={() => setIsRenewing(false)}
+          onRenew={(policyNumber) => onRenewPolicy(policy.id, policyNumber)}
+        />
+      ) : null}
       <div className="grid grid-cols-3 gap-3 px-4 py-3 max-[520px]:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Vencimiento</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Vencimiento</span>
           <span className="truncate text-[13px] font-semibold text-slate-800">{formatDate(notice.due_date)}</span>
         </div>
         {notice.policies?.vehicle_plate ? (
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Patente</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Patente</span>
             <span className="truncate text-[13px] font-semibold text-slate-800">{notice.policies.vehicle_plate}</span>
           </div>
         ) : null}
         {notice.status === "pagado" && notice.paid_interval_months ? (
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Pagó</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600">Pagó</span>
             <span className="truncate text-[13px] font-semibold text-emerald-700">
               {capitalizeFirst(intervalLabel(notice.paid_interval_months))}
             </span>
@@ -559,21 +750,34 @@ function PolicyShowcase({
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-1.5 border-t border-slate-100 px-4 py-2.5">
-        {notice.notified_by ? (
-          <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
-            <Bell size={13} className="text-blue-500" />
-            Avisado por <strong className="font-semibold text-slate-700">{notice.notified_by.full_name}</strong>
-            {notice.notified_at ? <span className="text-slate-400">· {formatDate(notice.notified_at.slice(0, 10))}</span> : null}
-          </p>
+      <div className="flex flex-col gap-2.5 border-t border-slate-100 px-4 py-3">
+        {notifiedLine ? <p className="m-0 text-xs font-medium text-blue-700">{notifiedLine.text}</p> : null}
+        <NoticeHandledLine notice={notice} currentUserId={currentUserId} now={now} className="m-0" />
+        {/* Avisar es una sola acción para todas las pólizas (pie del detalle),
+            así que acá quedan solo las acciones propias de cada póliza. */}
+        {hasOwnActions ? (
+          <div className="flex gap-2">
+            <NoticeActionButtons
+              notice={notice}
+              isMarkingNotified={isMarkingNotified}
+              isPaying={isPaying}
+              isReverting={isReverting}
+              onRequestNotify={onRequestNotify}
+              onRequestRevert={onRequestRevert}
+              onRequestPay={onRequestPay}
+              size="modal"
+              omit={MODAL_OMITTED_ACTIONS}
+            />
+          </div>
         ) : null}
-        {notice.payment_processed_by ? (
-          <p className="m-0 flex items-center gap-1.5 text-xs text-slate-500">
-            <CheckCircle size={13} className="text-emerald-500" />
-            Cobrado por <strong className="font-semibold text-slate-700">{notice.payment_processed_by.full_name}</strong>
-            {notice.payment_processed_at ? <span className="text-slate-400">· {formatDate(notice.payment_processed_at.slice(0, 10))}</span> : null}
-          </p>
-        ) : null}
+        <button
+          type="button"
+          className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold text-[color:var(--org-primary)] transition-opacity hover:opacity-75 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)]"
+          onClick={() => onViewPolicy(notice)}
+        >
+          <FileText size={12} />
+          Ver póliza
+        </button>
         {/* Notas internas editables: la tarjeta del tablero quedó minimalista,
             así que el alta/baja de notas vive acá en el detalle. */}
         <NoticeNotes notice={notice} noteApi={noteApi} />
@@ -656,14 +860,29 @@ function FiltersPanel({
   );
 }
 
-// Tarjeta sobria: titular, una línea de póliza y vencimiento. Todo el resto
-// (contacto, notas, auditoría) vive en el modal de detalle. La tarjeta entera
-// es clickeable, salvo los botones de acción.
+// Enter y Espacio abren el detalle solo cuando el foco está en la tarjeta misma:
+// si viene de un botón interno (copiar, avisar, pagar), ese botón maneja la tecla.
+function openOnKey(event: React.KeyboardEvent, open: () => void) {
+  if (event.target !== event.currentTarget) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    open();
+  }
+}
+
+const CARD_CLASS =
+  "cursor-pointer rounded-xl border bg-white p-3 transition-colors hover:bg-slate-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)]";
+
+// Tarjeta del tablero: titular, póliza y vencimiento, contacto para copiar,
+// quién la resolvió y las acciones del estado. La tarjeta entera abre el
+// detalle, salvo los botones.
 function NoticeCard({
   notice,
   isMarkingNotified,
   isPaying,
   isReverting,
+  currentUserId,
+  now,
   onRequestNotify,
   onRequestRevert,
   onRequestPay,
@@ -673,6 +892,8 @@ function NoticeCard({
   isMarkingNotified: boolean;
   isPaying: boolean;
   isReverting: boolean;
+  currentUserId: string | null;
+  now: number;
   onRequestNotify: (notice: Notice) => void;
   onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
@@ -682,33 +903,33 @@ function NoticeCard({
   const company = notice.policies?.insurance_companies;
   const days = getDaysUntilDue(notice.due_date);
   const clientName = client?.full_name ?? "Sin cliente";
+  const contact = noticeContactOf(client);
+  const recent = recentHandlingByOther(notice, currentUserId, now);
 
   return (
     <article
       role="button"
       tabIndex={0}
-      className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-slate-300 hover:bg-slate-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary-soft)]"
+      className={`${CARD_CLASS} ${recent ? "border-blue-600" : "border-slate-200 hover:border-slate-300"}`}
       onClick={() => onOpenDetail(notice)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpenDetail(notice);
-        }
-      }}
+      onKeyDown={(event) => openOnKey(event, () => onOpenDetail(notice))}
     >
+      {recent ? <RecentHandlingBanner handling={recent} now={now} variant="card" /> : null}
       <div className="flex items-start justify-between gap-2">
-        <h4 className="m-0 min-w-0 truncate text-[13px] font-semibold leading-snug text-slate-900">{clientName}</h4>
+        <h4 className="m-0 min-w-0 truncate text-[15px] font-semibold leading-snug text-slate-900">{clientName}</h4>
         <DueChip days={days} status={notice.status} />
       </div>
-      <p className="m-0 mt-1 truncate text-[11.5px] text-slate-500">
+      <p className="m-0 mt-1 truncate text-xs text-slate-600">
         {company?.name ?? "Sin compañía"}
         {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
         {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
       </p>
-      <p className="m-0 mt-0.5 truncate text-[11px] text-slate-400">
+      <p className="m-0 mt-0.5 truncate text-xs text-slate-600">
         {notice.policies?.branch ?? "Rama"} · Vence el {formatDate(notice.due_date)}
       </p>
       <ClientNote note={client?.notes} variant="card" />
+      <NoticeHandledLine notice={notice} currentUserId={currentUserId} now={now} />
+      {contact ? <ContactBlock contact={contact} variant="card" /> : null}
 
       <NoticeActions
         notice={notice}
@@ -730,6 +951,8 @@ function NoticeGroupCard({
   markingNoticeId,
   payingNoticeId,
   revertingNoticeId,
+  currentUserId,
+  now,
   onRequestNotifyAll,
   onRequestRevert,
   onRequestPay,
@@ -739,6 +962,8 @@ function NoticeGroupCard({
   markingNoticeId: string | null;
   payingNoticeId: string | null;
   revertingNoticeId: string | null;
+  currentUserId: string | null;
+  now: number;
   onRequestNotifyAll: (notices: Notice[]) => void;
   onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
@@ -748,6 +973,7 @@ function NoticeGroupCard({
   if (!first) return null;
   const client = first.policies?.clients;
   const clientName = client?.full_name ?? "Sin cliente";
+  const contact = noticeContactOf(client);
   const status = first.status;
   const minDays = Math.min(...notices.map((notice) => getDaysUntilDue(notice.due_date)));
   const busy = notices.some(
@@ -755,46 +981,52 @@ function NoticeGroupCard({
       markingNoticeId === notice.id || payingNoticeId === notice.id || revertingNoticeId === notice.id
   );
   const spin = <Loader2 size={13} className="animate-spin" />;
+  // Un solo cartel por tarjeta: el cambio más reciente de otra persona.
+  const recent = notices.reduce<NoticeHandling | null>((latest, notice) => {
+    const handling = recentHandlingByOther(notice, currentUserId, now);
+    return handling && (!latest || handling.atMs > latest.atMs) ? handling : latest;
+  }, null);
+  const handledNotice = notices.find((notice) => describeNoticeHandlingLine(notice, currentUserId, now));
 
   return (
     <article
       role="button"
       tabIndex={0}
-      className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-slate-300 hover:bg-slate-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary-soft)]"
+      className={`${CARD_CLASS} ${recent ? "border-blue-600" : "border-slate-200 hover:border-slate-300"}`}
       onClick={() => onOpenDetail(notices)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpenDetail(notices);
-        }
-      }}
+      onKeyDown={(event) => openOnKey(event, () => onOpenDetail(notices))}
     >
+      {recent ? <RecentHandlingBanner handling={recent} now={now} variant="card" /> : null}
       <div className="flex items-start justify-between gap-2">
-        <h4 className="m-0 min-w-0 truncate text-[13px] font-semibold leading-snug text-slate-900">{clientName}</h4>
+        <h4 className="m-0 min-w-0 truncate text-[15px] font-semibold leading-snug text-slate-900">{clientName}</h4>
         <DueChip days={minDays} status={status} />
       </div>
-      <p className="m-0 mt-1 flex items-center gap-1 truncate text-[11px] text-slate-400">
+      <p className="m-0 mt-1 flex items-center gap-1 truncate text-xs text-slate-600">
         <Layers size={11} className="shrink-0" />
         {notices.length} pólizas con vencimientos juntos
       </p>
       <ClientNote note={client?.notes} variant="card" />
+      {handledNotice ? <NoticeHandledLine notice={handledNotice} currentUserId={currentUserId} now={now} /> : null}
+      {contact ? <ContactBlock contact={contact} variant="card" /> : null}
 
       {/* Una línea por póliza: compañía · número a la izquierda, fecha a la derecha */}
       <div className="mt-2 flex flex-col divide-y divide-slate-100 border-t border-slate-100">
         {notices.map((notice) => {
           const rowBusy =
             markingNoticeId === notice.id || payingNoticeId === notice.id || revertingNoticeId === notice.id;
+          const policyLabel = notice.policies?.policy_number ? ` de la póliza ${notice.policies.policy_number}` : "";
           return (
             <div key={notice.id} className="flex items-center gap-2 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-[11.5px] text-slate-600">
+              <span className="min-w-0 flex-1 truncate text-xs text-slate-700">
                 {notice.policies?.insurance_companies?.name ?? "Sin compañía"}
                 {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
               </span>
-              <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{formatDate(notice.due_date)}</span>
+              <span className="shrink-0 text-[11px] tabular-nums text-slate-600">{formatDate(notice.due_date)}</span>
               {status === "avisado" ? (
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[10.5px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={`Registrar pago${policyLabel}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)] disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={(event) => {
                     event.stopPropagation();
                     onRequestPay(notice);
@@ -808,7 +1040,8 @@ function NoticeGroupCard({
               {status === "pagado" ? (
                 <button
                   type="button"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-50 px-2 py-1 text-[10.5px] font-semibold text-slate-500 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={`Revertir pago${policyLabel}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)] disabled:cursor-not-allowed disabled:opacity-60"
                   onClick={(event) => {
                     event.stopPropagation();
                     onRequestRevert(notice);
@@ -828,7 +1061,7 @@ function NoticeGroupCard({
         <div className="border-t border-slate-100 pt-2">
           <button
             type="button"
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-50 py-1.5 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-blue-50 py-1.5 text-[12.5px] font-semibold text-blue-800 transition-colors hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)] disabled:cursor-not-allowed disabled:opacity-60"
             onClick={(event) => {
               event.stopPropagation();
               onRequestNotifyAll(notices);
@@ -843,9 +1076,6 @@ function NoticeGroupCard({
     </article>
   );
 }
-
-// Chip de vencimiento con fondo tintado: comunica urgencia de un vistazo.
-// Pagado siempre se muestra en verde, aunque la fecha haya pasado.
 
 function NoticeListRow({
   notice,
@@ -871,34 +1101,35 @@ function NoticeListRow({
   const client = notice.policies?.clients;
   const company = notice.policies?.insurance_companies;
   const days = getDaysUntilDue(notice.due_date);
+  const contact = noticeContactOf(client);
 
   return (
     <div className={`sp-list-row notice ${compact ? "compact" : ""}`}>
       <i style={{ backgroundColor: NOTICE_COLUMNS.find((column) => column.key === notice.status)?.dot }} />
-      <div
-        className="sp-list-main cursor-pointer"
-        role="button"
-        tabIndex={0}
-        onClick={() => onOpenDetail(notice)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onOpenDetail(notice);
-          }
-        }}
-      >
-        <strong>{client?.full_name ?? "Sin cliente"}</strong>
-        <span>
-          {company?.name ?? "Sin compañía"}
-          {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
-          {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
-        </span>
-        <ClientNote note={client?.notes} variant="card" />
+      {/* El teléfono con su botón de copiar queda afuera del área clickeable del
+          detalle: un botón dentro de otro botón no es válido. */}
+      <div className="sp-list-main">
+        <div
+          className="cursor-pointer"
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpenDetail(notice)}
+          onKeyDown={(event) => openOnKey(event, () => onOpenDetail(notice))}
+        >
+          <strong>{client?.full_name ?? "Sin cliente"}</strong>
+          <span>
+            {company?.name ?? "Sin compañía"}
+            {notice.policies?.policy_number ? ` · #${notice.policies.policy_number}` : ""}
+            {notice.policies?.vehicle_plate ? ` · ${notice.policies.vehicle_plate}` : ""}
+          </span>
+          <ClientNote note={client?.notes} variant="card" />
+        </div>
+        {contact ? <ContactBlock contact={contact} variant="row" /> : null}
       </div>
       <span className="sp-branch-tag">{notice.policies?.branch ?? "Rama"}</span>
       <span className="grid justify-items-start gap-0.5">
         <DueChip days={days} status={notice.status} />
-        <em className="text-[11px] not-italic text-slate-400">{formatDate(notice.due_date)}</em>
+        <em className="text-[11px] not-italic text-slate-600">{formatDate(notice.due_date)}</em>
       </span>
       {!compact ? (
         <NoticeActions
@@ -916,74 +1147,100 @@ function NoticeListRow({
   );
 }
 
-function NoticeActions({
-  notice,
-  isMarkingNotified,
-  isPaying,
-  isReverting,
-  onRequestNotify,
-  onRequestRevert,
-  onRequestPay,
-  inline
-}: {
-  notice: Notice;
+type NoticeActionHandlers = {
   isMarkingNotified: boolean;
   isPaying: boolean;
   isReverting: boolean;
   onRequestNotify: (notice: Notice) => void;
   onRequestRevert: (notice: Notice) => void;
   onRequestPay: (notice: Notice) => void;
-  inline?: boolean;
-}) {
+};
+
+// En el detalle, avisar vive solo en el pie y aplica a todas las pólizas.
+const MODAL_OMITTED_ACTIONS: readonly NoticeActionKind[] = ["notify"];
+
+// Botones del estado actual del aviso (flujo estricto: avisar -> avisado ->
+// pagado). Los usan la tarjeta, la lista y las secciones del detalle, así los
+// diálogos de confirmación y las guardas de datos vivos son los mismos.
+function NoticeActionButtons({
+  notice,
+  size,
+  isMarkingNotified,
+  isPaying,
+  isReverting,
+  onRequestNotify,
+  onRequestRevert,
+  onRequestPay,
+  omit
+}: NoticeActionHandlers & { notice: Notice; size: "card" | "row" | "modal"; omit?: readonly NoticeActionKind[] }) {
   const busy = isMarkingNotified || isPaying || isReverting;
-  const wrap = `mt-2.5 flex gap-1.5 border-t border-slate-100 pt-2 ${inline ? "mt-0 border-0 pt-0" : ""}`;
+  const sizeClass =
+    size === "modal"
+      ? "min-h-11 text-[13px]"
+      : size === "row"
+        ? "min-h-8 px-1 text-[11px]"
+        : "min-h-9 text-[12.5px]";
   // Tintes suaves: marcan la acción sin competir con el contenido de la tarjeta.
-  const base =
-    "inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
-  const blue = `${base} bg-blue-50 text-blue-700 hover:bg-blue-100`;
-  const green = `${base} bg-emerald-50 text-emerald-700 hover:bg-emerald-100`;
-  const neutral = `${base} bg-slate-50 text-slate-500 hover:bg-slate-100`;
-  const spin = <Loader2 size={13} className="animate-spin" />;
-  // La tarjeta entera abre el detalle: los botones cortan la propagación.
-  const stop = (event: React.MouseEvent) => event.stopPropagation();
-
-  // Flujo estricto: avisar -> avisado (azul) -> pagado (verde).
-  if (notice.status === "pagado") {
-    return (
-      <div className={wrap} onClick={stop}>
-        <button type="button" className={neutral} onClick={() => onRequestRevert(notice)} disabled={busy}>
-          {isReverting ? spin : <RotateCcw size={13} />}
-          Revertir pago
-        </button>
-      </div>
-    );
-  }
-
-  if (notice.status === "avisar") {
-    return (
-      <div className={wrap} onClick={stop}>
-        <button type="button" className={blue} onClick={() => onRequestNotify(notice)} disabled={busy}>
-          {isMarkingNotified ? spin : <Bell size={13} />}
-          Marcar avisado
-        </button>
-      </div>
-    );
-  }
+  const base = `inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)] disabled:cursor-not-allowed disabled:opacity-60 ${sizeClass}`;
+  const tone: Record<NoticeActionKind, string> = {
+    notify: "bg-blue-50 text-blue-800 hover:bg-blue-100",
+    revert: "bg-slate-100 text-slate-600 hover:bg-slate-200",
+    pay: "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+  };
+  const handler: Record<NoticeActionKind, (notice: Notice) => void> = {
+    notify: onRequestNotify,
+    revert: onRequestRevert,
+    pay: onRequestPay
+  };
+  const spinning: Record<NoticeActionKind, boolean> = {
+    notify: isMarkingNotified,
+    revert: isReverting,
+    pay: isPaying
+  };
+  const icons: Record<NoticeActionKind, typeof Bell> = { notify: Bell, revert: RotateCcw, pay: CheckCircle };
+  const iconSize = size === "modal" ? 15 : 13;
 
   return (
-    <div className={wrap} onClick={stop}>
-      <button type="button" className={neutral} onClick={() => onRequestRevert(notice)} disabled={busy}>
-        {isReverting ? spin : <RotateCcw size={13} />}
-        Avisar
-      </button>
-      <button type="button" className={green} onClick={() => onRequestPay(notice)} disabled={busy}>
-        {isPaying ? spin : <CheckCircle size={13} />}
-        Pagar
-      </button>
-    </div>
+    <>
+      {noticeActionsFor(notice.status)
+        .filter(({ kind }) => !omit?.includes(kind))
+        .map(({ kind, label }) => {
+        const Icon = icons[kind];
+        return (
+          <button
+            key={kind}
+            type="button"
+            className={`${base} ${tone[kind]}`}
+            onClick={() => handler[kind](notice)}
+            disabled={busy}
+          >
+            {spinning[kind] ? (
+              <Loader2 size={iconSize} className="animate-spin" />
+            ) : size === "row" ? null : (
+              <Icon size={iconSize} />
+            )}
+            {label}
+          </button>
+        );
+      })}
+    </>
   );
 }
 
+function NoticeActions({
+  inline,
+  ...props
+}: NoticeActionHandlers & { notice: Notice; inline?: boolean }) {
+  const wrap = `mt-2.5 flex gap-1.5 ${inline ? "mt-0" : ""}`;
+  // La tarjeta entera abre el detalle: el contenedor corta la propagación.
+  const stop = (event: React.MouseEvent) => event.stopPropagation();
+
+  return (
+    <div className={wrap} onClick={stop}>
+      <NoticeActionButtons {...props} size={inline ? "row" : "card"} />
+    </div>
+  );
+}
 
 function PaymentDialog({
   notice,
@@ -1003,7 +1260,7 @@ function PaymentDialog({
   const options = [1, 2, 3, 6, 12];
 
   return (
-    <Modal title="Registrar pago" isOpen={Boolean(notice)} onClose={() => (isPaying ? undefined : onClose())}>
+    <Modal title="Registrar pago" isOpen={Boolean(notice)} closeOnEscape onClose={() => (isPaying ? undefined : onClose())}>
       <form
         className="sp-pay-form"
         onSubmit={async (event) => {

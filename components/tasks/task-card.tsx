@@ -3,6 +3,7 @@
 import { CalendarDays, FileText, MessageSquare, Paperclip, User } from "lucide-react";
 import type { TaskListItem, TaskStatus } from "@/lib/api";
 import { formatDate, getDaysUntilDue, initials } from "@/lib/format";
+import { historicNumberTitle, taskPolicyNumber } from "@/lib/policy-numbers";
 import { PriorityChip } from "@/components/tasks/shared";
 import { TaskStatusControl } from "@/components/tasks/task-status-control";
 
@@ -20,6 +21,7 @@ export function TaskCardContent({
   onMove?: (status: TaskStatus) => void;
 }) {
   const days = task.due_date ? getDaysUntilDue(task.due_date) : null;
+  const policyNumber = taskPolicyNumber(task);
   const isOverdue = days !== null && days < 0;
   // Color solo cuando comunica urgencia real: vencida o vence en 3 días.
   const dueChip = isOverdue
@@ -51,9 +53,12 @@ export function TaskCardContent({
             </span>
           ) : null}
           {task.policies ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600">
+            <span
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600"
+              title={historicNumberTitle(policyNumber)}
+            >
               <FileText size={10.5} className="shrink-0" />
-              <span className="truncate">#{task.policies.policy_number}</span>
+              <span className="truncate">#{policyNumber.shown}</span>
             </span>
           ) : null}
         </div>

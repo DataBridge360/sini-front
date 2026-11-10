@@ -13,6 +13,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { QueryKey } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
+import { noticeIdOfEvent } from "@/lib/notices-realtime";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
@@ -66,11 +67,6 @@ export type OrgChangeEvent = {
   fields?: string[];
 };
 
-// Columnas que solo se ven dentro del detalle de la tarea. Sin esta distinción,
-// el autoguardado de la descripción (cada 1200 ms mientras alguien escribe) haría
-// recargar el tablero y los contadores a toda la organización.
-const TASK_DETAIL_ONLY_FIELDS = new Set(["description"]);
-
 // Las claves que este módulo puede llegar a invalidar. Se usa para acotar la
 // puesta al día tras una reconexión: recargar solo esto en vez de todas las
 // consultas de la app (que son una docena) mantiene el tráfico a raya.
@@ -88,41 +84,41 @@ export function realtimeQueryKeys(slug: string): QueryKey[] {
 export function queryKeysForEvent(event: OrgChangeEvent, slug: string): QueryKey[] {
   switch (event.entity) {
     case "task": {
-      // Escribir la descripción no mueve el tablero de los demás.
-      const detailOnly =
-        event.action === "update" &&
-        Array.isArray(event.fields) &&
-        event.fields.length > 0 &&
-        event.fields.every((field) => TASK_DETAIL_ONLY_FIELDS.has(field));
-
-      const keys: QueryKey[] = [["task", slug, event.entity_id]];
-      if (!detailOnly) {
-        keys.push(["tasks", slug], ["task-stats", slug], ["tasks-archived", slug]);
-      }
-      return keys;
+      // El tablero, los recuentos y Archivadas se parchean o se recargan según
+      // lo que cambió (ver lib/tasks-realtime.ts). Acá queda el detalle abierto.
+      return [["task", slug, event.entity_id]];
     }
 
     case "task_message":
     case "task_attachment": {
-      // El tablero muestra la cantidad de mensajes y adjuntos de cada tarjeta,
-      // así que también se refresca.
-      const keys: QueryKey[] = [["tasks", slug]];
+      // El tablero muestra la cantidad de mensajes y adjuntos de cada tarjeta:
+      // se parchea con una lectura puntual de esa tarea. Sin id de tarea no hay
+      // qué leer, así que se recarga el tablero entero.
+      const keys: QueryKey[] = [];
       if (event.parent_id) keys.push(["task", slug, event.parent_id]);
+      else keys.push(["tasks", slug]);
       return keys;
     }
 
-    case "policy_notice":
-      return [
-        ["notices", slug],
+    case "policy_notice": {
+      // La lista de avisos se parcha con una lectura puntual (ver
+      // lib/notices-realtime.ts); solo se recarga entera si el aviso no tiene id.
+      const keys: QueryKey[] = [
         // El historial por póliza usa una clave sin slug (client-detail-screen).
         event.parent_id ? ["policy-notices", event.parent_id] : ["policy-notices"]
       ];
+      if (!noticeIdOfEvent(event)) keys.unshift(["notices", slug]);
+      return keys;
+    }
 
-    case "notice_note":
+    case "notice_note": {
       // Acá parent_id es el id del aviso, no el de la póliza: se invalida el
       // prefijo. Solo se recargan las consultas activas, así que si el historial
       // está cerrado no cuesta nada.
-      return [["notices", slug], ["policy-notices"]];
+      const keys: QueryKey[] = [["policy-notices"]];
+      if (!noticeIdOfEvent(event)) keys.unshift(["notices", slug]);
+      return keys;
+    }
 
     default:
       return [];

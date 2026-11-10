@@ -11,12 +11,25 @@ export const createNoticeNoteSchema = z.object({
 const emptyToNull = (value: unknown) =>
   typeof value === "string" && value.trim() === "" ? null : value;
 
+export const MAX_NOTICE_IDS = 20;
+
 export const noticeStatusValues = ["avisar", "avisado", "pagado"] as const;
 
 export const listNoticesQuerySchema = z.object({
   status: z.preprocess(
     emptyToNull,
     z.enum(["avisar", "avisado", "pagado", "all"]).nullable().optional()
+  ),
+  // Lectura puntual para el tiempo real: "?ids=a,b,c" devuelve solo esos avisos,
+  // con la misma forma y el mismo alcance por organización que la lista.
+  ids: z.preprocess(
+    (value) =>
+      typeof value === "string"
+        ? value.trim() === ""
+          ? null
+          : value.split(",").map((id) => id.trim())
+        : value,
+    z.array(z.string().uuid()).min(1).max(MAX_NOTICE_IDS).nullable().optional()
   ),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.preprocess(emptyToNull, z.string().trim().max(400).nullable().optional())

@@ -1,10 +1,16 @@
 "use client";
 
-import { AlertTriangle, Bell, CalendarDays, CheckCircle, ChevronDown, Clock, Loader2, MessageSquare, Save, StickyNote, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Bell, CalendarDays, Check, CheckCircle, ChevronDown, Clock, Copy, Loader2, Mail, MessageSquare, Phone, Save, StickyNote, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { Notice } from "@/lib/api";
 import { dueLabel } from "@/lib/format";
-import type { NoticeStatus } from "@/lib/notices";
+import {
+  describeHandlingAge,
+  describeNoticeHandlingLine,
+  type NoticeContact,
+  type NoticeHandling,
+  type NoticeStatus
+} from "@/lib/notices";
 import type { NoticeNoteApi } from "@/lib/shell-types";
 import { ConfirmDialog } from "@/components/ui/modal";
 
@@ -191,3 +197,188 @@ export function NoticeNotes({ notice, noteApi }: { notice: Notice; noteApi: Noti
   );
 }
 
+
+// Botón de copiar de una fila de contacto. Solo copia: no hay links de llamar ni
+// de escribir. Corta la propagación porque la tarjeta entera abre el detalle.
+function CopyContactButton({
+  value,
+  label,
+  size
+}: {
+  value: string;
+  label: string;
+  size: "sm" | "lg";
+}) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => () => window.clearTimeout(timerRef.current ?? undefined), []);
+
+  const copy = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true);
+        window.clearTimeout(timerRef.current ?? undefined);
+        timerRef.current = window.setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => undefined);
+  };
+
+  const Icon = copied ? Check : Copy;
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={label}
+        title={copied ? "Copiado" : label}
+        onClick={copy}
+        className={`flex shrink-0 items-center justify-center rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--org-primary)] ${
+          size === "lg" ? "h-11 w-11 border border-slate-200 bg-white" : "h-8 w-8"
+        } ${copied ? "text-emerald-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+      >
+        <Icon size={size === "lg" ? 16 : 14} aria-hidden="true" />
+      </button>
+      <span className="sr-only" role="status">
+        {copied ? "Copiado" : ""}
+      </span>
+    </>
+  );
+}
+
+// Teléfono y correo del asegurado, siempre como texto plano con su botón de
+// copiar. "card" va en el tablero, "modal" arriba del detalle (más grande) y
+// "row" es la versión de una línea para la vista lista (solo teléfono).
+export function ContactBlock({
+  contact,
+  variant
+}: {
+  contact: NoticeContact;
+  variant: "card" | "modal" | "row";
+}) {
+  const { phone, email } = contact;
+
+  if (variant === "row") {
+    if (!phone) return null;
+    return (
+      <div className="mt-0.5 flex items-center gap-1.5 text-[13px]">
+        <Phone size={13} className="shrink-0 text-slate-600" aria-hidden="true" />
+        <p className="m-0 font-semibold tabular-nums text-slate-900">{phone}</p>
+        <CopyContactButton value={phone} label="Copiar teléfono" size="sm" />
+      </div>
+    );
+  }
+
+  if (variant === "modal") {
+    return (
+      <div className="flex flex-col divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200">
+        {phone ? (
+          <div className="flex items-center gap-3 py-3 pl-4 pr-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Teléfono</span>
+              <span className="text-lg font-bold tabular-nums text-slate-900">{phone}</span>
+            </div>
+            <CopyContactButton value={phone} label="Copiar teléfono" size="lg" />
+          </div>
+        ) : null}
+        {email ? (
+          <div className="flex items-center gap-3 py-3 pl-4 pr-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Correo</span>
+              <span className="truncate text-[15px] font-semibold text-slate-900" title={email}>
+                {email}
+              </span>
+            </div>
+            <CopyContactButton value={email} label="Copiar correo" size="lg" />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2.5 flex flex-col divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200">
+      {phone ? (
+        <div className="flex h-10 items-center gap-2 pl-2.5 pr-1">
+          <Phone size={15} className="shrink-0 text-slate-600" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold tabular-nums text-slate-900">{phone}</span>
+          <CopyContactButton value={phone} label="Copiar teléfono" size="sm" />
+        </div>
+      ) : null}
+      {email ? (
+        <div className="flex h-10 items-center gap-2 pl-2.5 pr-1">
+          <Mail size={15} className="shrink-0 text-slate-600" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-700" title={email}>
+            {email}
+          </span>
+          <CopyContactButton value={email} label="Copiar correo" size="sm" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// "Avisado por Ana · ayer 16:20" / "Pago registrado por Ana · 09/11 11:05".
+export function NoticeHandledLine({
+  notice,
+  currentUserId,
+  now,
+  className = "m-0 mt-2"
+}: {
+  notice: Notice;
+  currentUserId: string | null;
+  now: number;
+  className?: string;
+}) {
+  const line = describeNoticeHandlingLine(notice, currentUserId, now);
+  if (!line) return null;
+  return (
+    <p className={`${className} text-xs font-medium ${line.kind === "paid" ? "text-emerald-700" : "text-blue-700"}`}>
+      {line.text}
+    </p>
+  );
+}
+
+// Cartel destacado cuando otra persona resolvió el aviso hace instantes. En la
+// tarjeta es una línea; en el detalle suma la póliza y cuánto hace pasó.
+export function RecentHandlingBanner({
+  handling,
+  now,
+  policyNumber,
+  variant
+}: {
+  handling: NoticeHandling;
+  now: number;
+  policyNumber?: string | null | undefined;
+  variant: "card" | "modal";
+}) {
+  const paid = handling.kind === "paid";
+  const name = handling.by.full_name;
+  const tone = paid ? "bg-emerald-50 text-emerald-800" : "bg-blue-50 text-blue-800";
+  const Icon = paid ? CheckCircle : Bell;
+
+  if (variant === "card") {
+    return (
+      <div role="status" className={`mb-2.5 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold ${tone}`}>
+        <Icon size={14} className="shrink-0" aria-hidden="true" />
+        <span className="min-w-0">{name} {paid ? "registró el pago" : "lo avisó"} recién</span>
+      </div>
+    );
+  }
+
+  const policy = policyNumber ? ` la póliza #${policyNumber}` : " este aviso";
+  return (
+    <div role="status" className={`flex items-start gap-2.5 rounded-lg px-3.5 py-3 ${tone}`}>
+      <Icon size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-[13px] font-bold">
+          {name} {paid ? "registró el pago" : "lo avisó"} {describeHandlingAge(handling.atMs, now)}
+        </span>
+        <span className="text-[12.5px] leading-snug">
+          {paid ? `El pago de${policy} ya está registrado.` : `No hace falta volver a contactarlo por${policy}.`}
+        </span>
+      </div>
+    </div>
+  );
+}

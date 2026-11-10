@@ -1,8 +1,15 @@
 "use client";
 
 import { AlertTriangle, Loader2, RotateCcw, Trash2, X } from "lucide-react";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { readTransitionMs } from "@/lib/browser";
+
+// Pila de modales abiertos, del más viejo al más nuevo. Un modal que se abre
+// encima de otro (una confirmación sobre el detalle) queda arriba sin importar
+// el orden en el DOM, y solo el de arriba responde a Escape y atrapa el Tab.
+const modalStack: object[] = [];
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function Modal({
   title,
@@ -15,6 +22,7 @@ export function Modal({
   size = "md",
   headerSlot,
   bodyClassName,
+  closeOnEscape = false,
   children
 }: {
   title: string;
@@ -23,11 +31,71 @@ export function Modal({
   size?: "md" | "wide" | "lg";
   headerSlot?: ReactNode;
   bodyClassName?: string;
+  /** Escape cierra el modal (solo el de arriba si hay varios apilados). */
+  closeOnEscape?: boolean;
   children: ReactNode;
 }) {
   const [isMounted, setIsMounted] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
   const closeTimerRef = useRef<number | null>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+  const isActive = isMounted && isOpen;
+
+  // Apilado, foco y teclado. Al abrir el foco entra al diálogo (si el contenido
+  // no tomó el foco antes); el Tab no se escapa a la página de atrás; al cerrar
+  // el foco vuelve al botón que lo abrió.
+  useLayoutEffect(() => {
+    if (!isActive) return;
+    const token = {};
+    modalStack.push(token);
+    const backdrop = backdropRef.current;
+    const dialog = dialogRef.current;
+    if (backdrop) backdrop.style.zIndex = String(50 + (modalStack.length - 1) * 10);
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== token || event.defaultPrevented) return;
+      if (event.key === "Escape" && closeOnEscape) {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusables = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (element) => element.getClientRects().length > 0
+      );
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const current = document.activeElement;
+      if (!dialog.contains(current) || current === dialog) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && current === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      modalStack.splice(modalStack.indexOf(token), 1);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [isActive, closeOnEscape]);
 
   useEffect(() => {
     window.clearTimeout(closeTimerRef.current ?? undefined);
@@ -59,12 +127,15 @@ export function Modal({
 
   return (
     <div
+      ref={backdropRef}
       className="sp-modal-backdrop fixed inset-0 z-50 grid min-h-dvh place-items-center overflow-hidden bg-slate-950/45 p-6 max-[520px]:p-3"
       role="presentation"
       onMouseDown={onClose}
     >
       <section
-        className={`sp-modal m-0 flex w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl ${
+        ref={dialogRef}
+        tabIndex={-1}
+        className={`sp-modal m-0 outline-none flex w-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl ${
           size === "lg"
             ? "sp-modal-lg max-h-[min(920px,calc(100dvh-48px))] max-w-6xl"
             : size === "wide"
@@ -120,7 +191,7 @@ export function ConfirmDialog({
     tone === "danger" ? "bg-red-600 hover:bg-red-700" : "bg-amber-600 hover:bg-amber-700";
 
   return (
-    <Modal title={title} isOpen={isOpen} onClose={() => (isBusy ? undefined : onClose())}>
+    <Modal title={title} isOpen={isOpen} closeOnEscape onClose={() => (isBusy ? undefined : onClose())}>
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-3">
           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconClass}`}>

@@ -161,7 +161,73 @@ describe("parseBlocks", () => {
   });
 });
 
+describe("headings", () => {
+  const review =
+    "Veredicto corto.\n\n## Lo que está bien\n- Cobertura vigente\n\n## Puntos a revisar\n1. **Fecha:** no coincide.\n2. **Patente:** falta.\n\n¿Quiere que redacte el mensaje?";
+
+  it("reads ## and ### lines as headings between other blocks", () => {
+    const blocks = parseBlocks(review);
+    expect(blocks.map((block) => block.kind)).toEqual([
+      "paragraph",
+      "heading",
+      "bullets",
+      "heading",
+      "numbered",
+      "paragraph"
+    ]);
+    expect(blocks[1]).toEqual({ kind: "heading", level: 2, spans: [{ kind: "text", text: "Lo que está bien", bold: false }] });
+    expect(parseBlocks("### Detalle")[0]).toMatchObject({ kind: "heading", level: 3 });
+  });
+
+  it("splits a paragraph at a heading with no blank line, and keeps bold and citations inside it", () => {
+    const blocks = parseBlocks("Texto\n## **Ojo** [[1]]\nMás texto");
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "heading", "paragraph"]);
+    expect(blocks[1]).toMatchObject({
+      spans: [
+        { kind: "text", text: "Ojo", bold: true },
+        { kind: "text", text: " ", bold: false },
+        { kind: "cite", n: 1 }
+      ]
+    });
+  });
+
+  it("does not treat # without a space, or inside a draft, as a heading", () => {
+    expect(parseBlocks("#hashtag")[0]?.kind).toBe("paragraph");
+    expect(parseBlocks(":::borrador\n## Hola\n:::")[0]).toEqual({ kind: "draft", body: "## Hola", complete: true });
+  });
+
+  it("hides a lone marker while the stream is still arriving, and shows it as text once complete", () => {
+    expect(parseBlocks("Hola\n\n##", { complete: false }).map((block) => block.kind)).toEqual(["paragraph"]);
+    expect(parseBlocks("##", { complete: false })).toEqual([]);
+    expect(parseBlocks("##", { complete: true })[0]?.kind).toBe("paragraph");
+  });
+
+  it("never shows ## on any word-boundary prefix of a reply while it streams", () => {
+    const ends = wordEnds(review, true);
+    for (const end of ends) {
+      const blocks = parseBlocks(review.slice(0, end), { complete: false });
+      const literal = blocks.some(
+        (block) => block.kind === "paragraph" && block.lines.some((line) => line.some((span) => span.kind === "text" && span.text.includes("#")))
+      );
+      expect(literal).toBe(false);
+    }
+  });
+
+  it("keeps embeds between blocks around headings", () => {
+    const ranges = blockRanges(review);
+    expect(ranges).toHaveLength(parseBlocks(review).length);
+    const position = review.indexOf("## Puntos");
+    expect(embedSlots(ranges, [position], review.length)).toEqual([3]);
+  });
+});
+
 describe("toPlainText", () => {
+  it("drops heading markers", () => {
+    expect(toPlainText("## Puntos a revisar\n1. **Fecha:** no coincide\n### Más")).toBe(
+      "Puntos a revisar\n1. Fecha: no coincide\nMás"
+    );
+  });
+
   it("drops citations, bold marks and draft delimiters", () => {
     const text = "Es **clave** [[1]].\n\n:::borrador\nHola [Nombre]\n:::\n\nChau";
     expect(toPlainText(text)).toBe("Es clave.\n\nHola [Nombre]\n\nChau");

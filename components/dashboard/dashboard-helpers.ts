@@ -2,6 +2,7 @@
 // frase de resumen. Sin React ni fetch, para poder probarlas en node.
 
 import type { Task } from "@/lib/api";
+import { taskPolicyNumber } from "@/lib/policy-numbers";
 import { buildTaskAlerts, daysUntilDate, taskAlertLabel, type TaskAlert } from "@/lib/task-alerts";
 
 export type WorkGroupKey = "overdue" | "today" | "tomorrow" | "review" | "later";
@@ -167,7 +168,7 @@ export function clientNameOf(task: Task) {
 
 // "Cliente · póliza", lo que identifica la tarea sin abrirla.
 export function taskContext(task: Task) {
-  return [clientNameOf(task), task.policies?.policy_number].filter(Boolean).join(" · ");
+  return [clientNameOf(task), taskPolicyNumber(task).shown].filter(Boolean).join(" · ");
 }
 
 const WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
