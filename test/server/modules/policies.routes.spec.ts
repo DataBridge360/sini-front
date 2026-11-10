@@ -230,6 +230,8 @@ describe("policies handlers", () => {
 
 describe("POST /policies/:id/renew-number", () => {
   const renew = (body: unknown) => setup()(json("POST", `/policies/${UUID}/renew-number`, body));
+  // First read of the renewal: the policy history, empty unless a test says otherwise.
+  const HISTORY = { data: { previous_policy_numbers: [] } };
 
   it("validates the body", async () => {
     expect((await renew({})).status).toBe(400);
@@ -237,7 +239,7 @@ describe("POST /policies/:id/renew-number", () => {
   });
 
   it("calls the RPC scoped to the organization and answers with the refreshed policy", async () => {
-    results.push({ data: { id: UUID } }, { data: { id: UUID, policy_number: "N-2", previous_policy_numbers: [] } });
+    results.push(HISTORY, { data: { id: UUID } }, { data: { id: UUID, policy_number: "N-2", previous_policy_numbers: [] } });
     const response = await renew({ policyNumber: "  N-2 " });
 
     expect(response.status).toBe(201);
@@ -252,7 +254,7 @@ describe("POST /policies/:id/renew-number", () => {
   });
 
   it("explains a number already used by another policy of the company", async () => {
-    results.push({ error: { code: "23505", message: "duplicate key" } });
+    results.push(HISTORY, { error: { code: "23505", message: "duplicate key" } });
     const response = await renew({ policyNumber: "N-2" });
 
     expect(response.status).toBe(400);
@@ -260,7 +262,7 @@ describe("POST /policies/:id/renew-number", () => {
   });
 
   it("shows the RPC message when the number is empty or unchanged", async () => {
-    results.push({ error: { code: "P0001", message: "El nuevo número es igual al número actual de la póliza." } });
+    results.push(HISTORY, { error: { code: "P0001", message: "El nuevo número es igual al número actual de la póliza." } });
     const response = await renew({ policyNumber: "N-1" });
 
     expect(response.status).toBe(400);
@@ -268,7 +270,22 @@ describe("POST /policies/:id/renew-number", () => {
   });
 
   it("answers 404 when the policy is not found", async () => {
-    results.push({ error: { code: "P0002", message: "policy not found" } });
+    results.push(HISTORY, { error: { code: "P0002", message: "policy not found" } });
     expect((await renew({ policyNumber: "N-2" })).status).toBe(404);
+  });
+
+  it("answers 404 without calling the RPC when the policy does not exist", async () => {
+    results.push({ data: null });
+    expect((await renew({ policyNumber: "N-2" })).status).toBe(404);
+    expect(calls.some((call) => call.method === "rpc")).toBe(false);
+  });
+
+  it("rejects a number this policy already had, ignoring case and spaces", async () => {
+    results.push({ data: { previous_policy_numbers: [{ number: "N-0", replaced_at: "2026-01-01T00:00:00Z" }] } });
+    const response = await renew({ policyNumber: " n-0 " });
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(await response.json())).toContain("ya tuvo ese número");
+    expect(calls.some((call) => call.method === "rpc")).toBe(false);
   });
 });

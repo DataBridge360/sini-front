@@ -492,8 +492,12 @@ export function AppShell() {
   });
 
   const revertNotice = useMutation({
-    mutationFn: (noticeId: string) =>
-      apiRequest<Notice>(`/notices/${noticeId}/revert`, { ...common, method: "PATCH", body: {} }),
+    mutationFn: (noticeId: string) => {
+      // Send the status this session sees, so a stale click never steps back twice.
+      const status = notices.data?.find((notice) => notice.id === noticeId)?.status;
+      const from = status === "pagado" || status === "avisado" ? status : undefined;
+      return apiRequest<Notice>(`/notices/${noticeId}/revert`, { ...common, method: "PATCH", body: from ? { from } : {} });
+    },
     onSuccess: (data, noticeId) => {
       notify("Estado del aviso revertido.");
       void queryClient.invalidateQueries({ queryKey: ["policy-notices"] });
@@ -790,6 +794,7 @@ export function AppShell() {
                 error={notices.error?.message ?? null}
                 noteApi={noticeNoteApi}
                 onNotified={(id) => markNotified.mutate(id)}
+                onNotifiedAsync={(id) => markNotified.mutateAsync(id)}
                 onRevert={(id) => revertNotice.mutate(id)}
                 onPay={(noticeId, months) => payNotice.mutateAsync({ noticeId, months })}
                 onRenewPolicy={(policyId, policyNumber) => renewPolicyNumber.mutateAsync({ policyId, policyNumber })}

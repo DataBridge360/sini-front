@@ -1,7 +1,7 @@
 import "server-only";
 import { getSupabase } from "@/server/core/supabase";
 import { route, type Route } from "@/server/core/router";
-import { createNoticeNoteSchema, listNoticesQuerySchema, payNoticeSchema } from "./schemas";
+import { createNoticeNoteSchema, listNoticesQuerySchema, payNoticeSchema, revertNoticeSchema } from "./schemas";
 import { NoticesService } from "./service";
 
 const service = () => new NoticesService(getSupabase());
@@ -40,8 +40,8 @@ export const noticesRoutes: Route[] = [
     method: "PATCH",
     path: "/notices/:id/revert",
     access: "organization",
-    handler: ({ organization, user, uuidParam }) =>
-      service().revert(organization.id, uuidParam("id"), user.id)
+    handler: async ({ organization, user, uuidParam, body }) =>
+      service().revert(organization.id, uuidParam("id"), user.id, (await body(revertNoticeSchema)).from)
   }),
   route({
     method: "POST",

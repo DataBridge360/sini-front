@@ -29,9 +29,11 @@ import {
   noticeStatusPill,
   pendingNotices,
   recentHandlingByOther,
+  resolveNoticeDrop,
   type NoticeActionKind,
   type NoticeFilters,
   type NoticeHandling,
+  type NoticeStatus,
   type NoticeView
 } from "@/lib/notices";
 import { previousNumbersLabel } from "@/lib/policy-numbers";
@@ -46,6 +48,7 @@ import {
   NoticeNotes,
   RecentHandlingBanner
 } from "@/components/notices/shared";
+import { DraggableNotice, NoticeBoardDnd, NoticeDropColumn } from "@/components/notices/notice-dnd";
 import { PolicyMenu, RenewPolicyDialog } from "@/components/notices/policy-renew";
 import { WhatsAppPreview } from "@/components/notices/whatsapp-preview";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -63,6 +66,7 @@ export function NoticesView({
   error,
   noteApi,
   onNotified,
+  onNotifiedAsync,
   onRevert,
   onPay,
   onViewPolicy,
@@ -77,6 +81,8 @@ export function NoticesView({
   error: string | null;
   noteApi: NoticeNoteApi;
   onNotified: (id: string) => void;
+  /** Same as onNotified but resolves when the server answers (rejects on error). */
+  onNotifiedAsync: (id: string) => Promise<unknown>;
   onRevert: (id: string) => void;
   onPay: (id: string, months: number) => Promise<unknown>;
   onViewPolicy: (notice: Notice) => void;
@@ -100,6 +106,15 @@ export function NoticesView({
   // Se confirma un pago: mientras tanto el aviso pasa a "pagado" y no hay que
   // mostrar el cartel de "ya fue pagado" por el propio pago.
   const [submittingPayId, setSubmittingPayId] = useState<string | null>(null);
+  // Payment dialog opened by dropping an "avisar" card on "pagado": confirming
+  // marks it as notified first and then registers the payment.
+  const [payNotifyFirstId, setPayNotifyFirstId] = useState<string | null>(null);
+  // A drop that cannot start a flow because the notice changed in the meantime.
+  const [dropMessage, setDropMessage] = useState<string | null>(null);
+  const closePay = () => {
+    setPayNoticeTarget(null);
+    setPayNotifyFirstId(null);
+  };
 
   // Reloj del cartel "lo avisó recién": solo corre mientras haya alguno vigente.
   const currentUserId = noteApi.currentUserId || null;
@@ -119,6 +134,9 @@ export function NoticesView({
   const freshDetailNotices = liveDetailNotices.length > 0 ? liveDetailNotices : null;
 
   const payFresh = payNoticeTarget ? freshOf(payNoticeTarget) : null;
+  const payNotifiesFirst = Boolean(
+    payNoticeTarget && payNotifyFirstId === payNoticeTarget.id && (payFresh ?? payNoticeTarget).status === "avisar"
+  );
   const payHandledMessage = payNoticeTarget && submittingPayId !== payNoticeTarget.id
     ? payFresh
       ? payFresh.status === "pagado"
@@ -144,6 +162,50 @@ export function NoticesView({
         ? "Este aviso ya estaba en «Avisar»: otra persona lo revirtió antes."
         : null
     : null;
+
+  // A drop only starts the existing flow for the transition. It decides on the
+  // notice as the cache has it right now, and nothing moves until the server
+  // confirms the action.
+  const handleDrop = (dragged: Notice[], from: NoticeStatus, to: NoticeStatus) => {
+    const live = dragged.map(freshOf);
+    if (live.some((notice) => !notice)) {
+      setDropMessage(GONE_NOTICE_MESSAGE);
+      return;
+    }
+    const current = live as Notice[];
+    const changed = current.find((notice) => notice.status !== from);
+    if (changed) {
+      setDropMessage(
+        describeNoticeAlreadyHandled(changed, noteApi.currentUserId) ??
+          "Este aviso cambió de estado mientras lo arrastrabas. Revisá la columna y probá de nuevo."
+      );
+      return;
+    }
+    const result = resolveNoticeDrop(from, to, current.length);
+    const first = current[0];
+    if (!result.valid || !first) return;
+    switch (result.flow) {
+      case "notify":
+      case "notify-all":
+        setNotifyTarget(current);
+        break;
+      case "revert":
+      case "revert-payment":
+        setRevertTarget(first);
+        break;
+      case "pay":
+        setPayNotifyFirstId(null);
+        setPayNoticeTarget(first);
+        break;
+      case "notify-then-pay":
+        setPayNotifyFirstId(first.id);
+        setPayNoticeTarget(first);
+        break;
+      case "open-detail":
+        setDetailNotices(current);
+        break;
+    }
+  };
 
   const branches = useMemo(() => {
     const fromData = notices.map((notice) => notice.policies?.branch).filter(Boolean) as string[];
@@ -202,10 +264,43 @@ export function NoticesView({
         {error ? <ErrorState text={error} /> : null}
         {isLoading ? <LoadingState text="Cargando avisos" /> : null}
         {!isLoading && view === "kanban" ? (
+          <NoticeBoardDnd
+            onDrop={handleDrop}
+            renderOverlay={(dragged) =>
+              dragged.length === 1 && dragged[0] ? (
+                <NoticeCard
+                  notice={dragged[0]}
+                  isMarkingNotified={false}
+                  isPaying={false}
+                  isReverting={false}
+                  currentUserId={currentUserId}
+                  now={now}
+                  onRequestNotify={noop}
+                  onRequestRevert={noop}
+                  onRequestPay={noop}
+                  onOpenDetail={noop}
+                />
+              ) : (
+                <NoticeGroupCard
+                  notices={dragged}
+                  markingNoticeId={null}
+                  payingNoticeId={null}
+                  revertingNoticeId={null}
+                  currentUserId={currentUserId}
+                  now={now}
+                  onRequestNotifyAll={noop}
+                  onRequestRevert={noop}
+                  onRequestPay={noop}
+                  onOpenDetail={noop}
+                />
+              )
+            }
+          >
           <div className="sp-kanban">
             {NOTICE_COLUMNS.map((column) => (
-              <section
+              <NoticeDropColumn
                 key={column.key}
+                status={column.key}
                 className="sp-kanban-column border-t-[3px]"
                 style={{ borderTopColor: column.dot }}
               >
@@ -231,10 +326,20 @@ export function NoticesView({
                   {clustered[column.key].length === 0 ? (
                     <EmptyState title="Sin avisos" compact />
                   ) : (
-                    clustered[column.key].map((cluster) =>
-                      cluster.length === 1 && cluster[0] ? (
+                    clustered[column.key].map((cluster) => (
+                      <DraggableNotice
+                        key={cluster.map((notice) => notice.id).join("|")}
+                        notices={cluster}
+                        from={column.key}
+                        disabled={cluster.some(
+                          (notice) =>
+                            markingNoticeId === notice.id ||
+                            payingNoticeId === notice.id ||
+                            revertingNoticeId === notice.id
+                        )}
+                      >
+                      {cluster.length === 1 && cluster[0] ? (
                         <NoticeCard
-                          key={cluster[0].id}
                           notice={cluster[0]}
                           isMarkingNotified={markingNoticeId === cluster[0].id}
                           isPaying={payingNoticeId === cluster[0].id}
@@ -248,7 +353,6 @@ export function NoticesView({
                         />
                       ) : (
                         <NoticeGroupCard
-                          key={cluster.map((notice) => notice.id).join("|")}
                           notices={cluster}
                           markingNoticeId={markingNoticeId}
                           payingNoticeId={payingNoticeId}
@@ -260,13 +364,15 @@ export function NoticesView({
                           onRequestPay={setPayNoticeTarget}
                           onOpenDetail={setDetailNotices}
                         />
-                      )
-                    )
+                      )}
+                      </DraggableNotice>
+                    ))
                   )}
                 </div>
-              </section>
+              </NoticeDropColumn>
             ))}
           </div>
+          </NoticeBoardDnd>
         ) : null}
         {!isLoading && view === "list" ? (
           <div className="sp-list-panel">
@@ -302,20 +408,29 @@ export function NoticesView({
       <PaymentDialog
         key={payNoticeTarget?.id ?? "pay-dialog"}
         notice={payHandledMessage ? null : payFresh ?? payNoticeTarget}
-        isPaying={Boolean(payNoticeTarget && payingNoticeId === payNoticeTarget.id)}
-        onClose={() => setPayNoticeTarget(null)}
+        notifiesFirst={payNotifiesFirst}
+        isPaying={Boolean(
+          payNoticeTarget &&
+            (payingNoticeId === payNoticeTarget.id || (payNotifiesFirst && markingNoticeId === payNoticeTarget.id))
+        )}
+        onClose={closePay}
         onConfirm={async (months) => {
           if (!payNoticeTarget) return;
-          setSubmittingPayId(payNoticeTarget.id);
+          const noticeId = payNoticeTarget.id;
+          setSubmittingPayId(noticeId);
           try {
-            await onPay(payNoticeTarget.id, months);
-            setPayNoticeTarget(null);
+            // Dropped from "avisar": notify as the current user, then pay. If
+            // the payment fails the notice stays "avisado" and the dialog shows the error.
+            if (payNotifiesFirst) await onNotifiedAsync(noticeId);
+            await onPay(noticeId, months);
+            closePay();
           } finally {
             setSubmittingPayId(null);
           }
         }}
       />
-      <HandledNoticeDialog title="Registrar pago" message={payHandledMessage} onClose={() => setPayNoticeTarget(null)} />
+      <HandledNoticeDialog title="Registrar pago" message={payHandledMessage} onClose={closePay} />
+      <HandledNoticeDialog title="Mover aviso" message={dropMessage} onClose={() => setDropMessage(null)} />
 
       <NoticeDetailModal
         key={detailNotices ? detailNotices.map((notice) => notice.id).join("|") : "detail-modal"}
@@ -376,6 +491,8 @@ export function NoticesView({
     </div>
   );
 }
+
+const noop = () => undefined;
 
 const GONE_NOTICE_MESSAGE = "Este aviso ya no está disponible: otra persona lo eliminó o lo modificó.";
 
@@ -1244,11 +1361,14 @@ function NoticeActions({
 
 function PaymentDialog({
   notice,
+  notifiesFirst,
   isPaying,
   onClose,
   onConfirm
 }: {
   notice: Notice | null;
+  /** The notice is still "avisar": confirming also marks it as notified by the current user. */
+  notifiesFirst: boolean;
   isPaying: boolean;
   onClose: () => void;
   onConfirm: (months: number) => Promise<void>;
@@ -1277,6 +1397,9 @@ function PaymentDialog({
           {client?.full_name ?? "Sin cliente"}
           {notice?.policies?.branch ? ` · ${notice.policies.branch}` : ""}
         </p>
+        {notifiesFirst ? (
+          <p className="sp-pay-question">Al confirmar, el aviso también queda marcado como avisado por vos.</p>
+        ) : null}
         <p className="sp-pay-question">¿Cuántos meses pagó el cliente?</p>
         <div className="sp-pay-options">
           {options.map((value) => {

@@ -11,6 +11,11 @@ export const createNoticeNoteSchema = z.object({
 const emptyToNull = (value: unknown) =>
   typeof value === "string" && value.trim() === "" ? null : value;
 
+// Status the caller saw when asking to revert; optional for older clients.
+export const revertNoticeSchema = z.object({
+  from: z.enum(["avisado", "pagado"]).optional()
+});
+
 export const MAX_NOTICE_IDS = 20;
 
 export const noticeStatusValues = ["avisar", "avisado", "pagado"] as const;
