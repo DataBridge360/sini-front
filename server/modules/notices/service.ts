@@ -102,8 +102,29 @@ export class NoticesService {
     return Array.isArray(data) ? data[0] : data;
   }
 
-  async revert(organizationId: string, noticeId: string, userId: string) {
+  // The RPC steps back from the current status (pagado -> avisado -> avisar).
+  // `from` is the status the caller saw: when it no longer matches, someone
+  // else already reverted, so the notice is returned as it is. This keeps
+  // "Revertir pago" from ever landing on "avisar".
+  async revert(organizationId: string, noticeId: string, userId: string, from?: "avisado" | "pagado") {
     await this.ensureNoticeInOrganization(organizationId, noticeId);
+
+    if (from) {
+      const { data: current, error: currentError } = await this.supabase.admin
+        .from("policy_notices")
+        .select(NOTICE_SELECT)
+        .eq("organization_id", organizationId)
+        .eq("id", noticeId)
+        .is("deleted_at", null)
+        .single();
+
+      if (currentError) {
+        throw supabaseError(this.logger, "notices.revert", currentError, "No se pudo revertir el aviso.");
+      }
+      if ((current as { status?: string }).status !== from) {
+        return current;
+      }
+    }
 
     const { error } = await this.supabase.admin.rpc("revert_policy_notice_status", {
       p_notice_id: noticeId,

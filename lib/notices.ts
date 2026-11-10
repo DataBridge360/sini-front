@@ -167,6 +167,36 @@ export function pendingNotices(notices: Notice[]): Notice[] {
   return notices.filter((notice) => notice.status === "avisar");
 }
 
+// Dropping a card on another board column never moves it by itself: the drop
+// only starts the flow below, and the card changes column when the server
+// confirms the action.
+export type NoticeDropFlow =
+  | "notify" // avisar -> avisado, one notice
+  | "notify-all" // avisar -> avisado, a card with several notices
+  | "revert" // avisado -> avisar
+  | "revert-payment" // pagado -> avisado
+  | "pay" // avisado -> pagado (payment dialog)
+  | "notify-then-pay" // avisar -> pagado: payment dialog, then notify, then pay
+  | "open-detail"; // several notices: no bulk payment or revert, act per policy
+
+export type NoticeDropResult = { valid: false } | { valid: true; flow: NoticeDropFlow };
+
+const INVALID_DROP: NoticeDropResult = { valid: false };
+
+export function resolveNoticeDrop(from: NoticeStatus, to: NoticeStatus, noticeCount: number): NoticeDropResult {
+  if (noticeCount < 1 || from === to) return INVALID_DROP;
+  // Reverting a payment always ends in "avisado": there is no direct way back to "avisar".
+  if (from === "pagado" && to === "avisar") return INVALID_DROP;
+
+  if (noticeCount > 1) {
+    return { valid: true, flow: from === "avisar" && to === "avisado" ? "notify-all" : "open-detail" };
+  }
+
+  if (from === "avisar") return { valid: true, flow: to === "avisado" ? "notify" : "notify-then-pay" };
+  if (from === "avisado") return { valid: true, flow: to === "avisar" ? "revert" : "pay" };
+  return { valid: true, flow: "revert-payment" };
+}
+
 // Cuánto dura el cartel "lo avisó recién" cuando otra persona resolvió el aviso.
 export const RECENT_HANDLING_WINDOW_MS = 2 * 60 * 1000;
 

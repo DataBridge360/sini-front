@@ -278,6 +278,39 @@ export class PoliciesService {
   // el nuevo en una sola transacción (requiere la migración
   // 20261110120000_policy_previous_numbers: aplicarla antes de desplegar).
   async renewNumber(organizationId: string, userId: string, policyId: string, dto: RenewPolicyNumberDto) {
+    // A policy cannot go back to a number it already had. Other policies may
+    // share a number (different companies), so only this policy's history counts.
+    const { data: current, error: currentError } = await this.supabase.admin
+      .from("policies")
+      .select("previous_policy_numbers")
+      .eq("id", policyId)
+      .eq("organization_id", organizationId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (currentError) {
+      throw supabaseError(this.logger, "policies.renewNumber", currentError, "No se pudo registrar la renovación de la póliza.");
+    }
+    if (!current) {
+      throw new NotFoundException("Policy not found");
+    }
+    const history: unknown = current.previous_policy_numbers;
+    const requested = dto.policyNumber.trim().toLowerCase();
+    const alreadyUsed =
+      Array.isArray(history) &&
+      history.some(
+        (entry) =>
+          typeof entry === "object" &&
+          entry !== null &&
+          typeof (entry as { number?: unknown }).number === "string" &&
+          (entry as { number: string }).number.trim().toLowerCase() === requested
+      );
+    if (alreadyUsed) {
+      throw new BadRequestException(
+        "Esta póliza ya tuvo ese número antes. No se puede volver a un número anterior."
+      );
+    }
+
     const { error } = await this.supabase.admin.rpc("renew_policy_number", {
       p_policy_id: policyId,
       p_new_policy_number: dto.policyNumber,

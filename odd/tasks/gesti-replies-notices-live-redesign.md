@@ -82,3 +82,22 @@ Receipt-driven development is on (global). The native review runs once, at the d
 ## Next step
 
 User approval of the T3 mockup, then T4. Manual two-session check and a real Gesti reply check are pending for T2 and T1.
+
+## T12 Drag and drop of notice cards between columns (added 2026-11-10, user request)
+
+- [ ] T12 A notice card can be dragged to another status column, reusing the drag mechanism of the task board and the existing notify / pay / revert flows (same dialogs and live-data guards). The card only changes column when the action is confirmed and succeeds; cancelling or closing a dialog leaves it where it was.
+  - avisar to avisado: notify flow. avisado to avisar: revert. avisado to pagado: payment dialog. pagado to avisado: revert payment.
+  - avisar to pagado: the payment dialog opens; on confirm the notice is marked as notified by the current user and then paid; on cancel nothing changes.
+  - pagado to avisar: not a valid drop (parent default, consistent with "Revertir pago always ends in avisado"; told to the user).
+  - Cards holding several notices: parent default told to the user; see progress.
+  - Buttons stay as the keyboard and non-drag alternative.
+  - Checks: `pnpm test`, `pnpm typecheck`, `pnpm lint`; specs for the pure transition rules.
+
+### T12 progress and evidence (2026-11-10)
+
+- Implemented, not seen in a browser. Files: `lib/notices.ts` (`resolveNoticeDrop`, pure transition rules), `test/lib/notices-drop.spec.ts` (7 specs), `components/notices/notice-dnd.tsx` (new: dnd-kit context, droppable column, draggable wrapper), `components/views/notices-view.tsx` (drop handler, payment dialog notify-first), `components/app-shell.tsx` (`onNotifiedAsync` prop = `markNotified.mutateAsync`), `app/globals.css` (ready ring, overlay, coarse-pointer and reduced-motion rules).
+- Mechanism: `@dnd-kit/core` like the task board (DragOverlay, `.sp-task-column[data-drop]` ring). The task board uses only `PointerSensor` (no touch path; tasks use tabs on mobile), so here MouseSensor (6px) plus TouchSensor (250ms press, 8px tolerance): an early swipe scrolls normally, a held press starts the drag. Clicks after a drag are swallowed in the capture phase. Realtime is held (`useDeferRealtime`) only while a drag is active.
+- Drop never moves the card: it opens the existing notify / revert / payment dialog. avisar to pagado opens the payment dialog; on confirm it calls notify (skipped if the cache already shows "avisado") and then pay. The pay RPC `process_policy_notice_payment` only rejects an already paid notice (does not require "avisado"), so either order works server-side; notify first keeps `notified_by` filled. If pay fails after notify, the error shows in the dialog and the notice stays "avisado" (retry only pays).
+- Cards with several notices: avisar to avisado runs notify-all; any other valid drop opens the detail modal. Note: in the detail, an "avisar" policy has no per-policy pay (notify is footer-only), so avisar to pagado on a group means notify all first, then pay per policy.
+- Stale guard: at drop time every notice is read from the cache; missing or already moved to another status shows a "Mover aviso" message and starts no flow.
+- Checks: `pnpm test` 45 files, 709 passed; `pnpm typecheck` clean; `pnpm lint` 0 errors, 143 warnings.

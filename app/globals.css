@@ -6843,6 +6843,38 @@ a.sp-client-field-value:hover {
   transition: opacity 120ms ease;
 }
 
+/* Notices board: columns that accept the card being dragged get a soft ring, the
+   one under the pointer gets the solid one (see .sp-task-column[data-drop="on"]). */
+.sp-task-column[data-drop="ready"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--org-primary) 50%, transparent);
+}
+
+.sp-notice-drag-overlay {
+  cursor: grabbing;
+  transform: rotate(2deg);
+  filter: drop-shadow(0 12px 20px rgb(24 28 32 / 0.16));
+  pointer-events: none;
+}
+
+/* Long press starts a touch drag: no text selection or callout while holding. */
+@media (pointer: coarse) {
+  .sp-notice-draggable {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sp-notice-drag-overlay {
+    transform: none;
+  }
+
+  .sp-task-column {
+    transition: none;
+  }
+}
+
 .sp-task-empty {
   display: grid;
   justify-items: center;
