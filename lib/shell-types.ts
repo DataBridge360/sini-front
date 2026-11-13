@@ -41,6 +41,8 @@ export function getTabFromPathname(pathname: string): Tab | null {
 
 export type NoticeNoteApi = {
   currentUserId: string;
+  /** Nombre del usuario logueado: firma el mensaje que se copia al asegurado. */
+  currentUserName: string;
   busyNoticeId: string | null;
   deletingNoteId: string | null;
   onAdd: (noticeId: string, note: string) => Promise<void>;

@@ -332,9 +332,15 @@ function capitalizeWords(value: string) {
 // Mensaje listo para copiar y mandar por WhatsApp al avisar un vencimiento.
 // Con varios avisos del mismo asegurado arma una lista; con uno solo, la
 // oración completa adaptada al tipo de seguro (vehículo con patente, etc.).
-export function buildNoticeReminderMessage(notices: Notice[]): string {
+// Solo el primer nombre: el segundo suele ser el apellido.
+function firstNameOf(fullName: string | null | undefined): string {
+  return fullName?.trim().split(/\s+/)[0] ?? "";
+}
+
+export function buildNoticeReminderMessage(notices: Notice[], senderFullName?: string | null): string {
   const first = notices[0];
   if (!first) return "";
+  const senderName = firstNameOf(senderFullName);
   const clientName = first.policies?.clients?.full_name?.trim();
   const greetingName = clientName || "cliente";
 
@@ -352,6 +358,7 @@ export function buildNoticeReminderMessage(notices: Notice[]): string {
   return [
     `*Estimado/a ${greetingName}, esperamos que se encuentre muy bien.* ℹ️`,
     "",
+    ...(senderName ? [`Se comunica ${senderName} con usted.`, ""] : []),
     intro,
     "",
     "*💳 Métodos de pago disponibles:*",
