@@ -555,6 +555,7 @@ export function AppShell() {
 
   const noticeNoteApi: NoticeNoteApi = {
     currentUserId: auth?.user.id ?? "",
+    currentUserName: auth?.user.fullName ?? "",
     busyNoticeId: addNoticeNote.isPending ? addNoticeNote.variables?.noticeId ?? null : null,
     deletingNoteId: deleteNoticeNote.isPending ? deleteNoticeNote.variables?.noteId ?? null : null,
     onAdd: (noticeId, note) => addNoticeNote.mutateAsync({ noticeId, note }).then(() => undefined),

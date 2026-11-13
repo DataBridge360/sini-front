@@ -457,6 +457,7 @@ export function NoticesView({
         key={notifyTarget ? notifyTarget.map((notice) => notice.id).join("|") : "notify-dialog"}
         notices={notifyTarget && notifyPending.length > 0 ? notifyPending : null}
         handledMessages={notifyHandled}
+        senderName={noteApi.currentUserName}
         onClose={() => setNotifyTarget(null)}
         onConfirm={() => {
           notifyPending.forEach((notice) => onNotified(notice.id));
@@ -529,10 +530,13 @@ function HandledNoticeDialog({
 function NotifyDialog({
   notices,
   handledMessages,
+  senderName,
   onClose,
   onConfirm
 }: {
   notices: Notice[] | null;
+  /** Nombre del usuario logueado, para presentarse en el mensaje. */
+  senderName: string;
   /** Vencimientos del grupo que otra persona ya resolvió: se muestran y no se vuelven a avisar. */
   handledMessages: string[];
   onClose: () => void;
@@ -540,7 +544,7 @@ function NotifyDialog({
 }) {
   const [copied, setCopied] = useState(false);
   const isOpen = Boolean(notices && notices.length > 0);
-  const message = notices ? buildNoticeReminderMessage(notices) : "";
+  const message = notices ? buildNoticeReminderMessage(notices, senderName) : "";
   const client = notices?.[0]?.policies?.clients;
   const clientName = client?.full_name ?? "el asegurado";
 
@@ -648,7 +652,7 @@ function NoticeDetailModal({
   const minDays = Math.min(...notices.map((notice) => getDaysUntilDue(notice.due_date)));
   const showCopy = notices.some((notice) => notice.status !== "pagado");
   const pending = pendingNotices(notices);
-  const message = buildNoticeReminderMessage(notices);
+  const message = buildNoticeReminderMessage(notices, noteApi.currentUserName);
   const currentUserId = noteApi.currentUserId || null;
   const recent = notices.flatMap((notice) => {
     const handling = recentHandlingByOther(notice, currentUserId, now);
