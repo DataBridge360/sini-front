@@ -1,7 +1,8 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   intervalLabel,
   type ApiCommonOptions,
@@ -54,6 +55,14 @@ export function PolicyFormModal({
   onClose: () => void;
   onSubmit: (values: PolicyFormValues) => Promise<unknown>;
 }) {
+  const queryClient = useQueryClient();
+  // La lista de asegurados no llega por tiempo real ni se refresca al volver a
+  // la ventana: si se cargó uno desde otra pestaña, otro dispositivo o un
+  // compañero, el selector no lo vería hasta recargar. Al abrir el formulario se
+  // vuelve a pedir (solo se recargan las consultas montadas).
+  useEffect(() => {
+    if (isOpen) void queryClient.invalidateQueries({ queryKey: ["clients"] });
+  }, [isOpen, queryClient]);
   const [clientId, setClientId] = useState(policy?.clients?.id ?? initialValues?.clientId ?? "");
   const [companyId, setCompanyId] = useState(
     policy?.insurance_companies?.id ?? initialValues?.insuranceCompanyId ?? ""
