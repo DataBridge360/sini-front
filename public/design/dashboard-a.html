@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard · Propuesta A · Agenda del día</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f9ff;
+    --surface: #ffffff;
+    --surface-low: #f8fafc;
+    --surface-lowest: #eef2f6;
+    --border: #e1e7ef;
+    --border-strong: #cbd5e1;
+    --text: #181c20;
+    --muted: #5b6575;
+    --faint: #8a94a6;
+    --brand: #0a72d1;
+    --org: #176e64;
+    --org-soft: #e7f2f0;
+    --red: #b42318;   --red-soft: #fef3f2;
+    --amber: #b54708; --amber-soft: #fffaeb;
+    --blue: #0a72d1;  --blue-soft: #eff6fd;
+    --violet: #6941c6; --violet-soft: #f5f3ff;
+    --green: #067647; --green-soft: #ecfdf3;
+    --font: "Plus Jakarta Sans", Inter, "Segoe UI", system-ui, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+  svg { display: block; }
+
+  /* ───────── Shell ───────── */
+  .shell { display: grid; grid-template-columns: 72px minmax(0, 1fr); min-height: 100vh; }
+
+  .rail {
+    position: sticky; top: 0; height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid #e6eaf0;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 16px 0;
+    gap: 4px;
+    z-index: 20;
+  }
+  .rail .logo { width: 40px; height: 40px; display: grid; place-items: center; margin-bottom: 16px; }
+  .rail .logo svg { width: 28px; height: 28px; fill: var(--brand); }
+  .nav-item {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: grid; place-items: center;
+    color: var(--muted);
+    transition: background .12s, color .12s;
+  }
+  .nav-item svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-item:hover { background: var(--surface-lowest); color: var(--text); }
+  .nav-item.active { background: var(--org-soft); color: var(--org); }
+  .nav-item.gesti { margin-top: auto; }
+  .nav-item.gesti img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+
+  .main { min-width: 0; display: flex; flex-direction: column; }
+
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    height: 64px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 32px;
+    background: rgba(247, 249, 255, .92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .m-logo { display: none; width: 24px; height: 24px; fill: var(--brand); }
+  .topbar h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .topbar .spacer { flex: 1; }
+  .bell {
+    position: relative; width: 36px; height: 36px; border-radius: 8px;
+    display: grid; place-items: center; border: 0; background: transparent; color: var(--muted);
+  }
+  .bell:hover { background: var(--surface-lowest); color: var(--text); }
+  .bell svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .bell .badge {
+    position: absolute; top: 1px; right: 0;
+    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9999px;
+    background: var(--red); color: #fff; font-size: 10px; font-weight: 700; line-height: 12px; text-align: center;
+    border: 2px solid var(--bg);
+  }
+  .user {
+    display: flex; align-items: center; gap: 8px;
+    height: 36px; padding: 0 12px 0 4px; border-radius: 9999px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 12.5px; font-weight: 500;
+  }
+  .user .av { width: 28px; height: 28px; font-size: 11px; }
+  .user .role { color: var(--muted); font-weight: 400; }
+
+  .av {
+    display: inline-grid; place-items: center; flex: none;
+    border-radius: 9999px; background: var(--surface-lowest); color: var(--muted);
+    font-weight: 600; letter-spacing: .02em;
+  }
+  .av.violet { background: var(--violet-soft); color: var(--violet); }
+
+  .proposal-label {
+    position: fixed; top: 72px; right: 12px; z-index: 30;
+    padding: 4px 10px; border-radius: 9999px;
+    background: var(--text); color: #fff;
+    font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    pointer-events: none;
+  }
+
+  /* ───────── Page ───────── */
+  .page {
+    width: 100%;
+    max-width: 1112px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+    display: grid;
+    grid-template-columns: minmax(0, 720px) 280px;
+    column-gap: 48px;
+    justify-content: center;
+    align-items: start;
+  }
+
+  /* Greeting */
+  .hello { padding-bottom: 40px; }
+  .hello .date { margin: 0 0 8px; font-size: 12.5px; color: var(--faint); font-weight: 500; }
+  .hello h2 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 500; letter-spacing: -.025em; }
+  .hello .summary { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+  .hello .summary b { color: var(--text); font-weight: 600; }
+  .hello .summary b.late { color: var(--red); }
+
+  /* ───────── Timeline ───────── */
+  .section { position: relative; padding-left: 32px; padding-bottom: 32px; }
+  .section::before {
+    content: ""; position: absolute; left: 5px; top: 20px; bottom: 0; width: 1px; background: var(--border);
+  }
+  .section:last-child { padding-bottom: 0; }
+  .section:last-child::before { display: none; }
+
+  .sec-head { position: relative; display: flex; align-items: baseline; gap: 8px; height: 24px; margin-bottom: 8px; }
+  .sec-head::before {
+    content: ""; position: absolute; left: -32px; top: 6px;
+    width: 11px; height: 11px; border-radius: 50%;
+    background: var(--bg); border: 2px solid var(--dot, var(--border-strong));
+  }
+  .sec-head h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .01em; }
+  .sec-head .count { font-size: 12px; color: var(--faint); font-weight: 500; }
+  .sec-head .when { margin-left: auto; font-size: 12px; color: var(--faint); }
+
+  .sec-late  { --dot: var(--red); }
+  .sec-late h3 { color: var(--red); }
+  .sec-today { --dot: var(--amber); }
+  .sec-tmrw  { --dot: var(--blue); }
+  .sec-week  { --dot: var(--border-strong); }
+  .sec-review { --dot: var(--violet); }
+
+  .task {
+    position: relative;
+    display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px;
+    margin: 0 -12px; padding: 10px 12px;
+    border-radius: 8px;
+    transition: background .12s, opacity .25s;
+  }
+  .task:hover { background: rgba(225, 231, 239, .45); }
+
+  .check {
+    position: relative; width: 20px; height: 20px; padding: 0; border-radius: 50%;
+    background: var(--surface); border: 1.5px solid var(--border-strong);
+    display: grid; place-items: center;
+    transition: background .15s, border-color .15s, transform .1s;
+  }
+  .check:hover { border-color: var(--muted); }
+  .check:active { transform: scale(.92); }
+  .check:focus-visible { outline: 2px solid var(--org-soft); outline-offset: 2px; border-color: var(--org); }
+  .check svg { width: 12px; height: 12px; stroke: #fff; stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s; }
+  .check[data-progress]::before { /* en proceso: media luna */
+    content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); clip-path: inset(0 50% 0 0);
+  }
+  .task.done .check { background: var(--green); border-color: var(--green); }
+  .task.done .check::before { display: none; }
+  .task.done .check svg { opacity: 1; transform: scale(1); }
+
+  .task .body { min-width: 0; }
+  .task .title { display: block; font-size: 14px; font-weight: 500; line-height: 1.4; letter-spacing: -.005em; transition: color .2s; }
+  .task .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; margin-top: 1px; font-size: 12px; color: var(--muted); }
+  .task .meta .dot { color: var(--border-strong); }
+  .task .meta .by { display: inline-flex; align-items: center; gap: 4px; color: var(--faint); }
+  .task .meta .by .av { width: 14px; height: 14px; font-size: 7px; }
+  .task.done .title { text-decoration: line-through; text-decoration-color: var(--faint); color: var(--faint); }
+  .task.done .body, .task.done .prio, .task.done .due { opacity: .5; }
+
+  .prio { display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+  .prio i { width: 3px; border-radius: 1px; background: var(--surface-lowest); box-shadow: inset 0 0 0 1px var(--border); }
+  .prio i:nth-child(1) { height: 5px; } .prio i:nth-child(2) { height: 8px; } .prio i:nth-child(3) { height: 12px; }
+  .prio[data-p="1"] i:nth-child(-n+1),
+  .prio[data-p="2"] i:nth-child(-n+2),
+  .prio[data-p="3"] i:nth-child(-n+3) { background: var(--muted); box-shadow: none; }
+  .prio[data-p="3"] i { background: var(--text); }
+
+  .due { min-width: 88px; text-align: right; font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+  .due.late { color: var(--red); }
+  .due.today { color: var(--amber); }
+  .due.tmrw { color: var(--blue); }
+
+  /* Approvals */
+  .approvals { display: grid; gap: 8px; }
+  .approval {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    transition: border-color .12s, opacity .25s;
+  }
+  .approval:hover { border-color: var(--border-strong); }
+  .approval .av { width: 32px; height: 32px; font-size: 11px; }
+  .approval .txt { flex: 1; min-width: 0; }
+  .approval .txt b { display: block; font-size: 14px; font-weight: 500; line-height: 1.4; }
+  .approval .txt span { font-size: 12px; color: var(--muted); }
+  .approval .acts { display: flex; gap: 8px; }
+  .btn {
+    height: 32px; padding: 0 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    transition: background .12s, border-color .12s;
+  }
+  .btn:hover { background: var(--surface-low); border-color: var(--border-strong); }
+  .btn.ok { background: var(--green-soft); border-color: #abefc6; color: var(--green); }
+  .btn.ok:hover { background: #d3f8df; border-color: #75e0a7; }
+  .approval .done-tag { display: none; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--green); }
+  .approval .done-tag svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .approval.approved { background: transparent; }
+  .approval.approved .acts { display: none; }
+  .approval.approved .done-tag { display: inline-flex; }
+  .approval.approved .av, .approval.approved .txt { opacity: .5; }
+
+  /* ───────── Right rail ───────── */
+  .side { position: sticky; top: 88px; display: grid; gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .card h4 { margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; display: flex; align-items: center; justify-content: space-between; }
+  .big { display: flex; align-items: baseline; gap: 8px; }
+  .big strong { font-size: 28px; line-height: 1.1; font-weight: 500; letter-spacing: -.03em; }
+  .big strong small { font-size: 16px; color: var(--faint); font-weight: 400; letter-spacing: 0; }
+  .big > span { font-size: 12.5px; color: var(--muted); }
+  .bar { height: 4px; border-radius: 9999px; background: var(--surface-lowest); overflow: hidden; margin-top: 12px; }
+  .bar i { display: block; height: 100%; border-radius: inherit; background: var(--green); transition: width .4s cubic-bezier(.2, .8, .2, 1); }
+  .bar.blue i { background: var(--blue); }
+  .sub { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+
+  .stat-line { display: flex; justify-content: space-between; align-items: baseline; margin-top: 16px; font-size: 12px; color: var(--muted); }
+  .stat-line b { font-size: 13px; font-weight: 600; color: var(--text); }
+  .link { display: inline-flex; align-items: center; gap: 4px; margin-top: 16px; font-size: 12.5px; font-weight: 600; color: var(--blue); }
+  .link svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; transition: transform .12s; }
+  .link:hover svg { transform: translateX(2px); }
+
+  .gesti-card .head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .gesti-card .head img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--surface-lowest); }
+  .gesti-card .head b { display: block; font-size: 14px; font-weight: 600; line-height: 1.3; }
+  .gesti-card .head span { font-size: 12px; color: var(--muted); }
+  .chips { display: grid; gap: 8px; }
+  .chip {
+    text-align: left; padding: 8px 12px; border-radius: 8px;
+    background: var(--surface-low); border: 1px solid var(--border);
+    font-size: 12px; line-height: 1.45; color: var(--text);
+    transition: background .12s, border-color .12s;
+  }
+  .chip:hover { background: var(--surface-lowest); border-color: var(--border-strong); }
+
+  .portfolio { margin: 0; padding: 0 4px; font-size: 11.5px; color: var(--faint); }
+
+  /* ───────── Mobile ───────── */
+  @media (max-width: 900px) {
+    .shell { display: block; }
+    .rail {
+      position: fixed; top: auto; bottom: 0; left: 0; right: 0; height: 56px;
+      flex-direction: row; justify-content: space-around; align-items: center; padding: 0 8px;
+      border-right: 0; border-top: 1px solid #e6eaf0;
+    }
+    .rail .logo { display: none; }
+    .nav-item.gesti { margin-top: 0; }
+    .topbar { padding: 0 16px; }
+    .topbar .m-logo { display: block; }
+    .user { padding-right: 4px; }
+    .user .name, .user .role { display: none; }
+    .proposal-label { top: 68px; right: 8px; font-size: 10px; padding: 3px 8px; }
+
+    .page { display: block; padding: 56px 16px 96px; }
+    .hello { padding-bottom: 32px; }
+    .hello h2 { font-size: 24px; }
+    .side { position: static; margin-top: 40px; }
+  }
+  @media (max-width: 520px) {
+    .task {
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      grid-template-areas: "check body prio" "check body due";
+      align-items: start; row-gap: 2px;
+    }
+    .task .check { grid-area: check; margin-top: 2px; }
+    .task .body { grid-area: body; }
+    .task .prio { grid-area: prio; justify-self: end; margin-top: 4px; }
+    .task .due { grid-area: due; min-width: 0; align-self: start; }
+    .approval { flex-wrap: wrap; }
+    .approval .acts { width: 100%; padding-left: 44px; }
+  }
+</style>
+</head>
+<body>
+<div class="proposal-label">Propuesta A · Agenda del día</div>
+
+<div class="shell">
+  <nav class="rail" aria-label="Navegación principal">
+    <a class="logo" href="#" aria-label="SiniPro">
+      <svg viewBox="-420 -420 840 840" aria-hidden="true"><path d="M-332.6-192 0-384l200 115.5-88 50.8L0-282.4l-200.6 115.8L0-50.8l288.6-166.6 44 25.4v384L132.5 307.5V205.9l112.1-64.7V-90.4L0 50.8l-332.6-192Z"/><path d="m-332.6-32 88 50.8v122.4L88 333.2 0 384l-332.6-192Z"/></svg>
+    </a>
+    <a class="nav-item active" href="#" title="Dashboard" aria-label="Dashboard" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg></a>
+    <a class="nav-item" href="#" title="Tareas" aria-label="Tareas"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></a>
+    <a class="nav-item" href="#" title="Avisos" aria-label="Avisos"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></a>
+    <a class="nav-item" href="#" title="Asegurados" aria-label="Asegurados"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.5a3.5 3.5 0 0 1 0 7M18 14.4c1.8.9 3 2.7 3 5.6"/></svg></a>
+    <a class="nav-item" href="#" title="Pólizas" aria-label="Pólizas"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.2-2.9 7.9-7 9.5-4.1-1.6-7-5.3-7-9.5V6z"/></svg></a>
+    <a class="nav-item gesti" href="#" title="Gesti" aria-label="Gesti"><img src="/gesti/gesti-avatar.webp" alt=""></a>
+  </nav>
+
+  <div class="main">
+    <header class="topbar">
+      <svg class="m-logo" viewBox="-420 -420 840 840" aria-hidden="true"><path d="M-332.6-192 0-384l200 115.5-88 50.8L0-282.4l-200.6 115.8L0-50.8l288.6-166.6 44 25.4v384L132.5 307.5V205.9l112.1-64.7V-90.4L0 50.8l-332.6-192Z"/><path d="m-332.6-32 88 50.8v122.4L88 333.2 0 384l-332.6-192Z"/></svg>
+      <h1>Dashboard</h1>
+      <span class="spacer"></span>
+      <button class="bell" aria-label="Notificaciones, 4 sin leer">
+        <svg viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></svg>
+        <span class="badge">4</span>
+      </button>
+      <div class="user"><span class="av">LS</span><span class="name">Lucas Segura</span><span class="role">· Productor</span></div>
+    </header>
+
+    <main class="page">
+      <section>
+        <div class="hello">
+          <p class="date">Lunes 26 de octubre · 15:30</p>
+          <h2>Buenas tardes, Lucas</h2>
+          <p class="summary" id="summary">Tenés <b>3 tareas</b> para hoy y <b class="late">2 vencidas</b>. Vas <b>3 de 8</b>.</p>
+        </div>
+
+        <!-- Vencidas -->
+        <div class="section sec-late" data-sec="late">
+          <div class="sec-head"><h3>Vencidas</h3><span class="count">2</span></div>
+          <div class="task">
+            <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Renovar póliza de automotor"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Renovar póliza de automotor</span><div class="meta"><span>Ana Pérez</span><span class="dot">·</span><span>Pól. 7781-03</span></div></div>
+            <div class="prio" data-p="3" title="Prioridad alta"><i></i><i></i><i></i></div>
+            <div class="due late">hace 2 días</div>
+          </div>
+          <div class="task">
+            <button class="check" data-progress role="checkbox" aria-checked="false" aria-label="Completar: Enviar documentación del siniestro (en proceso)"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Enviar documentación del siniestro</span><div class="meta"><span>María López</span><span class="dot">·</span><span>Pól. 4581-22 Automotores</span></div></div>
+            <div class="prio" data-p="2" title="Prioridad media"><i></i><i></i><i></i></div>
+            <div class="due late">ayer</div>
+          </div>
+        </div>
+
+        <!-- Hoy -->
+        <div class="section sec-today" data-sec="today">
+          <div class="sec-head"><h3>Hoy</h3><span class="count">3</span><span class="when">lun 26</span></div>
+          <div class="task">
+            <button class="check" data-progress role="checkbox" aria-checked="false" aria-label="Completar: Llamar por la cotización de hogar (en proceso)"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Llamar por la cotización de hogar</span><div class="meta"><span>Juan Gómez</span></div></div>
+            <div class="prio" data-p="2" title="Prioridad media"><i></i><i></i><i></i></div>
+            <div class="due today">hoy</div>
+          </div>
+          <div class="task">
+            <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Confirmar pago de cuota"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Confirmar pago de cuota</span><div class="meta"><span>Carlos Díaz</span><span class="dot">·</span><span>Pól. 1203-11</span></div></div>
+            <div class="prio" data-p="3" title="Prioridad alta"><i></i><i></i><i></i></div>
+            <div class="due today">hoy</div>
+          </div>
+          <div class="task">
+            <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Cargar endoso de comercio"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Cargar endoso de comercio</span><div class="meta"><span>Kiosco El Sol</span></div></div>
+            <div class="prio" data-p="1" title="Prioridad baja"><i></i><i></i><i></i></div>
+            <div class="due today">hoy</div>
+          </div>
+        </div>
+
+        <!-- Mañana -->
+        <div class="section sec-tmrw" data-sec="tmrw">
+          <div class="sec-head"><h3>Mañana</h3><span class="count">1</span><span class="when">mar 27</span></div>
+          <div class="task">
+            <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Cotizar seguro de moto"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Cotizar seguro de moto</span><div class="meta"><span>Lucía Fernández</span><span class="dot">·</span><span class="by"><span class="av">SR</span>Te la asignó Sofía Ruiz hoy</span></div></div>
+            <div class="prio" data-p="2" title="Prioridad media"><i></i><i></i><i></i></div>
+            <div class="due tmrw">mañana</div>
+          </div>
+        </div>
+
+        <!-- Esta semana -->
+        <div class="section sec-week" data-sec="week">
+          <div class="sec-head"><h3>Esta semana</h3><span class="count">2</span></div>
+          <div class="task">
+            <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Revisar renovación de flota"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Revisar renovación de flota</span><div class="meta"><span>Transportes Sur</span></div></div>
+            <div class="prio" data-p="3" title="Prioridad alta"><i></i><i></i><i></i></div>
+            <div class="due">jue 29</div>
+          </div>
+          <div class="task">
+            <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Armar propuesta de vida"><svg viewBox="0 0 12 12"><path d="m2.5 6.2 2.4 2.4 4.6-5"/></svg></button>
+            <div class="body"><span class="title">Armar propuesta de vida</span><div class="meta"><span>Pedro Ramírez</span></div></div>
+            <div class="prio" data-p="1" title="Prioridad baja"><i></i><i></i><i></i></div>
+            <div class="due">vie 30</div>
+          </div>
+        </div>
+
+        <!-- Aprobaciones -->
+        <div class="section sec-review" data-sec="review">
+          <div class="sec-head"><h3>Esperan tu aprobación</h3><span class="count" id="review-count">2</span></div>
+          <div class="approvals">
+            <div class="approval">
+              <span class="av violet">SR</span>
+              <div class="txt"><b>Alta de póliza de vida</b><span>Sofía Ruiz</span></div>
+              <div class="acts"><button class="btn ok" data-approve>Aprobar</button><button class="btn">Ver</button></div>
+              <span class="done-tag"><svg viewBox="0 0 16 16"><path d="m3 8.4 3.2 3.2L13 4.6"/></svg>Aprobada</span>
+            </div>
+            <div class="approval">
+              <span class="av violet">MS</span>
+              <div class="txt"><b>Baja de cobertura de granizo</b><span>Martín Sosa</span></div>
+              <div class="acts"><button class="btn ok" data-approve>Aprobar</button><button class="btn">Ver</button></div>
+              <span class="done-tag"><svg viewBox="0 0 16 16"><path d="m3 8.4 3.2 3.2L13 4.6"/></svg>Aprobada</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side" aria-label="Resumen">
+        <div class="card">
+          <h4>Tu día</h4>
+          <div class="big"><strong><span id="done-n">3</span><small>/8</small></strong><span id="pct">37% completado</span></div>
+          <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="8" aria-valuenow="3"><i id="bar" style="width:37%"></i></div>
+          <p class="sub" id="left">Te quedan 5 tareas.</p>
+        </div>
+
+        <div class="card">
+          <h4>Avisos de cuotas</h4>
+          <div class="big"><strong>68</strong><span>a contactar</span></div>
+          <div class="stat-line"><span>Cobranza del mes</span><b>34%</b></div>
+          <div class="bar blue" style="margin-top:8px"><i style="width:34%"></i></div>
+          <p class="sub">12 contactados · 41 pagados este mes</p>
+          <a class="link" href="#">Ir a avisos <svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+        </div>
+
+        <div class="card gesti-card">
+          <div class="head">
+            <img src="/gesti/gesti-avatar.webp" alt="Gesti">
+            <div><b>Gesti</b><span>Tu asistente</span></div>
+          </div>
+          <div class="chips">
+            <button class="chip">Redactá el recordatorio de pago para Carlos Díaz</button>
+            <button class="chip">¿Qué documentación falta en el siniestro de María López?</button>
+          </div>
+        </div>
+
+        <p class="portfolio">312 asegurados · 486 pólizas activas</p>
+      </aside>
+    </main>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var TOTAL = 8, BASE_DONE = 3;
+    var tasks = document.querySelectorAll('.task');
+
+    function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+    function remaining(sec) {
+      return document.querySelectorAll('[data-sec="' + sec + '"] .task:not(.done)').length;
+    }
+
+    function refresh() {
+      var extra = document.querySelectorAll('.task.done').length;
+      var done = BASE_DONE + extra;
+      var pct = Math.floor(done / TOTAL * 100);
+      document.getElementById('done-n').textContent = done;
+      document.getElementById('pct').textContent = pct + '% completado';
+      document.getElementById('bar').style.width = pct + '%';
+      document.querySelector('.bar[role=progressbar]').setAttribute('aria-valuenow', done);
+      var left = TOTAL - done;
+      document.getElementById('left').textContent = left > 0 ? 'Te quedan ' + plural(left, 'tarea', 'tareas') + '.' : 'Terminaste todo por hoy.';
+
+      ['late', 'today', 'tmrw', 'week'].forEach(function (s) {
+        document.querySelector('[data-sec="' + s + '"] .count').textContent = remaining(s);
+      });
+
+      var today = remaining('today'), late = remaining('late');
+      var s = 'Tenés ';
+      s += today ? '<b>' + plural(today, 'tarea', 'tareas') + '</b> para hoy' : '<b>nada</b> pendiente para hoy';
+      s += late ? ' y <b class="late">' + plural(late, 'vencida', 'vencidas') + '</b>' : ' y ninguna vencida';
+      s += '. Vas <b>' + done + ' de ' + TOTAL + '</b>.';
+      document.getElementById('summary').innerHTML = s;
+    }
+
+    tasks.forEach(function (row) {
+      var box = row.querySelector('.check');
+      box.addEventListener('click', function () {
+        var on = row.classList.toggle('done');
+        box.setAttribute('aria-checked', on ? 'true' : 'false');
+        refresh();
+      });
+    });
+
+    document.querySelectorAll('[data-approve]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btn.closest('.approval').classList.add('approved');
+        document.getElementById('review-count').textContent = document.querySelectorAll('.approval:not(.approved)').length;
+      });
+    });
+  })();
+</script>
+</body>
+</html>
