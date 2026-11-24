@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, CheckCircle, ChevronDown, Edit3, FileText, Hash, Loader2, Mail, MapPin, Phone, Save, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, CalendarDays, CheckCircle, ChevronDown, Edit3, FileText, Hash, Loader2, Mail, MapPin, Phone, Plus, Save, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import {
   apiRequest,
   intervalLabel,
@@ -53,6 +53,7 @@ export function ClientDetailScreen({
   const [editClientOpen, setEditClientOpen] = useState(false);
   const [deleteClientOpen, setDeleteClientOpen] = useState(false);
   const [deletePolicyTarget, setDeletePolicyTarget] = useState<Policy | null>(null);
+  const [createPolicyOpen, setCreatePolicyOpen] = useState(false);
 
   const backButton = (
     <button
@@ -92,10 +93,16 @@ export function ClientDetailScreen({
 
       <section className="flex flex-col gap-3">
         <div className="flex items-end justify-between">
-          <h2 className="m-0 text-lg font-semibold text-slate-900">Pólizas</h2>
-          <span className="text-xs font-medium text-slate-500">
-            {clientPolicies.length} {clientPolicies.length === 1 ? "póliza" : "pólizas"}
-          </span>
+          <div className="flex items-baseline gap-2">
+            <h2 className="m-0 text-lg font-semibold text-slate-900">Pólizas</h2>
+            <span className="text-xs font-medium text-slate-500">
+              {clientPolicies.length} {clientPolicies.length === 1 ? "póliza" : "pólizas"}
+            </span>
+          </div>
+          <button className="sp-primary-action" type="button" onClick={() => setCreatePolicyOpen(true)}>
+            <Plus size={14} />
+            Nueva póliza
+          </button>
         </div>
         {clientPolicies.length === 0 ? (
           <EmptyState title="Sin pólizas" text="Este asegurado todavía no tiene pólizas cargadas." compact />
@@ -118,6 +125,23 @@ export function ClientDetailScreen({
           </div>
         )}
       </section>
+
+      <PolicyFormModal
+        key={createPolicyOpen ? `client-policy-create-${client.id}` : "client-policy-create-closed"}
+        title="Nueva póliza"
+        submitLabel="Guardar póliza"
+        isOpen={createPolicyOpen}
+        policy={null}
+        initialValues={{ clientId: client.id }}
+        clients={policyActions.clients}
+        companies={policyActions.companies}
+        isSaving={policyActions.isCreating}
+        onClose={() => setCreatePolicyOpen(false)}
+        onSubmit={async (values) => {
+          await policyActions.onCreate(values);
+          setCreatePolicyOpen(false);
+        }}
+      />
 
       <PolicyFormModal
         key={editPolicy?.id ?? "client-policy-edit"}
@@ -520,8 +544,9 @@ function PolicyHistoryPanel({
                 {payments.length === 0 ? (
                   <p className="m-0 text-xs text-slate-400">Todavía no hay pagos registrados.</p>
                 ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {payments.map((payment) => (
+                  <RecentList
+                    items={payments}
+                    renderItem={(payment) => (
                       <div key={payment.id} className="flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2.5">
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                           <CheckCircle size={15} />
@@ -537,8 +562,8 @@ function PolicyHistoryPanel({
                           <em className="shrink-0 text-[11px] not-italic text-slate-400">{formatDate(payment.payment_processed_at.slice(0, 10))}</em>
                         ) : null}
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  />
                 )}
               </div>
 
@@ -551,8 +576,9 @@ function PolicyHistoryPanel({
                       : "Sin avisos para esta póliza."}
                   </p>
                 ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {notices.map((notice) => (
+                  <RecentList
+                    items={notices}
+                    renderItem={(notice) => (
                       <div key={notice.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: NOTICE_COLUMNS.find((column) => column.key === notice.status)?.dot }} />
@@ -562,8 +588,8 @@ function PolicyHistoryPanel({
                         </div>
                         <NoticeNotes notice={notice} noteApi={{ ...noteApi, currentUserId }} />
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  />
                 )}
               </div>
             </>
@@ -574,6 +600,40 @@ function PolicyHistoryPanel({
   );
 }
 
+const RECENT_LIMIT = 3;
+
+// Muestra los últimos registros; el resto queda detrás de "Ver más" en un
+// contenedor con scroll para no estirar la ficha del asegurado.
+function RecentList<T extends { id: string }>({
+  items,
+  renderItem
+}: {
+  items: T[];
+  renderItem: (item: T) => ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hidden = items.length - RECENT_LIMIT;
+  const visible = expanded ? items : items.slice(0, RECENT_LIMIT);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className={`flex flex-col gap-1.5 ${expanded ? "max-h-80 overflow-y-auto pr-1" : ""}`}>
+        {visible.map((item) => (
+          <div key={item.id}>{renderItem(item)}</div>
+        ))}
+      </div>
+      {hidden > 0 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="w-fit text-xs font-semibold text-[color:var(--org-primary)] transition-colors hover:opacity-80"
+        >
+          {expanded ? "Ver menos" : `Ver más (${hidden})`}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 function PolicyActionButtons({
   policy,

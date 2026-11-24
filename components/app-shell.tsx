@@ -381,6 +381,11 @@ export function AppShell() {
         notify("Póliza creada. Por débito automático no genera avisos.");
         return;
       }
+      // Desde la ficha del asegurado se queda ahí: la póliza aparece en su lista.
+      if (tab === "clients" && clientDetailId) {
+        notify("Póliza creada.");
+        return;
+      }
       notify("Póliza creada.");
       setTab("notices");
     }
@@ -696,6 +701,8 @@ export function AppShell() {
     companies: allCompanies,
     isSaving: updatePolicy.isPending,
     isDeleting: deletePolicy.isPending,
+    isCreating: createPolicy.isPending,
+    onCreate: (values) => createPolicy.mutateAsync(values),
     onUpdate: (policyId, values) => updatePolicy.mutateAsync({ policyId, values }),
     onDelete: (policyId) => deletePolicy.mutateAsync(policyId)
   };
