@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard · Propuesta B · Foco</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f9ff;
+    --surface: #ffffff;
+    --surface-low: #f8fafc;
+    --surface-lowest: #eef2f6;
+    --border: #e1e7ef;
+    --border-strong: #cbd5e1;
+    --text: #181c20;
+    --muted: #5b6575;
+    --faint: #8a94a6;
+    --brand: #0a72d1;
+    --primary: #176e64;
+    --primary-hover: #135a52;
+    --red: #b42318;  --red-soft: #fef3f2;
+    --amber: #b54708; --amber-soft: #fffaeb;
+    --blue: #0a72d1;  --blue-soft: #eff8ff;
+    --violet: #6941c6; --violet-soft: #f5f3ff;
+    --green: #067647; --green-soft: #ecfdf3;
+    --font: 'Plus Jakarta Sans', Inter, 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--bg);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+  svg { display: block; flex: none; }
+  :focus-visible { outline: 2px solid rgba(23,110,100,.35); outline-offset: 2px; border-radius: 8px; }
+
+  /* ---------- Shell ---------- */
+  .rail {
+    position: fixed; inset: 0 auto 0 0; width: 72px;
+    background: var(--surface); border-right: 1px solid #e6eaf0;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 0; gap: 4px; z-index: 20;
+  }
+  .rail .logo { width: 40px; height: 40px; display: grid; place-items: center; margin-bottom: 12px; }
+  .rail .logo svg { width: 26px; height: 26px; }
+  .nav-item {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: grid; place-items: center; color: var(--muted);
+    transition: background .12s, color .12s;
+  }
+  .nav-item svg { width: 20px; height: 20px; }
+  .nav-item:hover { background: var(--surface-low); color: var(--text); }
+  .nav-item.active { background: #e8f3f1; color: #0f4f48; }
+  .nav-item.gesti img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+  .rail .spacer { flex: 1; }
+
+  .topbar {
+    position: fixed; top: 0; left: 72px; right: 0; height: 64px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px; z-index: 10;
+  }
+  .topbar h1 { font-size: 16px; font-weight: 600; letter-spacing: -.005em; }
+  .topbar .mobile-logo { display: none; }
+  .top-right { display: flex; align-items: center; gap: 12px; }
+  .bell { position: relative; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); }
+  .bell:hover { background: var(--surface-low); color: var(--text); }
+  .bell svg { width: 20px; height: 20px; }
+  .bell .badge {
+    position: absolute; top: 0; right: -2px; min-width: 18px; height: 18px; padding: 0 4px;
+    border-radius: 9999px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
+    display: grid; place-items: center; border: 2px solid var(--surface);
+  }
+  .user {
+    display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 4px;
+    border: 1px solid var(--border); border-radius: 9999px; font-size: 12.5px; font-weight: 500;
+  }
+  .user .av { width: 28px; height: 28px; font-size: 11px; }
+  .user .role { color: var(--muted); font-weight: 400; }
+
+  .proposal-tag {
+    position: fixed; top: 72px; right: 16px; z-index: 30;
+    font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    padding: 3px 10px; border-radius: 9999px;
+    background: var(--text); color: #fff;
+  }
+
+  /* ---------- Page ---------- */
+  main { margin-left: 72px; padding: 64px 32px 0; }
+  .page { max-width: 1200px; margin: 0 auto; padding: 40px 0 56px; display: flex; flex-direction: column; gap: 32px; }
+
+  .av {
+    width: 20px; height: 20px; border-radius: 9999px; background: var(--surface-lowest); color: var(--muted);
+    display: inline-grid; place-items: center; font-size: 9px; font-weight: 600; letter-spacing: .02em; flex: none;
+  }
+
+  /* Greeting */
+  .hello { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+  .hello .eyebrow { font-size: 12px; color: var(--faint); font-weight: 500; margin-bottom: 4px; }
+  .hello h2 { font-size: 28px; line-height: 1.15; font-weight: 500; letter-spacing: -.02em; }
+  .hello p { margin-top: 8px; color: var(--muted); font-size: 14px; max-width: 520px; }
+  .hello p b { color: var(--text); font-weight: 600; }
+  .hello p b.red { color: var(--red); }
+  .ring { display: flex; align-items: center; gap: 16px; flex: none; }
+  .ring-svg { width: 72px; height: 72px; position: relative; }
+  .ring-svg svg { width: 72px; height: 72px; transform: rotate(-90deg); }
+  .ring-svg .track { stroke: var(--surface-lowest); }
+  .ring-svg .bar { stroke: var(--green); stroke-linecap: round; transition: stroke-dasharray .5s cubic-bezier(.2,.8,.2,1); }
+  .ring-svg .pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+  .ring-copy .big { font-size: 15px; font-weight: 600; }
+  .ring-copy .big span { color: var(--muted); font-weight: 500; }
+  .ring-copy .sub { color: var(--muted); font-size: 12px; }
+
+  /* Focus card */
+  .focus {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    display: grid; grid-template-columns: minmax(0, 1fr) 320px;
+    overflow: hidden;
+  }
+  .focus-main { padding: 28px 32px 24px; display: flex; flex-direction: column; gap: 20px; }
+  .focus-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .focus-eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+  .focus h3 { font-size: 26px; line-height: 1.2; font-weight: 500; letter-spacing: -.02em; }
+  .focus-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; color: var(--muted); font-size: 13.5px; }
+  .focus-meta .who { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 500; }
+  .focus-meta .who .av { width: 24px; height: 24px; font-size: 10px; }
+  .focus-meta .sep { width: 3px; height: 3px; border-radius: 50%; background: var(--border-strong); }
+  .why { font-size: 13.5px; color: var(--muted); max-width: 540px; }
+  .why b { color: var(--text); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+  .btn {
+    height: 40px; padding: 0 16px; border-radius: 12px; font-size: 13.5px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border);
+    background: var(--surface); transition: background .12s, border-color .12s;
+  }
+  .btn:hover { background: var(--surface-low); border-color: var(--border-strong); }
+  .btn svg { width: 16px; height: 16px; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; padding: 0 20px; }
+  .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  .btn img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+  .focus-side { background: var(--surface-low); border-left: 1px solid var(--border); padding: 28px 24px 20px; display: flex; flex-direction: column; }
+  .focus-side h4 { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+  dl.facts { display: grid; grid-template-columns: auto 1fr; }
+  dl.facts dt, dl.facts dd { padding: 9px 0; border-bottom: 1px solid var(--border); }
+  dl.facts dt { color: var(--muted); }
+  dl.facts dd { text-align: right; font-weight: 500; display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+  .next { margin-top: auto; padding-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); }
+  .next .t { min-width: 0; line-height: 1.35; }
+  .next b { display: block; color: var(--text); font-weight: 500; font-size: 12.5px; }
+  .next .skip { margin-left: auto; height: 28px; padding: 0 10px; border-radius: 8px; font-weight: 600; font-size: 12px; color: var(--muted); }
+  .next .skip:hover { background: var(--surface-lowest); color: var(--text); }
+
+  /* Chips */
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 9999px;
+    font-size: 11px; font-weight: 600; white-space: nowrap; background: var(--surface-lowest); color: var(--muted);
+  }
+  .chip.red { background: var(--red-soft); color: var(--red); }
+  .chip.amber { background: var(--amber-soft); color: var(--amber); }
+  .chip.blue { background: var(--blue-soft); color: var(--blue); }
+  .chip.violet { background: var(--violet-soft); color: var(--violet); }
+  .chip.green { background: var(--green-soft); color: var(--green); }
+  .chip.neutral { background: var(--surface-lowest); color: var(--muted); }
+  .chip svg { width: 11px; height: 11px; }
+
+  /* Priority glyph */
+  .prio { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); font-weight: 500; }
+  .prio i { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; }
+  .prio i b { width: 3px; border-radius: 1px; background: var(--border-strong); }
+  .prio i b:nth-child(1) { height: 4px; } .prio i b:nth-child(2) { height: 7px; } .prio i b:nth-child(3) { height: 10px; }
+  .prio.alta i b { background: var(--text); }
+  .prio.media i b:nth-child(-n+2) { background: var(--text); }
+  .prio.baja i b:nth-child(1) { background: var(--text); }
+  .prio.alta { color: var(--text); }
+
+  /* Lanes */
+  .lanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
+  .lane-head { display: flex; align-items: baseline; gap: 8px; padding: 0 2px 12px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .lane-head h3 { font-size: 14.5px; font-weight: 600; }
+  .lane-head .count { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-lowest); border-radius: 9999px; padding: 0 7px; line-height: 18px; }
+  .lane-head .hint { margin-left: auto; font-size: 12px; color: var(--faint); }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .group-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 4px 2px 0; }
+  .group-label.red { color: var(--red); }
+  .group-label .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .group-label + .stack { margin-top: -0px; }
+  .gap-lg { height: 8px; }
+
+  .task {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 12px; row-gap: 8px;
+    transition: border-color .12s, background .12s;
+    cursor: pointer;
+  }
+  .task:hover { border-color: var(--border-strong); background: rgba(248,250,252,.6); }
+  .task.overdue { border-color: #f4c7c3; }
+  .task.overdue:hover { border-color: #e9a29c; }
+  .check {
+    width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; border: 1.5px solid var(--border-strong);
+    display: grid; place-items: center; color: transparent; transition: all .12s;
+  }
+  .check svg { width: 10px; height: 10px; }
+  .check:hover { border-color: var(--green); color: var(--green); }
+  .task.done .check { background: var(--green); border-color: var(--green); color: #fff; }
+  .task.done .title { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+  .task .title { font-size: 13.5px; font-weight: 500; line-height: 1.35; display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }
+  .task .tag-focus { font-size: 10.5px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; line-height: 17px; flex: none; margin-top: 1px; }
+  .task .body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  .client { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; min-width: 0; }
+  .client .name { color: var(--text); font-weight: 500; white-space: nowrap; }
+  .client .pol { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .client .pol::before { content: "·"; margin-right: 8px; color: var(--border-strong); }
+  .foot { display: flex; align-items: center; gap: 12px; }
+  .foot .status { font-size: 11.5px; color: var(--faint); }
+  .foot .chip { margin-left: auto; }
+  .note { font-size: 11.5px; color: var(--muted); }
+
+  .task.review .actions-mini { display: flex; gap: 8px; margin-left: auto; }
+  .task.review .foot .chip { margin-left: 0; }
+  .btn-sm { height: 28px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); background: var(--surface); }
+  .btn-sm:hover { background: var(--surface-low); border-color: var(--border-strong); }
+  .btn-sm.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn-sm.primary:hover { background: var(--primary-hover); }
+  .lane-gesti { margin-top: 12px; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: 12px; color: var(--muted); font-size: 12px; }
+  .lane-gesti img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+  .lane-gesti:hover { background: var(--surface); color: var(--text); }
+
+  /* Numbers strip */
+  .strip {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .stat { padding: 14px 20px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-left: 1px solid var(--border); }
+  .stat:first-child { border-left: 0; }
+  .stat .label { font-size: 12px; color: var(--muted); }
+  .stat .num { font-size: 20px; font-weight: 500; letter-spacing: -.01em; line-height: 1.2; }
+  .stat .num small { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 1px; }
+  .stat:hover { background: var(--surface-low); }
+  .stat:first-child { border-radius: 12px 0 0 12px; } .stat:last-child { border-radius: 0 12px 12px 0; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 1100px) {
+    .focus { grid-template-columns: minmax(0, 1fr); }
+    .focus-side { border-left: 0; border-top: 1px solid var(--border); }
+    .lanes { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+    .strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .stat:nth-child(4) { border-left: 0; }
+    .stat:nth-child(n+4) { border-top: 1px solid var(--border); }
+    .stat:first-child { border-radius: 12px 0 0 0; } .stat:nth-child(3) { border-radius: 0 12px 0 0; }
+    .stat:nth-child(4) { border-radius: 0 0 0 12px; } .stat:last-child { border-radius: 0 0 12px 0; }
+  }
+  @media (max-width: 900px) {
+    .rail {
+      inset: auto 0 0 0; width: auto; height: 60px; flex-direction: row; justify-content: space-around;
+      padding: 0 8px; border-right: 0; border-top: 1px solid #e6eaf0;
+    }
+    .rail .logo, .rail .spacer { display: none; }
+    .topbar { left: 0; padding: 0 16px; }
+    .topbar .mobile-logo { display: grid; width: 28px; height: 28px; margin-right: 12px; }
+    .topbar .mobile-logo svg { width: 22px; height: 22px; }
+    .topbar .title-wrap { display: flex; align-items: center; }
+    .user .txt { display: none; } .user { padding: 0 4px; }
+    main { margin-left: 0; padding: 64px 16px 60px; }
+    .page { padding: 28px 0 40px; gap: 28px; }
+  }
+  @media (max-width: 600px) {
+    .hello { flex-direction: column; align-items: stretch; gap: 20px; }
+    .hello h2 { font-size: 24px; }
+    .ring { padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    .focus-main { padding: 20px 16px 16px; gap: 16px; }
+    .focus-meta .sep-chip { display: none; }
+    .focus-meta .chip { flex-basis: auto; }
+    .focus h3 { font-size: 22px; }
+    .focus-side { padding: 16px; }
+    .actions .btn { flex: 1 1 auto; justify-content: center; }
+    .actions .btn.primary { flex-basis: 100%; }
+    .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stat { border-left: 0; border-top: 1px solid var(--border); flex-direction: column; align-items: flex-start; gap: 2px; border-radius: 0 !important; }
+    .stat:nth-child(even) { border-left: 1px solid var(--border); }
+    .stat:nth-child(-n+2) { border-top: 0; }
+    .stat:nth-child(1) { border-top-left-radius: 11px !important; } .stat:nth-child(2) { border-top-right-radius: 11px !important; }
+    .stat:last-child { grid-column: 1 / -1; border-radius: 0 0 11px 11px !important; border-left: 0; }
+    .stat .num { order: -1; }
+    .proposal-tag { top: 72px; right: 12px; }
+  }
+</style>
+</head>
+<body>
+<span class="proposal-tag">Propuesta B · Foco</span>
+
+<!-- Icon rail -->
+<nav class="rail" aria-label="Principal">
+  <a class="logo" href="#" aria-label="SiniPro">
+    <svg viewBox="-420 -420 840 840" fill="#0a72d1"><path d="M-332.6-192 0-384l200 115.5-88 50.8L0-282.4l-200.6 115.8L0-50.8l288.6-166.6 44 25.4v384L132.5 307.5V205.9l112.1-64.7V-90.4L0 50.8l-332.6-192Z"/><path d="m-332.6-32 88 50.8v122.4L88 333.2 0 384l-332.6-192Z"/></svg>
+  </a>
+  <a class="nav-item active" href="#" aria-label="Dashboard" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="8" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="6" rx="1.5"/></svg>
+  </a>
+  <a class="nav-item" href="#" aria-label="Tareas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.3 2.4 2.4 4.6-5"/></svg>
+  </a>
+  <a class="nav-item" href="#" aria-label="Asegurados">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 19.5c.6-3.3 3.2-5 6.5-5s5.9 1.7 6.5 5"/><path d="M16 5.3a3.3 3.3 0 0 1 0 6.4M18.5 14.8c1.7.6 2.8 2.2 3 4.7"/></svg>
+  </a>
+  <a class="nav-item" href="#" aria-label="Pólizas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 5 6v5.5c0 4.3 2.8 7.5 7 9 4.2-1.5 7-4.7 7-9V6l-7-2.5Z"/><path d="m9.2 12 2 2 3.6-3.8"/></svg>
+  </a>
+  <a class="nav-item" href="#" aria-label="Avisos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/></svg>
+  </a>
+  <span class="spacer"></span>
+  <a class="nav-item gesti" href="#" aria-label="Gesti"><img src="/gesti/gesti-avatar.webp" alt=""></a>
+</nav>
+
+<!-- Header -->
+<header class="topbar">
+  <div class="title-wrap">
+    <span class="mobile-logo"><svg viewBox="-420 -420 840 840" fill="#0a72d1"><path d="M-332.6-192 0-384l200 115.5-88 50.8L0-282.4l-200.6 115.8L0-50.8l288.6-166.6 44 25.4v384L132.5 307.5V205.9l112.1-64.7V-90.4L0 50.8l-332.6-192Z"/><path d="m-332.6-32 88 50.8v122.4L88 333.2 0 384l-332.6-192Z"/></svg></span>
+    <h1>Dashboard</h1>
+  </div>
+  <div class="top-right">
+    <button class="bell" aria-label="Notificaciones, 4 sin leer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15L6 16.5Z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg>
+      <span class="badge">4</span>
+    </button>
+    <div class="user"><span class="av">LS</span><span class="txt">Lucas Segura <span class="role">· Productor</span></span></div>
+  </div>
+</header>
+
+<main>
+<div class="page">
+
+  <!-- Greeting + progress -->
+  <section class="hello">
+    <div>
+      <div class="eyebrow">Lunes 26 de octubre · 15:30</div>
+      <h2>Buenas tardes, Lucas</h2>
+      <p>Tenés <b class="red">2 tareas vencidas</b> y <b>3 para hoy</b>. Además, <b>2 cosas</b> esperan tu aprobación.</p>
+    </div>
+    <div class="ring" aria-live="polite">
+      <div class="ring-svg">
+        <svg viewBox="0 0 72 72" fill="none" stroke-width="6" aria-hidden="true">
+          <circle class="track" cx="36" cy="36" r="31"/>
+          <circle class="bar" id="ringBar" cx="36" cy="36" r="31" stroke-dasharray="73.04 194.78"/>
+        </svg>
+        <div class="pct" id="ringPct">37%</div>
+      </div>
+      <div class="ring-copy">
+        <div class="big"><span id="ringDone">3</span><span>/8</span> hechas hoy</div>
+        <div class="sub" id="ringSub">Te faltan 5 para cerrar el día</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Focus -->
+  <section class="focus" aria-labelledby="focus-title">
+    <div class="focus-main">
+      <div class="focus-eyebrow"><span class="dot"></span>Tu foco ahora</div>
+      <div>
+        <h3 id="focus-title">Renovar póliza de automotor</h3>
+        <div class="focus-meta">
+          <span class="who"><span class="av">AP</span>Ana Pérez</span>
+          <span class="sep"></span>
+          <span>Pól. 7781-03</span>
+          <span class="sep sep-chip"></span>
+          <span class="chip red">Vencida hace 2 días</span>
+        </div>
+      </div>
+      <p class="why">Es la tarea <b>más atrasada</b> de tu lista y tiene prioridad alta. Resolverla primero te saca el rojo de encima antes de que termine el día.</p>
+      <div class="actions">
+        <button class="btn primary" id="focusDone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+          Marcar hecha
+        </button>
+        <button class="btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.5h5.5V10M19.5 4.5 11 13"/><path d="M18 14v4a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 18V8a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>
+          Abrir
+        </button>
+        <button class="btn"><img src="/gesti/gesti-avatar.webp" alt="">Pedirle a Gesti un mensaje</button>
+      </div>
+    </div>
+    <aside class="focus-side">
+      <h4>Detalle</h4>
+      <dl class="facts">
+        <dt>Cliente</dt><dd>Ana Pérez</dd>
+        <dt>Póliza</dt><dd>7781-03</dd>
+        <dt>Venció</dt><dd>Sáb 24 oct</dd>
+        <dt>Prioridad</dt><dd><span class="prio alta"><i><b></b><b></b><b></b></i>Alta</span></dd>
+        <dt>Estado</dt><dd>Pendiente</dd>
+      </dl>
+      <div class="next">
+        <span class="av" style="width:24px;height:24px;font-size:10px">MP</span>
+        <span class="t">Después<b>Enviar documentación del siniestro</b></span>
+        <button class="skip">Ver</button>
+      </div>
+    </aside>
+  </section>
+
+  <!-- Lanes -->
+  <section class="lanes">
+
+    <!-- Hoy -->
+    <div class="lane">
+      <div class="lane-head"><h3>Hoy</h3><span class="count">5</span><span class="hint">2 vencidas</span></div>
+      <div class="stack">
+        <div class="group-label red"><span class="dot"></span>Vencidas</div>
+
+        <article class="task overdue" data-task="renovar">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Renovar póliza de automotor <span class="tag-focus">En foco</span></div>
+            <div class="client"><span class="av">AP</span><span class="name">Ana Pérez</span><span class="pol">Pól. 7781-03</span></div>
+            <div class="foot"><span class="prio alta"><i><b></b><b></b><b></b></i>Alta</span><span class="status">Pendiente</span><span class="chip red">Hace 2 días</span></div>
+          </div>
+        </article>
+
+        <article class="task overdue" data-task="siniestro">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Enviar documentación del siniestro</div>
+            <div class="client"><span class="av">ML</span><span class="name">María López</span><span class="pol">Pól. 4581-22 Automotores</span></div>
+            <div class="foot"><span class="prio media"><i><b></b><b></b><b></b></i>Media</span><span class="status">En proceso</span><span class="chip red">Ayer</span></div>
+          </div>
+        </article>
+
+        <div class="group-label" style="margin-top:8px"><span class="dot"></span>Para hoy</div>
+
+        <article class="task" data-task="cotizacion">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Llamar por la cotización de hogar</div>
+            <div class="client"><span class="av">JG</span><span class="name">Juan Gómez</span></div>
+            <div class="foot"><span class="prio media"><i><b></b><b></b><b></b></i>Media</span><span class="status">En proceso</span><span class="chip amber">Hoy</span></div>
+          </div>
+        </article>
+
+        <article class="task" data-task="cuota">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Confirmar pago de cuota</div>
+            <div class="client"><span class="av">CD</span><span class="name">Carlos Díaz</span><span class="pol">Pól. 1203-11</span></div>
+            <div class="foot"><span class="prio alta"><i><b></b><b></b><b></b></i>Alta</span><span class="status">Pendiente</span><span class="chip amber">Hoy</span></div>
+          </div>
+        </article>
+
+        <article class="task" data-task="endoso">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Cargar endoso de comercio</div>
+            <div class="client"><span class="av">KS</span><span class="name">Kiosco El Sol</span></div>
+            <div class="foot"><span class="prio baja"><i><b></b><b></b><b></b></i>Baja</span><span class="status">Pendiente</span><span class="chip amber">Hoy</span></div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!-- Esta semana -->
+    <div class="lane">
+      <div class="lane-head"><h3>Esta semana</h3><span class="count">3</span><span class="hint">hasta el viernes 30</span></div>
+      <div class="stack">
+        <article class="task" data-task="moto">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Cotizar seguro de moto</div>
+            <div class="client"><span class="av">LF</span><span class="name">Lucía Fernández</span></div>
+            <div class="note">Te la asignó Sofía Ruiz hoy</div>
+            <div class="foot"><span class="prio media"><i><b></b><b></b><b></b></i>Media</span><span class="status">Pendiente</span><span class="chip blue">Mañana</span></div>
+          </div>
+        </article>
+
+        <article class="task" data-task="flota">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Revisar renovación de flota</div>
+            <div class="client"><span class="av">TS</span><span class="name">Transportes Sur</span></div>
+            <div class="foot"><span class="prio alta"><i><b></b><b></b><b></b></i>Alta</span><span class="status">Pendiente</span><span class="chip neutral">Jue 29</span></div>
+          </div>
+        </article>
+
+        <article class="task" data-task="vida">
+          <button class="check" aria-label="Marcar hecha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></button>
+          <div class="body">
+            <div class="title">Armar propuesta de vida</div>
+            <div class="client"><span class="av">PR</span><span class="name">Pedro Ramírez</span></div>
+            <div class="foot"><span class="prio baja"><i><b></b><b></b><b></b></i>Baja</span><span class="status">Pendiente</span><span class="chip neutral">Vie 30</span></div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!-- Aprobación -->
+    <div class="lane">
+      <div class="lane-head"><h3>Esperan tu aprobación</h3><span class="count">2</span></div>
+      <div class="stack">
+        <article class="task review">
+          <span class="av" style="width:20px;height:20px;margin-top:0;background:var(--violet-soft);color:var(--violet)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/></svg>
+          </span>
+          <div class="body">
+            <div class="title">Alta de póliza de vida</div>
+            <div class="client"><span class="av">SR</span><span class="name">Sofía Ruiz</span></div>
+            <div class="foot"><span class="chip violet">En revisión</span><span class="actions-mini"><button class="btn-sm">Revisar</button><button class="btn-sm primary">Aprobar</button></span></div>
+          </div>
+        </article>
+
+        <article class="task review">
+          <span class="av" style="width:20px;height:20px;margin-top:0;background:var(--violet-soft);color:var(--violet)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/></svg>
+          </span>
+          <div class="body">
+            <div class="title">Baja de cobertura de granizo</div>
+            <div class="client"><span class="av">MS</span><span class="name">Martín Sosa</span></div>
+            <div class="foot"><span class="chip violet">En revisión</span><span class="actions-mini"><button class="btn-sm">Revisar</button><button class="btn-sm primary">Aprobar</button></span></div>
+          </div>
+        </article>
+
+        <a class="lane-gesti" href="#"><img src="/gesti/gesti-avatar.webp" alt="">¿Qué documentación falta en el siniestro de María López?</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Key numbers -->
+  <section class="strip" aria-label="Cifras clave">
+    <a class="stat" href="#"><span class="label">Avisos a contactar</span><span class="num">68</span></a>
+    <a class="stat" href="#"><span class="label">Contactados</span><span class="num">12</span></a>
+    <a class="stat" href="#"><span class="label">Pagados</span><span class="num">41</span></a>
+    <a class="stat" href="#"><span class="label">Cobranza</span><span class="num">34<small>%</small></span></a>
+    <a class="stat" href="#"><span class="label">Pólizas activas</span><span class="num">486</span></a>
+  </section>
+
+</div>
+</main>
+
+<script>
+  // Toggle a task and keep the progress ring in sync (3 of 8 are already done today).
+  var BASE = 3, TOTAL = 8, C = 2 * Math.PI * 31;
+  function paint() {
+    var extra = document.querySelectorAll('.task.done').length;
+    var done = Math.min(BASE + extra, TOTAL);
+    document.getElementById('ringDone').textContent = done;
+    document.getElementById('ringPct').textContent = Math.floor(done / TOTAL * 100) + '%';
+    document.getElementById('ringBar').setAttribute('stroke-dasharray', (C * done / TOTAL).toFixed(2) + ' ' + C.toFixed(2));
+    var left = TOTAL - done;
+    document.getElementById('ringSub').textContent = left ? 'Te faltan ' + left + ' para cerrar el día' : 'Día cerrado, buen trabajo';
+  }
+  document.querySelectorAll('.task .check').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      b.closest('.task').classList.toggle('done');
+      paint();
+    });
+  });
+  document.getElementById('focusDone').addEventListener('click', function () {
+    document.querySelector('[data-task="renovar"]').classList.add('done');
+    paint();
+  });
+  paint();
+</script>
+</body>
+</html>

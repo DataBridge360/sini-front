@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard · Propuesta C · Briefing de Gesti</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f9ff;
+  --surface: #ffffff;
+  --surface-low: #f8fafc;
+  --surface-lowest: #eef2f6;
+  --border: #e1e7ef;
+  --border-strong: #cbd5e1;
+  --text: #181c20;
+  --muted: #5b6575;
+  --faint: #8a94a6;
+  --brand: #0a72d1;
+  --brand-soft: #eff6fd;
+  --brand-line: #cfe3f7;
+  --red: #b42318;   --red-soft: #fef3f2;
+  --amber: #b54708; --amber-soft: #fffaeb;
+  --violet: #6941c6; --violet-soft: #f5f3ff;
+  --green: #067647; --green-soft: #ecfdf3;
+  --font: "Plus Jakarta Sans", Inter, "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { background: var(--bg); }
+body {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+svg { display: block; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------- Shell ---------- */
+.shell { display: grid; grid-template-columns: 72px 1fr; min-height: 100vh; }
+.rail {
+  position: sticky; top: 0; height: 100vh;
+  background: var(--surface); border-right: 1px solid #e6eaf0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 16px 0; gap: 4px;
+}
+.rail .logo { width: 40px; height: 40px; display: grid; place-items: center; margin-bottom: 16px; }
+.rail .logo svg { width: 28px; height: 28px; }
+.nav-item {
+  width: 40px; height: 40px; border-radius: 12px; border: 0; background: none;
+  display: grid; place-items: center; color: var(--muted); text-decoration: none; position: relative;
+}
+.nav-item:hover { background: var(--surface-low); color: var(--text); }
+.nav-item svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.nav-item.active { background: var(--brand-soft); color: var(--brand); }
+.nav-item img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+.rail .spacer { flex: 1; }
+
+.main-col { min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  height: 64px; background: var(--surface); border-bottom: 1px solid #e6eaf0;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 32px;
+  position: sticky; top: 0; z-index: 5;
+}
+.topbar h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.top-right { display: flex; align-items: center; gap: 12px; }
+.bell {
+  position: relative; width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); display: grid; place-items: center; color: var(--muted);
+}
+.bell:hover { background: var(--surface-low); }
+.bell svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.bell .badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9999px; background: var(--red); color: #fff; font-size: 10.5px; font-weight: 700;
+  display: grid; place-items: center; border: 2px solid var(--surface); line-height: 1;
+}
+.user-pill {
+  display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 4px;
+  border: 1px solid var(--border); border-radius: 9999px; background: var(--surface); font-size: 12.5px;
+}
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--surface-lowest); color: var(--muted);
+  display: inline-grid; place-items: center; font-size: 10.5px; font-weight: 600; flex: none;
+}
+.user-pill .avatar { background: var(--brand-soft); color: var(--brand); }
+.user-pill b { font-weight: 600; }
+.user-pill span.role { color: var(--muted); }
+
+.proposal-tag {
+  position: fixed; top: 76px; right: 20px; z-index: 10;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9999px; padding: 2px 10px;
+}
+
+/* ---------- Page ---------- */
+.page { width: 100%; max-width: 1240px; margin: 0 auto; padding: 44px 32px 48px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+.stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 12px; gap: 12px; }
+.card-title { font-size: 14.5px; font-weight: 600; letter-spacing: -0.005em; display: flex; align-items: center; gap: 8px; }
+.count-pill {
+  font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 9999px;
+  background: var(--surface-lowest); color: var(--muted);
+}
+.count-pill.violet { background: var(--violet-soft); color: var(--violet); }
+
+/* ---------- Hero ---------- */
+.hero { display: flex; align-items: flex-start; gap: 20px; }
+.gesti-wrap { flex: none; width: 96px; padding-top: 8px; }
+.gesti-wrap img {
+  display: block; width: 96px; height: auto; max-height: 120px; object-fit: contain;
+  animation: float 5s ease-in-out infinite;
+}
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.bubble { position: relative; flex: 1; min-width: 0; padding: 24px 28px 20px; }
+.bubble::before {
+  content: ""; position: absolute; left: -7px; top: 44px; width: 12px; height: 12px;
+  background: var(--surface); border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+.bubble .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--faint); margin-bottom: 4px; display: flex; gap: 6px; align-items: center; }
+.bubble .eyebrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; }
+.bubble h2 { font-size: 24px; font-weight: 500; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 8px; }
+.briefing { font-size: 15px; line-height: 1.7; color: #2b323b; max-width: 62ch; }
+.briefing a.mention {
+  color: var(--brand); font-weight: 500; text-decoration: none;
+  background: linear-gradient(var(--brand-line), var(--brand-line)) 0 100% / 100% 1px no-repeat;
+  transition: background-size .15s, background-color .15s; border-radius: 3px;
+}
+.briefing a.mention:hover { background-color: var(--brand-soft); background-size: 100% 2px; }
+.briefing .overdue { color: var(--red); font-weight: 500; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chip {
+  height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid transparent; background: var(--brand-soft);
+  color: #0a5fae; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+  transition: background .15s, border-color .15s;
+}
+.chip:hover { background: #e1eefb; border-color: var(--brand-line); }
+.chip.primary { background: var(--brand); color: #fff; }
+.chip.primary:hover { background: #095fb0; border-color: transparent; }
+.chip svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ask {
+  margin-top: 16px; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 14px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface-low);
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.ask:focus-within { background: var(--surface); border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.ask input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 13px; }
+.ask input::placeholder { color: var(--faint); }
+.ask button {
+  width: 30px; height: 30px; border-radius: 6px; border: 0; background: var(--surface-lowest); color: var(--muted);
+  display: grid; place-items: center; transition: background .15s, color .15s;
+}
+.ask:focus-within button, .ask button.ready { background: var(--brand); color: #fff; }
+.ask button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- Checklist ---------- */
+.progress-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.progress-bar { width: 96px; height: 4px; border-radius: 9999px; background: var(--surface-lowest); overflow: hidden; }
+.progress-bar i { display: block; height: 100%; width: 37%; background: var(--green); border-radius: inherit; transition: width .4s ease; }
+.group-label {
+  display: flex; align-items: center; gap: 8px; padding: 12px 20px 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--faint);
+}
+.group-label.red { color: var(--red); }
+.group-label .n { font-weight: 600; }
+.task {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 14px; align-items: center;
+  padding: 10px 20px; border-top: 1px solid transparent; transition: background .15s;
+  position: relative;
+}
+.task:hover { background: var(--surface-low); }
+.task.flash { animation: flash 1.6s ease; }
+@keyframes flash { 0%, 60% { background: var(--brand-soft); } 100% { background: transparent; } }
+.check {
+  width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--border-strong); background: var(--surface);
+  display: grid; place-items: center; padding: 0; transition: background .2s, border-color .2s, transform .2s;
+}
+.check:hover { border-color: var(--brand); }
+.check:active { transform: scale(.88); }
+.check svg { width: 12px; height: 12px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 16; stroke-dashoffset: 16; transition: stroke-dashoffset .25s ease .05s; }
+.task.done .check { background: var(--green); border-color: var(--green); }
+.task.done .check svg { stroke-dashoffset: 0; }
+.task-main { min-width: 0; transition: opacity .35s ease; }
+.task-title {
+  font-size: 14px; font-weight: 500; line-height: 1.4; display: inline;
+  background: linear-gradient(currentColor, currentColor) 0 55% / 0 1.5px no-repeat;
+  transition: background-size .35s ease, color .35s ease;
+}
+.task.done .task-title { background-size: 100% 1.5px; color: var(--faint); }
+.task.done .task-main { opacity: .55; }
+.task.done .task-right { opacity: .45; }
+.task-right { transition: opacity .35s ease; }
+.task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.task-meta .sep { width: 2px; height: 2px; border-radius: 50%; background: var(--faint); }
+.task-meta b { font-weight: 500; color: #3a4350; }
+.status { display: inline-flex; align-items: center; gap: 5px; }
+.status i { width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--faint); display: inline-block; }
+.status.prog i { border-color: var(--brand); background: linear-gradient(90deg, var(--brand) 50%, transparent 50%); }
+.assigned { display: inline-flex; align-items: center; gap: 5px; color: var(--violet); font-weight: 500; }
+.assigned .avatar { width: 16px; height: 16px; font-size: 8px; background: var(--violet-soft); color: var(--violet); }
+.task-right { display: flex; align-items: center; gap: 12px; }
+.pill { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 9999px; white-space: nowrap; }
+.pill.red { background: var(--red-soft); color: var(--red); }
+.pill.amber { background: var(--amber-soft); color: var(--amber); }
+.pill.blue { background: var(--brand-soft); color: #0a5fae; }
+.pill.neutral { background: var(--surface-lowest); color: var(--muted); }
+.prio { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.prio i { width: 3px; border-radius: 1px; background: var(--border-strong); }
+.prio i:nth-child(1) { height: 5px; } .prio i:nth-child(2) { height: 8px; } .prio i:nth-child(3) { height: 12px; }
+.prio.alta i { background: var(--text); }
+.prio.media i:nth-child(-n+2) { background: var(--text); }
+.prio.baja i:nth-child(1) { background: var(--text); }
+.list-foot { padding: 10px 20px 14px; border-top: 1px solid var(--border); margin-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
+.list-foot a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.list-foot a:hover { text-decoration: underline; }
+
+/* ---------- Approvals ---------- */
+.approval { padding: 14px 20px; border-top: 1px solid var(--border); transition: opacity .3s, background .3s; }
+.approval:first-of-type { border-top: 0; }
+.approval-top { display: flex; gap: 12px; align-items: flex-start; }
+.approval-top .avatar { width: 32px; height: 32px; font-size: 11.5px; background: var(--violet-soft); color: var(--violet); }
+.approval-title { font-size: 13.5px; font-weight: 500; line-height: 1.4; }
+.approval-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.approval-actions { display: flex; gap: 8px; margin-top: 12px; padding-left: 44px; }
+.btn {
+  height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--surface); transition: background .15s, border-color .15s;
+}
+.btn:hover { background: var(--surface-low); border-color: var(--border-strong); }
+.btn.approve { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn.approve:hover { background: #095fb0; border-color: #095fb0; }
+.approval.resolved .approval-actions { display: none; }
+.approval.resolved .approval-title { color: var(--muted); }
+.resolved-note { display: none; margin-top: 8px; padding-left: 44px; font-size: 12px; color: var(--green); font-weight: 600; align-items: center; gap: 6px; }
+.resolved-note svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.approval.resolved .resolved-note { display: flex; }
+.empty-approvals { display: none; padding: 20px; text-align: center; color: var(--muted); font-size: 12.5px; }
+
+.side-note { padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; background: var(--surface-low); }
+.side-note p { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.side-note p b { color: var(--text); font-weight: 600; }
+.side-note img { width: 28px; height: 28px; border-radius: 50%; flex: none; }
+
+/* ---------- Metrics ---------- */
+.section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--faint); margin: 8px 0 12px; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.metric { padding: 16px 20px; text-decoration: none; display: block; transition: border-color .15s, background .15s; }
+.metric:hover { border-color: var(--border-strong); background: rgba(248, 250, 252, .6); }
+.metric .label { font-size: 12px; color: var(--muted); font-weight: 500; }
+.metric .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.metric .value { font-size: 28px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; }
+.metric .value small { font-size: 16px; color: var(--muted); font-weight: 500; margin-left: 1px; }
+.metric .sub { font-size: 11.5px; color: var(--faint); margin-top: 8px; }
+.spark { width: 72px; height: 28px; flex: none; overflow: visible; }
+.spark path { fill: none; stroke: var(--brand); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; opacity: .7; }
+.spark circle { fill: var(--brand); }
+.bar { height: 4px; border-radius: 9999px; background: var(--surface-lowest); margin-top: 10px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 34%; background: var(--brand); border-radius: inherit; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .shell { grid-template-columns: 1fr; padding-bottom: 64px; }
+  .rail {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 20; height: 60px; width: 100%;
+    flex-direction: row; justify-content: space-around; padding: 0 8px; border-right: 0; border-top: 1px solid #e6eaf0;
+  }
+  .rail .logo, .rail .spacer { display: none; }
+  .topbar { padding: 0 16px; height: 56px; }
+  .topbar h1 { font-size: 16px; }
+  .user-pill { padding: 0 4px; }
+  .user-pill b, .user-pill span.role { display: none; }
+  .proposal-tag { top: auto; bottom: 68px; right: 12px; }
+  .page { padding: 20px 16px 32px; }
+  .layout, .stack { gap: 16px; }
+  .hero { flex-direction: column; gap: 0; }
+  .gesti-wrap { width: 80px; padding: 0 0 0 4px; margin-bottom: -2px; position: relative; z-index: 1; }
+  .gesti-wrap img { width: 80px; }
+  .bubble { padding: 18px 16px 16px; width: 100%; }
+  .bubble::before { left: 34px; top: -7px; border-left: 1px solid var(--border); border-top: 1px solid var(--border); border-bottom: 0; transform: rotate(45deg); }
+  .bubble h2 { font-size: 21px; }
+  .briefing { font-size: 14.5px; line-height: 1.65; }
+  .chips { flex-direction: column; align-items: stretch; }
+  .chip { height: 36px; justify-content: flex-start; }
+  .card-head { padding: 14px 16px 10px; flex-wrap: wrap; }
+  .group-label { padding: 10px 16px 4px; }
+  .task { grid-template-columns: 20px minmax(0, 1fr); padding: 12px 16px; row-gap: 8px; }
+  .task-right { grid-column: 2; justify-content: flex-start; flex-direction: row-reverse; justify-content: flex-end; }
+  .list-foot { padding: 10px 16px 14px; gap: 12px; }
+  .list-foot a { white-space: nowrap; }
+  .approval { padding: 14px 16px; }
+  .metrics { gap: 12px; }
+  .metric { padding: 14px 14px 12px; }
+  .metric .value { font-size: 24px; }
+  .spark { width: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gesti-wrap img { animation: none; }
+  * { transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9h5v-5h4v5h5v-9"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 1 1 12 0v6l1.5 2h-15L6 17Z"/><path d="M10 21h4"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.3a3.5 3.5 0 0 1 0 6.4M18 14.4c1.8.8 3 2.6 3 5.6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16"/><path d="m8 15 3-4 3 2 5-6"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+</svg>
+
+<div class="shell">
+  <nav class="rail" aria-label="Principal">
+    <div class="logo" aria-label="SiniPro">
+      <svg viewBox="-420 -420 840 840" fill="#0a72d1" aria-hidden="true"><path d="M-332.6-192 0-384l200 115.5-88 50.8L0-282.4l-200.6 115.8L0-50.8l288.6-166.6 44 25.4v384L132.5 307.5V205.9l112.1-64.7V-90.4L0 50.8l-332.6-192Z"/><path d="m-332.6-32 88 50.8v122.4L88 333.2 0 384l-332.6-192Z"/></svg>
+    </div>
+    <a class="nav-item active" href="#" aria-label="Dashboard" aria-current="page"><svg><use href="#i-home"/></svg></a>
+    <a class="nav-item" href="#" aria-label="Tareas"><svg><use href="#i-tasks"/></svg></a>
+    <a class="nav-item" href="#" aria-label="Avisos"><svg><use href="#i-bell"/></svg></a>
+    <a class="nav-item" href="#" aria-label="Asegurados"><svg><use href="#i-users"/></svg></a>
+    <a class="nav-item" href="#" aria-label="Pólizas"><svg><use href="#i-doc"/></svg></a>
+    <a class="nav-item" href="#" aria-label="Reportes"><svg><use href="#i-chart"/></svg></a>
+    <div class="spacer"></div>
+    <a class="nav-item" href="#" aria-label="Gesti"><img src="/gesti/gesti-avatar.webp" alt=""></a>
+  </nav>
+
+  <div class="main-col">
+    <header class="topbar">
+      <h1>Dashboard</h1>
+      <div class="top-right">
+        <button class="bell" aria-label="Notificaciones, 4 sin leer"><svg><use href="#i-bell"/></svg><span class="badge">4</span></button>
+        <div class="user-pill"><span class="avatar">LS</span><b>Lucas Segura</b><span class="role">· Productor</span></div>
+      </div>
+    </header>
+
+    <div class="proposal-tag">Propuesta C · Briefing de Gesti</div>
+
+    <main class="page">
+      <div class="layout">
+        <div class="stack">
+
+          <!-- Hero -->
+          <section class="hero" aria-label="Resumen de Gesti">
+            <div class="gesti-wrap"><img src="/gesti/gesti.webp" alt="Gesti, tu asistente"></div>
+            <div class="card bubble">
+              <div class="eyebrow"><i></i> Gesti · lunes 26 de octubre, 15:30</div>
+              <h2>Buenas tardes, Lucas.</h2>
+              <p class="briefing">
+                Hoy tenés <a class="mention" href="#hoy">3 tareas</a> y <span class="overdue">2 quedaron vencidas</span>:
+                empezaría por la <a class="mention" href="#t-renovar">renovación de Ana Pérez</a>, que ya lleva dos días.
+                Sofía te dejó <a class="mention" href="#aprobar">2 pólizas para aprobar</a>.
+              </p>
+              <div class="chips">
+                <button class="chip primary" id="chip-urgent"><svg><use href="#i-flag"/></svg>Empezar por lo urgente</button>
+                <button class="chip" id="chip-draft"><svg><use href="#i-pen"/></svg>Redactá el recordatorio a Carlos Díaz</button>
+                <button class="chip" id="chip-week"><svg><use href="#i-cal"/></svg>Ver mi semana</button>
+              </div>
+              <form class="ask" id="ask" autocomplete="off">
+                <svg width="16" height="16" fill="none" stroke="#8a94a6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-spark"/></svg>
+                <input id="ask-input" type="text" placeholder="Preguntale a Gesti…" aria-label="Preguntale a Gesti">
+                <button type="submit" aria-label="Enviar"><svg><use href="#i-send"/></svg></button>
+              </form>
+            </div>
+          </section>
+
+          <!-- Para hoy -->
+          <section class="card" id="hoy" aria-labelledby="hoy-title">
+            <div class="card-head">
+              <h2 class="card-title" id="hoy-title">Para hoy</h2>
+              <div class="progress-meta"><span><b id="done-n" style="font-weight:600;color:var(--text)">3</b> de 8 hechas</span><span class="progress-bar" aria-hidden="true"><i id="done-bar"></i></span><span id="done-pct">37%</span></div>
+            </div>
+
+            <div class="group-label red">Vencidas <span class="n">· 2</span></div>
+            <div class="task" id="t-renovar">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Renovar póliza de automotor"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Renovar póliza de automotor</span>
+                <div class="task-meta"><b>Ana Pérez</b><i class="sep"></i><span>Pól. 7781-03</span><i class="sep"></i><span class="status"><i></i>Pendiente</span></div>
+              </div>
+              <div class="task-right"><span class="prio alta" title="Prioridad alta"><i></i><i></i><i></i></span><span class="pill red">Venció hace 2 días</span></div>
+            </div>
+            <div class="task">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Enviar documentación del siniestro"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Enviar documentación del siniestro</span>
+                <div class="task-meta"><b>María López</b><i class="sep"></i><span>Pól. 4581-22 Automotores</span><i class="sep"></i><span class="status prog"><i></i>En proceso</span></div>
+              </div>
+              <div class="task-right"><span class="prio media" title="Prioridad media"><i></i><i></i><i></i></span><span class="pill red">Venció ayer</span></div>
+            </div>
+
+            <div class="group-label">Hoy <span class="n">· 3</span></div>
+            <div class="task">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Llamar por la cotización de hogar"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Llamar por la cotización de hogar</span>
+                <div class="task-meta"><b>Juan Gómez</b><i class="sep"></i><span class="status prog"><i></i>En proceso</span></div>
+              </div>
+              <div class="task-right"><span class="prio media" title="Prioridad media"><i></i><i></i><i></i></span><span class="pill amber">Hoy</span></div>
+            </div>
+            <div class="task" id="t-carlos">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Confirmar pago de cuota"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Confirmar pago de cuota</span>
+                <div class="task-meta"><b>Carlos Díaz</b><i class="sep"></i><span>Pól. 1203-11</span><i class="sep"></i><span class="status"><i></i>Pendiente</span></div>
+              </div>
+              <div class="task-right"><span class="prio alta" title="Prioridad alta"><i></i><i></i><i></i></span><span class="pill amber">Hoy</span></div>
+            </div>
+            <div class="task">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Cargar endoso de comercio"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Cargar endoso de comercio</span>
+                <div class="task-meta"><b>Kiosco El Sol</b><i class="sep"></i><span class="status"><i></i>Pendiente</span></div>
+              </div>
+              <div class="task-right"><span class="prio baja" title="Prioridad baja"><i></i><i></i><i></i></span><span class="pill amber">Hoy</span></div>
+            </div>
+
+            <div class="group-label" id="proximas">Próximas <span class="n">· 3</span></div>
+            <div class="task">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Cotizar seguro de moto"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Cotizar seguro de moto</span>
+                <div class="task-meta"><b>Lucía Fernández</b><i class="sep"></i><span class="status"><i></i>Pendiente</span><i class="sep"></i><span class="assigned"><span class="avatar">SR</span>Te la asignó Sofía hoy</span></div>
+              </div>
+              <div class="task-right"><span class="prio media" title="Prioridad media"><i></i><i></i><i></i></span><span class="pill blue">Mañana</span></div>
+            </div>
+            <div class="task">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Revisar renovación de flota"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Revisar renovación de flota</span>
+                <div class="task-meta"><b>Transportes Sur</b><i class="sep"></i><span class="status"><i></i>Pendiente</span></div>
+              </div>
+              <div class="task-right"><span class="prio alta" title="Prioridad alta"><i></i><i></i><i></i></span><span class="pill neutral">Jue 29</span></div>
+            </div>
+            <div class="task">
+              <button class="check" role="checkbox" aria-checked="false" aria-label="Completar: Armar propuesta de vida"><svg viewBox="0 0 12 12"><path d="m2.5 6.5 2.5 2.5 4.5-5.5"/></svg></button>
+              <div class="task-main">
+                <span class="task-title">Armar propuesta de vida</span>
+                <div class="task-meta"><b>Pedro Ramírez</b><i class="sep"></i><span class="status"><i></i>Pendiente</span></div>
+              </div>
+              <div class="task-right"><span class="prio baja" title="Prioridad baja"><i></i><i></i><i></i></span><span class="pill neutral">Vie 30</span></div>
+            </div>
+
+            <div class="list-foot"><span id="foot-msg">Marcá una tarea para tacharla; Gesti lleva la cuenta.</span><a href="#">Ver todas las tareas</a></div>
+          </section>
+        </div>
+
+        <!-- Aside -->
+        <aside class="stack" aria-label="Pendientes de aprobación">
+          <section class="card" id="aprobar" aria-labelledby="apr-title">
+            <div class="card-head">
+              <h2 class="card-title" id="apr-title">Esperan tu aprobación <span class="count-pill violet" id="apr-count">2</span></h2>
+            </div>
+            <div class="approval" data-item>
+              <div class="approval-top">
+                <span class="avatar">SR</span>
+                <div>
+                  <div class="approval-title">Alta de póliza de vida</div>
+                  <div class="approval-sub">Sofía Ruiz · hace 1 h</div>
+                </div>
+              </div>
+              <div class="approval-actions"><button class="btn approve">Aprobar</button><button class="btn">Revisar</button></div>
+              <div class="resolved-note"><svg viewBox="0 0 24 24"><use href="#i-ok"/></svg>Aprobada</div>
+            </div>
+            <div class="approval" data-item>
+              <div class="approval-top">
+                <span class="avatar">MS</span>
+                <div>
+                  <div class="approval-title">Baja de cobertura de granizo</div>
+                  <div class="approval-sub">Martín Sosa · hace 3 h</div>
+                </div>
+              </div>
+              <div class="approval-actions"><button class="btn approve">Aprobar</button><button class="btn">Revisar</button></div>
+              <div class="resolved-note"><svg viewBox="0 0 24 24"><use href="#i-ok"/></svg>Aprobada</div>
+            </div>
+            <div class="empty-approvals" id="apr-empty">No te queda nada por aprobar.</div>
+          </section>
+
+          <section class="card side-note">
+            <img src="/gesti/gesti-avatar.webp" alt="">
+            <p><b>Idea de Gesti:</b> Carlos Díaz tiene el pago de su cuota pendiente hoy. Puedo dejarte el recordatorio listo para enviar.</p>
+          </section>
+        </aside>
+      </div>
+
+      <!-- Metrics -->
+      <div class="section-label">Tu cartera, de un vistazo</div>
+      <section class="metrics" aria-label="Indicadores">
+        <a class="card metric" href="#">
+          <div class="label">Avisos a contactar</div>
+          <div class="row">
+            <div class="value">68</div>
+            <svg class="spark" viewBox="0 0 72 28" aria-hidden="true"><path d="M2 8 L14 11 L26 7 L38 14 L50 12 L62 19 L70 22"/><circle cx="70" cy="22" r="2.5"/></svg>
+          </div>
+          <div class="sub">12 contactados</div>
+        </a>
+        <a class="card metric" href="#">
+          <div class="label">Cobranza</div>
+          <div class="row">
+            <div class="value">34<small>%</small></div>
+            <svg class="spark" viewBox="0 0 72 28" aria-hidden="true"><path d="M2 23 L14 20 L26 21 L38 15 L50 13 L62 9 L70 6"/><circle cx="70" cy="6" r="2.5"/></svg>
+          </div>
+          <div class="bar" role="img" aria-label="Cobranza 34%"><i></i></div>
+          <div class="sub" style="margin-top:6px">41 pagadas este mes</div>
+        </a>
+        <a class="card metric" href="#">
+          <div class="label">Pólizas activas</div>
+          <div class="row">
+            <div class="value">486</div>
+            <svg class="spark" viewBox="0 0 72 28" aria-hidden="true"><path d="M2 20 L14 19 L26 16 L38 17 L50 12 L62 11 L70 8"/><circle cx="70" cy="8" r="2.5"/></svg>
+          </div>
+          <div class="sub">En tu cartera</div>
+        </a>
+        <a class="card metric" href="#">
+          <div class="label">Asegurados</div>
+          <div class="row">
+            <div class="value">312</div>
+            <svg class="spark" viewBox="0 0 72 28" aria-hidden="true"><path d="M2 18 L14 17 L26 15 L38 15 L50 13 L62 12 L70 10"/><circle cx="70" cy="10" r="2.5"/></svg>
+          </div>
+          <div class="sub">En tu cartera</div>
+        </a>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  var BASE = 3, TOTAL = 8;
+  var tasks = document.querySelectorAll('.task');
+  var nEl = document.getElementById('done-n'), barEl = document.getElementById('done-bar'), pctEl = document.getElementById('done-pct');
+  var footMsg = document.getElementById('foot-msg');
+
+  function refresh() {
+    var extra = document.querySelectorAll('.task.done').length;
+    var done = Math.min(TOTAL, BASE + extra);
+    var pct = Math.floor(done / TOTAL * 100);
+    nEl.textContent = done; pctEl.textContent = pct + '%'; barEl.style.width = pct + '%';
+    footMsg.textContent = extra ? 'Bien ahí, Lucas. Seguí así.' : 'Marcá una tarea para tacharla; Gesti lleva la cuenta.';
+  }
+
+  tasks.forEach(function (t) {
+    var btn = t.querySelector('.check');
+    btn.addEventListener('click', function () {
+      var on = !t.classList.contains('done');
+      t.classList.toggle('done', on);
+      btn.setAttribute('aria-checked', on);
+      refresh();
+    });
+  });
+
+  function flash(el) {
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
+  function go(el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' }); flash(el);
+  }
+  document.getElementById('chip-urgent').addEventListener('click', function () { go(document.getElementById('t-renovar')); });
+  document.getElementById('chip-week').addEventListener('click', function () { go(document.getElementById('proximas')); });
+
+  var input = document.getElementById('ask-input'), send = document.querySelector('.ask button');
+  document.getElementById('chip-draft').addEventListener('click', function () {
+    input.value = 'Redactá el recordatorio de pago para Carlos Díaz';
+    input.focus(); send.classList.add('ready');
+  });
+  input.addEventListener('input', function () { send.classList.toggle('ready', !!input.value.trim()); });
+  document.getElementById('ask').addEventListener('submit', function (e) { e.preventDefault(); });
+
+  /* Approvals */
+  var items = document.querySelectorAll('[data-item]');
+  var countEl = document.getElementById('apr-count'), emptyEl = document.getElementById('apr-empty');
+  items.forEach(function (it) {
+    it.querySelector('.approve').addEventListener('click', function () {
+      it.classList.add('resolved');
+      var left = document.querySelectorAll('[data-item]:not(.resolved)').length;
+      countEl.textContent = left;
+      if (!left) { emptyEl.style.display = 'block'; countEl.style.display = 'none'; }
+    });
+  });
+})();
+</script>
+</body>
+</html>
