@@ -65,6 +65,8 @@ export type PolicyActions = {
   companies: InsuranceCompany[];
   isSaving: boolean;
   isDeleting: boolean;
+  isCreating: boolean;
+  onCreate: (values: PolicyFormValues) => Promise<unknown>;
   onUpdate: (policyId: string, values: PolicyFormValues) => Promise<unknown>;
   onDelete: (policyId: string) => Promise<unknown>;
 };
