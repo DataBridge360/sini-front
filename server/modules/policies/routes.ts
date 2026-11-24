@@ -57,8 +57,8 @@ export const policiesRoutes: Route[] = [
     method: "PATCH",
     path: "/policies/:id",
     access: "organization",
-    handler: async ({ organization, uuidParam, body }) =>
-      service().update(organization.id, uuidParam("id"), await body(updatePolicySchema))
+    handler: async ({ organization, user, uuidParam, body }) =>
+      service().update(organization.id, user.id, uuidParam("id"), await body(updatePolicySchema))
   }),
   route({
     method: "POST",

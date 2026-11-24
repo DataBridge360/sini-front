@@ -101,8 +101,8 @@ export function PolicyFormModal({
   // pasarla a automático se archivan sus avisos pendientes, y al volver a
   // manual se genera el aviso del vencimiento cargado.
   const methodChanged = Boolean(policy && paymentMethod !== policy.payment_method);
-  // Editar el vencimiento arrastra el aviso activo que tenía la fecha vieja
-  // (trigger trg_sync_policy_notice_due_date), así que se avisa antes de guardar.
+  // Editar el vencimiento reinicia los avisos en la fecha nueva (trigger
+  // trg_sync_policy_notice_due_date), así que se avisa antes de guardar.
   const dateChanged = Boolean(policy && date && date !== policy.first_payment_date);
 
   return (
@@ -225,8 +225,8 @@ export function PolicyFormModal({
             ) : policy ? (
               <span className="mt-1 text-[11px] leading-snug text-slate-500">
                 {dateChanged
-                  ? `El aviso pendiente con vencimiento ${formatDate(policy.first_payment_date)} pasa a ${formatDate(date)}. Los pagos ya registrados no se tocan.`
-                  : "Si cambiás esta fecha, el aviso pendiente que la tenía se mueve con ella."}
+                  ? `Se genera un aviso con vencimiento ${formatDate(date)} y los avisos pendientes anteriores se archivan. El cambio queda en el historial del aviso. Los pagos ya registrados no se tocan.`
+                  : "Si cambiás esta fecha, se genera un aviso con la fecha nueva y los avisos pendientes anteriores se archivan."}
               </span>
             ) : (
               <span className="mt-1 text-[11px] leading-snug text-slate-500">

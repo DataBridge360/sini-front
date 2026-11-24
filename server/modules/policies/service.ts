@@ -220,20 +220,7 @@ export class PoliciesService {
     return data;
   }
 
-  async update(organizationId: string, policyId: string, dto: UpdatePolicyDto) {
-    // Mover el vencimiento arrastra el aviso activo que tenía la fecha vieja
-    // (trigger trg_sync_policy_notice_due_date). Se valida antes el choque con
-    // otro aviso de la misma póliza para explicarlo, en vez de dejar salir el
-    // unique_violation genérico ("ya existe un registro con esos datos").
-    if (dto.firstPaymentDate !== undefined) {
-      await this.ensureNoticeDueDateIsFree(
-        organizationId,
-        policyId,
-        dto.firstPaymentDate,
-        dto.paymentMethod
-      );
-    }
-
+  async update(organizationId: string, userId: string, policyId: string, dto: UpdatePolicyDto) {
     const updates: Record<string, unknown> = {};
     if (dto.clientId !== undefined) updates.client_id = dto.clientId;
     if (dto.insuranceCompanyId !== undefined) updates.insurance_company_id = dto.insuranceCompanyId;
@@ -245,7 +232,14 @@ export class PoliciesService {
     // trg_policy_payment_method_notices): a débito automático archiva los
     // pendientes, y de vuelta a manual genera el aviso del vencimiento actual.
     if (dto.paymentMethod !== undefined) updates.payment_method = dto.paymentMethod;
-    if (dto.firstPaymentDate !== undefined) updates.first_payment_date = dto.firstPaymentDate;
+    // Cambiar el vencimiento reinicia los avisos en la fecha nueva (trigger
+    // trg_sync_policy_notice_due_date): archiva los pendientes, deja uno en la
+    // fecha nueva y anota el cambio en su historial a nombre de quien lo hizo,
+    // que viaja en el mismo UPDATE para que todo sea atómico.
+    if (dto.firstPaymentDate !== undefined) {
+      updates.first_payment_date = dto.firstPaymentDate;
+      updates.first_payment_date_changed_by_user_id = userId;
+    }
 
     const { data, error } = await this.supabase.admin
       .from("policies")
@@ -261,7 +255,8 @@ export class PoliciesService {
         throw new NotFoundException("Policy not found");
       }
       // El trigger que sincroniza el aviso corta con un mensaje ya redactado
-      // para el usuario (raise exception → P0001); se muestra tal cual.
+      // para el usuario (raise exception → P0001, p. ej. la fecha nueva ya
+      // tiene un pago registrado); se muestra tal cual.
       if (error.code === "P0001" && error.message) {
         throw new BadRequestException(error.message);
       }
@@ -346,71 +341,6 @@ export class PoliciesService {
     }
 
     return data;
-  }
-
-  // El trigger mueve el aviso activo cuyo due_date es la fecha vieja de la
-  // póliza. Si además ya existe otro aviso con la fecha nueva (uno pagado, o
-  // uno soft-deleted por un revert), la unique (policy_id, due_date) aborta el
-  // UPDATE entero: se detecta acá para devolver el motivo real.
-  private async ensureNoticeDueDateIsFree(
-    organizationId: string,
-    policyId: string,
-    firstPaymentDate: string,
-    paymentMethod?: string
-  ) {
-    const { data: policy, error: policyError } = await this.supabase.admin
-      .from("policies")
-      .select("first_payment_date,payment_method")
-      .eq("id", policyId)
-      .eq("organization_id", organizationId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (policyError) {
-      throw supabaseError(this.logger, "policies.update", policyError, "No se pudo actualizar la póliza.");
-    }
-    if (!policy) {
-      throw new NotFoundException("Policy not found");
-    }
-    if (policy.first_payment_date === firstPaymentDate) {
-      return;
-    }
-    // Si la póliza queda en débito automático no hay aviso que mover: el
-    // trigger del tipo de pago archiva los pendientes antes de que corra el
-    // sync de la fecha, así que no puede haber choque.
-    if ((paymentMethod ?? policy.payment_method) !== "manual") {
-      return;
-    }
-
-    const { data: notices, error: noticesError } = await this.supabase.admin
-      .from("policy_notices")
-      .select("id,due_date,status,deleted_at")
-      .eq("policy_id", policyId)
-      .eq("organization_id", organizationId)
-      .in("due_date", [policy.first_payment_date, firstPaymentDate]);
-
-    if (noticesError) {
-      throw supabaseError(this.logger, "policies.update", noticesError, "No se pudo actualizar la póliza.");
-    }
-
-    const rows = (notices ?? []) as Array<{
-      due_date: string;
-      status: string;
-      deleted_at: string | null;
-    }>;
-    const moves = rows.some(
-      (notice) =>
-        notice.due_date === policy.first_payment_date &&
-        notice.deleted_at === null &&
-        (notice.status === "avisar" || notice.status === "avisado")
-    );
-    const taken = rows.some((notice) => notice.due_date === firstPaymentDate);
-
-    if (moves && taken) {
-      throw new BadRequestException(
-        "Esta póliza ya tiene un aviso con esa fecha de vencimiento. Elegí otra fecha."
-      );
-    }
   }
 
   async remove(organizationId: string, policyId: string): Promise<{ ok: true }> {
