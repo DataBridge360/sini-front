@@ -182,21 +182,32 @@ describe("policies handlers", () => {
     expect((await trigger.json()).message).toBe("Fecha inválida");
   });
 
-  it("PATCH rejects a new due date that collides with an existing notice", async () => {
-    results.push(
-      { data: { first_payment_date: "2026-01-01", payment_method: "manual" } },
-      {
-        data: [
-          { due_date: "2026-01-01", status: "avisar", deleted_at: null },
-          { due_date: "2026-02-01", status: "pagado", deleted_at: null }
-        ]
-      }
-    );
+  it("PATCH records who changed the due date in the same update", async () => {
+    results.push({ data: { id: UUID, first_payment_date: "2026-11-15" } });
+    const response = await setup()(json("PATCH", `/policies/${UUID}`, { firstPaymentDate: "2026-11-15" }));
+    expect(response.status).toBe(200);
+    const updates = calls.filter((entry) => entry.method === "update");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.args[0]).toEqual({
+      first_payment_date: "2026-11-15",
+      first_payment_date_changed_by_user_id: USER.id
+    });
+  });
+
+  it("PATCH without a due date does not touch who changed it", async () => {
+    results.push({ data: { id: UUID, branch: "Hogar" } });
+    const response = await setup()(json("PATCH", `/policies/${UUID}`, { branch: "Hogar" }));
+    expect(response.status).toBe(200);
+    const updates = calls.filter((entry) => entry.method === "update");
+    expect(updates[0]?.args[0]).toEqual({ branch: "Hogar" });
+  });
+
+  it("PATCH shows the trigger message when the new due date is already paid", async () => {
+    const message = "Esta póliza ya tiene un pago registrado con vencimiento 01/02/2026. Elegí otra fecha.";
+    results.push({ error: { code: "P0001", message } });
     const response = await setup()(json("PATCH", `/policies/${UUID}`, { firstPaymentDate: "2026-02-01" }));
     expect(response.status).toBe(400);
-    expect((await response.json()).message).toBe(
-      "Esta póliza ya tiene un aviso con esa fecha de vencimiento. Elegí otra fecha."
-    );
+    expect((await response.json()).message).toBe(message);
   });
 
   it("GET :id/notices 404s for a policy outside the organization", async () => {
